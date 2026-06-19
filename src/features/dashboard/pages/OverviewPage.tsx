@@ -22,7 +22,7 @@ export const OverviewPage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-md">
+    <div className="space-y-xl">
       {/* Target Progress Section */}
       <section className="bg-white p-md rounded-sm border border-outline-variant flipkart-shadow">
         <div className="flex justify-between items-end mb-sm">
@@ -36,17 +36,29 @@ export const OverviewPage: React.FC = () => {
             </div>
           </div>
           <div className="flex gap-md text-[11px] font-bold">
-            <div className="flex items-center gap-xs">
+            <div className="relative group cursor-pointer flex items-center gap-xs">
               <span className="w-3 h-3 bg-green-500 rounded-[2px]"></span> DW (24%)
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-1 px-2 rounded-sm whitespace-nowrap z-50 pointer-events-none">
+                Driver Welcome
+              </div>
             </div>
-            <div className="flex items-center gap-xs">
+            <div className="relative group cursor-pointer flex items-center gap-xs">
               <span className="w-3 h-3 bg-orange-500 rounded-[2px]"></span> TR (32%)
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-1 px-2 rounded-sm whitespace-nowrap z-50 pointer-events-none">
+                Transporter
+              </div>
             </div>
-            <div className="flex items-center gap-xs">
+            <div className="relative group cursor-pointer flex items-center gap-xs">
               <span className="w-3 h-3 bg-teal-500 rounded-[2px]"></span> SC (12%)
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-1 px-2 rounded-sm whitespace-nowrap z-50 pointer-events-none">
+                Special Categories
+              </div>
             </div>
-            <div className="flex items-center gap-xs">
+            <div className="relative group cursor-pointer flex items-center gap-xs">
               <span className="w-3 h-3 bg-amber-500 rounded-[2px]"></span> MM (12%)
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-1 px-2 rounded-sm whitespace-nowrap z-50 pointer-events-none">
+                Matchmaking
+              </div>
             </div>
           </div>
         </div>
@@ -59,7 +71,7 @@ export const OverviewPage: React.FC = () => {
       </section>
 
       {/* Main Process Summaries Grid */}
-      <div className="grid grid-cols-4 gap-md">
+      <div className="grid grid-cols-4 gap-xl">
         <KPIWidget
           title="Driver Welcome"
           value="₹1,92,000"
@@ -92,9 +104,9 @@ export const OverviewPage: React.FC = () => {
       </div>
 
       {/* Double Column split details */}
-      <div className="grid grid-cols-12 gap-md">
+      <div className="grid grid-cols-12 gap-xl">
         {/* Left Column: Charts and Call logs */}
-        <div className="col-span-8 space-y-md">
+        <div className="col-span-8 space-y-xl">
           {/* Chart Section */}
           <div className="bg-white p-md border border-outline-variant rounded-sm flipkart-shadow">
             <h3 className="font-headline-md text-xs font-extrabold uppercase text-on-surface mb-md">
@@ -159,7 +171,7 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* Right Column: Mini Widgets */}
-        <div className="col-span-4 space-y-md">
+        <div className="col-span-4 space-y-xl">
           {/* Quick Metrics */}
           <div className="bg-white p-md border border-outline-variant rounded-sm flipkart-shadow">
             <h3 className="font-headline-md text-xs font-extrabold uppercase text-on-surface mb-md">

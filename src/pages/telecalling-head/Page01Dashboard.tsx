@@ -1,6 +1,30 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 export const Page01Dashboard: React.FC = () => {
+  const agents = [
+    { name: 'RK', fullName: 'Rajesh Kumar', status: 'green' },
+    { name: 'SM', fullName: 'Sneha Mehta', status: 'green' },
+    { name: 'AV', fullName: 'Amit Verma', status: 'yellow' },
+    { name: 'PS', fullName: 'Priya Sharma', status: 'red' },
+    { name: 'NK', fullName: 'Naveen Kumar', status: 'gray' },
+    { name: 'TD', fullName: 'Tarun Dutt', status: 'green' },
+    { name: 'MJ', fullName: 'Manoj Joshi', status: 'green' },
+    { name: 'LK', fullName: 'Lalit Kapoor', status: 'green' },
+    { name: 'BB', fullName: 'Brijesh Bansal', status: 'yellow' },
+    { name: 'OP', fullName: 'Om Prakash', status: 'green' },
+    { name: 'AS', fullName: 'Anil Singh', status: 'green' },
+    { name: 'GK', fullName: 'Geeta Krishnan', status: 'red' },
+    { name: 'HS', fullName: 'Harpreet Singh', status: 'green' },
+    { name: 'RE', fullName: 'Ramesh E.', status: 'gray' },
+    { name: 'QW', fullName: 'Qasim Wani', status: 'green' },
+    { name: 'MN', fullName: 'Meera Nair', status: 'green' },
+    { name: 'BV', fullName: 'Bimal Vyas', status: 'green' },
+    { name: 'XZ', fullName: 'Xavier Z.', status: 'red' },
+    { name: 'YU', fullName: 'Yash Upadhyay', status: 'green' },
+    { name: 'KI', fullName: 'Kapil Iyer', status: 'green' }
+  ];
+
   return (
     <main className=" bg-background p-md space-y-md">
 
@@ -14,10 +38,30 @@ export const Page01Dashboard: React.FC = () => {
 </div>
 </div>
 <div className="flex gap-md text-[11px] font-bold">
-<div className="flex items-center gap-xs"><span className="w-3 h-3 bg-green-500 rounded-[2px]"></span> DW (24%)</div>
-<div className="flex items-center gap-xs"><span className="w-3 h-3 bg-orange-500 rounded-[2px]"></span> TR (32%)</div>
-<div className="flex items-center gap-xs"><span className="w-3 h-3 bg-teal-500 rounded-[2px]"></span> SC (12%)</div>
-<div className="flex items-center gap-xs"><span className="w-3 h-3 bg-amber-500 rounded-[2px]"></span> MM (12%)</div>
+<div className="relative group cursor-pointer flex items-center gap-xs">
+  <span className="w-3 h-3 bg-green-500 rounded-[2px]"></span> DW (24%)
+  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-1 px-2 rounded-sm whitespace-nowrap z-50 pointer-events-none">
+    Driver Welcome
+  </div>
+</div>
+<div className="relative group cursor-pointer flex items-center gap-xs">
+  <span className="w-3 h-3 bg-orange-500 rounded-[2px]"></span> TR (32%)
+  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-1 px-2 rounded-sm whitespace-nowrap z-50 pointer-events-none">
+    Transporter
+  </div>
+</div>
+<div className="relative group cursor-pointer flex items-center gap-xs">
+  <span className="w-3 h-3 bg-teal-500 rounded-[2px]"></span> SC (12%)
+  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-1 px-2 rounded-sm whitespace-nowrap z-50 pointer-events-none">
+    Special Categories
+  </div>
+</div>
+<div className="relative group cursor-pointer flex items-center gap-xs">
+  <span className="w-3 h-3 bg-amber-500 rounded-[2px]"></span> MM (12%)
+  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-1 px-2 rounded-sm whitespace-nowrap z-50 pointer-events-none">
+    Matchmaking
+  </div>
+</div>
 </div>
 </div>
 <div className="h-4 w-full bg-surface-container-low rounded-full overflow-hidden flex">
@@ -27,9 +71,6 @@ export const Page01Dashboard: React.FC = () => {
 <div className="h-full bg-amber-500 transition-all duration-1000" style={{"width": "12%"}}></div>
 </div>
 </section>
-<div className="grid grid-cols-12 gap-md">
-
-<div className="col-span-8 space-y-md">
 
 <div className="grid grid-cols-4 gap-md">
 
@@ -105,29 +146,56 @@ export const Page01Dashboard: React.FC = () => {
 </div>
 </div>
 </div>
-<div className="grid grid-cols-2 gap-md">
+
+<div className="grid grid-cols-12 gap-md">
+<div className="col-span-8 space-y-md">
 
 <div className="bg-surface p-md border border-outline-variant flipkart-shadow">
 <div className="flex justify-between items-center mb-md">
 <h3 className="font-label-caps text-label-caps text-outline uppercase font-bold">Daily Revenue Trend</h3>
-<span className="text-[10px] text-outline">7D Trend</span>
+<div className="flex items-center gap-md text-[10px] text-outline font-bold">
+  <span>Target: ₹37.5k</span>
+  <span>7D Trend</span>
 </div>
-<div className="relative h-40 flex items-end justify-between px-sm pb-xs border-b border-l border-outline-variant">
+</div>
+<div className="flex gap-xs">
+  {/* Y-Axis Labels */}
+  <div className="flex flex-col justify-between h-56 text-[9px] text-outline font-bold text-right w-10 pb-xs select-none">
+    <span>₹50k</span>
+    <span>₹37.5k</span>
+    <span>₹25k</span>
+    <span>₹12.5k</span>
+    <span>₹0</span>
+  </div>
+  {/* Chart relative area */}
+  <div className="flex-1 relative h-56 flex items-end justify-between px-sm pb-xs border-b border-l border-outline-variant">
+    <div className="absolute top-1/4 left-0 w-full border-t border-dashed border-primary/40 z-0"></div>
 
-<div className="absolute top-1/4 left-0 w-full border-t border-dashed border-primary/40 z-0"></div>
-
-<div className="group relative w-6 bg-primary-container h-[60%] transition-all hover:bg-primary cursor-help">
-<span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-inverse-surface text-white text-[10px] px-1 rounded transition-all">₹42k</span>
+    <div className="group relative w-6 bg-primary-container h-[60%] transition-all hover:bg-primary cursor-pointer">
+      <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-inverse-surface text-white text-[10px] px-1 rounded transition-all">₹30k</span>
+    </div>
+    <div className="group relative w-6 bg-primary-container h-[85%] transition-all hover:bg-primary cursor-pointer">
+      <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-inverse-surface text-white text-[10px] px-1 rounded transition-all">₹42.5k</span>
+    </div>
+    <div className="group relative w-6 bg-primary-container h-[70%] transition-all hover:bg-primary cursor-pointer">
+      <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-inverse-surface text-white text-[10px] px-1 rounded transition-all">₹35k</span>
+    </div>
+    <div className="group relative w-6 bg-primary-container h-[95%] transition-all hover:bg-primary cursor-pointer">
+      <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-inverse-surface text-white text-[10px] px-1 rounded transition-all">₹47.5k</span>
+    </div>
+    <div className="group relative w-6 bg-primary-container h-[40%] transition-all hover:bg-primary cursor-pointer">
+      <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-inverse-surface text-white text-[10px] px-1 rounded transition-all">₹20k</span>
+    </div>
+    <div className="group relative w-6 bg-primary-container h-[75%] transition-all hover:bg-primary cursor-pointer">
+      <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-inverse-surface text-white text-[10px] px-1 rounded transition-all">₹37.5k</span>
+    </div>
+    <div className="group relative w-6 bg-primary h-[82%] transition-all cursor-pointer">
+      <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-inverse-surface text-white text-[10px] px-1 rounded transition-all">₹41k</span>
+    </div>
+  </div>
 </div>
-<div className="group relative w-6 bg-primary-container h-[85%] transition-all hover:bg-primary"></div>
-<div className="group relative w-6 bg-primary-container h-[70%] transition-all hover:bg-primary"></div>
-<div className="group relative w-6 bg-primary-container h-[95%] transition-all hover:bg-primary"></div>
-<div className="group relative w-6 bg-primary-container h-[40%] transition-all hover:bg-primary"></div>
-<div className="group relative w-6 bg-primary-container h-[75%] transition-all hover:bg-primary"></div>
-<div className="group relative w-6 bg-primary h-[82%] transition-all"></div>
-</div>
-<div className="flex justify-between mt-sm text-[10px] text-outline uppercase px-sm">
-<span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+<div className="flex justify-between mt-sm text-[10px] text-outline uppercase pl-[52px] pr-sm font-semibold">
+  <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
 </div>
 </div>
 
@@ -164,7 +232,6 @@ export const Page01Dashboard: React.FC = () => {
 </div>
 </div>
 </div>
-</div>
 
 <div className="col-span-4 space-y-md">
 
@@ -174,7 +241,7 @@ export const Page01Dashboard: React.FC = () => {
 <span className="material-symbols-outlined text-sm" data-icon="warning">warning</span>
 <h3 className="font-label-caps text-label-caps uppercase font-bold">SLA Risk (12 Alerts)</h3>
 </div>
-<button className="text-white text-[10px] font-bold underline">View All</button>
+<Link to="/th/sla-dashboard" className="text-white text-[10px] font-bold underline">View All</Link>
 </div>
 <div className="flex-1 overflow-y-auto custom-scrollbar">
 <table className="w-full text-left border-collapse">
@@ -242,54 +309,22 @@ export const Page01Dashboard: React.FC = () => {
 </div>
 </div>
 <div className="grid grid-cols-5 gap-sm">
-
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold group cursor-pointer">
-                            RK
-                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span>
-</div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold group cursor-pointer">
-                            SM
-                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span>
-</div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold group cursor-pointer">
-                            AV
-                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-yellow-500 border border-white rounded-full"></span>
-</div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold group cursor-pointer">
-                            PS
-                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-red-500 border border-white rounded-full"></span>
-</div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold group cursor-pointer">
-                            NK
-                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-gray-400 border border-white rounded-full"></span>
-</div>
-
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">
-                            TD <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span>
-</div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">
-                            MJ <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span>
-</div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">
-                            LK <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span>
-</div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">
-                            BB <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-yellow-500 border border-white rounded-full"></span>
-</div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">
-                            OP <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span>
-</div>
-
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">AS <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span></div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">GK <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-red-500 border border-white rounded-full"></span></div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">HS <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span></div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">RE <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-gray-400 border border-white rounded-full"></span></div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">QW <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span></div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">MN <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span></div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">BV <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span></div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">XZ <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-red-500 border border-white rounded-full"></span></div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">YU <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span></div>
-<div className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold">KI <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></span></div>
+{agents.map((agent, idx) => (
+  <div
+    key={idx}
+    className="relative w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-[11px] font-bold cursor-pointer transition-all duration-200 hover:scale-115 hover:border-primary hover:shadow-md hover:bg-primary hover:text-white group"
+  >
+    {agent.name}
+    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 border border-white rounded-full ${
+      agent.status === 'green' ? 'bg-green-500' :
+      agent.status === 'yellow' ? 'bg-yellow-500' :
+      agent.status === 'red' ? 'bg-red-500' : 'bg-gray-400'
+    }`}></span>
+    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-1 px-2 rounded-sm whitespace-nowrap z-50 pointer-events-none">
+      {agent.fullName}
+    </div>
+  </div>
+))}
 </div>
 <button className="w-full mt-md py-2 border border-outline-variant text-[11px] font-bold uppercase hover:bg-surface-container-low transition-colors">Broadcast Message to Team</button>
 </div>

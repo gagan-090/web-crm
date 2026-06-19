@@ -14,6 +14,15 @@ export interface RouteItem {
 export const dynamicRoutes: RouteItem[] = [
   // ==================== TELECALLING HEAD (th) ====================
   {
+    path: '/th/overview-live',
+    name: 'Overview',
+    role: 'th',
+    permission: 'leads:view',
+    layout: 'dashboard',
+    icon: 'grid_view',
+    showInMenu: true
+  },
+  {
     path: '/th/main-overview-dashboard',
     name: 'Dashboard',
     role: 'th',

@@ -1,245 +1,390 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+interface DriverItem {
+  id: string;
+  name: string;
+  phone: string;
+  tier: 'Verified' | 'Trusted' | 'Standard';
+  city: string;
+  routes: string;
+  experience: number;
+  lastActive: string;
+  truckType: string;
+  license: string;
+}
 
 export const MmDriverSearch: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Job context passed from details page
+  const state = location.state || {};
+  const jobId = state.jobId || null;
+  const jobRequirements = state.requirements || null;
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  
+  // Filter states
+  const [originState, setOriginState] = useState('');
+  const [destState, setDestState] = useState('');
+  const [selectedTrucks, setSelectedTrucks] = useState<string[]>([]);
+  const [licenseClass, setLicenseClass] = useState<string[]>([]);
+  const [planTier, setPlanTier] = useState<string>('All');
+  const [locationInput, setLocationInput] = useState('');
+  const [experienceLimit, setExperienceLimit] = useState(5);
+
+  const [selectedDrivers, setSelectedDrivers] = useState<string[]>([]);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Mock drivers database
+  const [drivers] = useState<DriverItem[]>([
+    { id: 'DR-48291', name: 'Suresh Yadav', phone: '+91 98765 43210', tier: 'Verified', city: 'Delhi', routes: 'Delhi ➔ Mumbai', experience: 6, lastActive: 'Today', truckType: 'Heavy Truck', license: 'HMV' },
+    { id: 'DR-48292', name: 'Amit Singh', phone: '+91 88765 43211', tier: 'Trusted', city: 'Jaipur', routes: 'Jaipur ➔ Pune', experience: 4, lastActive: 'Yesterday', truckType: 'Medium Truck', license: 'HMV' },
+    { id: 'DR-48293', name: 'Ramesh Kumar', phone: '+91 78765 43212', tier: 'Verified', city: 'Mumbai', routes: 'Mumbai ➔ Delhi', experience: 5, lastActive: '2 days ago', truckType: 'Heavy Truck', license: 'HMV' },
+    { id: 'DR-48296', name: 'Devendra Pal', phone: '+91 98234 11223', tier: 'Verified', city: 'Ahmedabad', routes: 'Ahmedabad ➔ Chennai', experience: 5, lastActive: '3 days ago', truckType: 'Container 24ft', license: 'HMV' },
+    { id: 'DR-48297', name: 'Harpreet Singh', phone: '+91 91112 23344', tier: 'Trusted', city: 'Amritsar', routes: 'Delhi ➔ Bangalore', experience: 7, lastActive: 'Today', truckType: 'Container 32ft', license: 'HMV' },
+    { id: 'DR-48299', name: 'Karan Johar', phone: '+91 99999 88888', tier: 'Standard', city: 'Patna', routes: 'Kolkata ➔ Patna', experience: 2, lastActive: '5 days ago', truckType: 'Light Commercial', license: 'LMV' }
+  ]);
+
+  const handleToggleTruck = (truck: string) => {
+    setSelectedTrucks(prev => 
+      prev.includes(truck) ? prev.filter(t => t !== truck) : [...prev, truck]
+    );
+  };
+
+  const handleToggleLicense = (lic: string) => {
+    setLicenseClass(prev => 
+      prev.includes(lic) ? prev.filter(l => l !== lic) : [...prev, lic]
+    );
+  };
+
+  // Filter application
+  const filteredDrivers = drivers.filter(d => {
+    const matchesTier = planTier === 'All' || d.tier === planTier;
+    const matchesLocation = !locationInput || d.city.toLowerCase().includes(locationInput.toLowerCase());
+    const matchesExperience = d.experience >= experienceLimit;
+    const matchesOrigin = !originState || d.routes.includes(originState);
+    const matchesDest = !destState || d.routes.includes(destState);
+    const matchesTruck = selectedTrucks.length === 0 || selectedTrucks.includes(d.truckType);
+    const matchesLicense = licenseClass.length === 0 || licenseClass.includes(d.license);
+
+    return matchesTier && matchesLocation && matchesExperience && matchesOrigin && matchesDest && matchesTruck && matchesLicense;
+  });
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedDrivers(filteredDrivers.map(d => d.id));
+    } else {
+      setSelectedDrivers([]);
+    }
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedDrivers(prev => [...prev, id]);
+    } else {
+      setSelectedDrivers(prev => prev.filter(item => item !== id));
+    }
+  };
+
+  const handleAddIndividual = (driverName: string) => {
+    triggerToast(`Added ${driverName} to job ${jobId || 'Shortlist'} ✓`);
+  };
+
+  const handleAddBulk = () => {
+    if (selectedDrivers.length === 0) return;
+    triggerToast(`Bulk added ${selectedDrivers.length} candidates to job ${jobId || 'Shortlist'} ✓`);
+    setSelectedDrivers([]);
+  };
+
+  const handleResetFilters = () => {
+    setOriginState('');
+    setDestState('');
+    setSelectedTrucks([]);
+    setLicenseClass([]);
+    setPlanTier('All');
+    setLocationInput('');
+    setExperienceLimit(1);
+    triggerToast('Filters reset to defaults');
+  };
+
   return (
-    <main className=" min-h-screen flex flex-col">
+    <main className="flex h-[calc(100vh-60px)] bg-white overflow-hidden relative text-xs">
+      
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
+          <span className="w-2 h-2 rounded-full bg-[#8E44AD]"></span>
+          {toastMessage}
+        </div>
+      )}
 
+      {/* Filter panel on the left (280px) */}
+      <aside className="w-72 bg-gray-50 border-r border-gray-200 p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
+        <div className="space-y-4">
+          <h3 className="text-xs font-extrabold text-gray-800 uppercase tracking-wide border-b border-gray-200 pb-2">
+            Match Sourcing Filters
+          </h3>
 
+          {/* Route origin/destination */}
+          <div className="space-y-2">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Routes Preference</label>
+            <div className="grid grid-cols-2 gap-2">
+              <select 
+                value={originState}
+                onChange={(e) => setOriginState(e.target.value)}
+                className="w-full border border-gray-200 rounded p-1 px-1.5 outline-none font-semibold text-gray-700 bg-white"
+              >
+                <option value="">Origin State</option>
+                <option value="Delhi">Delhi</option>
+                <option value="Jaipur">Jaipur</option>
+                <option value="Mumbai">Mumbai</option>
+                <option value="Ahmedabad">Ahmedabad</option>
+                <option value="Kolkata">Kolkata</option>
+              </select>
 
-<div className="flex-1 p-margin-desktop space-y-lg">
+              <select 
+                value={destState}
+                onChange={(e) => setDestState(e.target.value)}
+                className="w-full border border-gray-200 rounded p-1 px-1.5 outline-none font-semibold text-gray-700 bg-white"
+              >
+                <option value="">Dest State</option>
+                <option value="Mumbai">Mumbai</option>
+                <option value="Pune">Pune</option>
+                <option value="Delhi">Delhi</option>
+                <option value="Chennai">Chennai</option>
+                <option value="Bangalore">Bangalore</option>
+                <option value="Patna">Patna</option>
+              </select>
+            </div>
+          </div>
 
-<section className="bg-accent-purple/10 border border-accent-purple/20 p-md rounded-xl flex items-center justify-between">
-<div className="flex items-center gap-md">
-<div className="w-12 h-12 bg-accent-purple rounded-lg flex items-center justify-center text-white">
-<span className="material-symbols-outlined">assignment_ind</span>
-</div>
-<div>
-<h2 className="font-headline-sm text-headline-sm text-accent-purple font-bold">Searching for: #JD-12034</h2>
-<p className="text-body-sm text-on-surface-variant">Route: Delhi → Mumbai • Class: Heavy Truck • Preference: Trusted Plan Tier</p>
-</div>
-</div>
-<button className="bg-accent-purple text-white px-lg py-md rounded-lg font-label-md hover:opacity-90 transition-all flex items-center gap-sm">
-<span className="material-symbols-outlined text-[18px]">call</span>
-                    Connect 3-Way
-                </button>
-</section>
-<div className="grid grid-cols-12 gap-lg items-start">
+          {/* Truck types chips */}
+          <div className="space-y-2">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Truck Types</label>
+            <div className="flex flex-wrap gap-1.5">
+              {['Heavy Truck', 'Medium Truck', 'Light Commercial', 'Container 24ft', 'Container 32ft', 'Taurus 14W'].map(t => {
+                const isSelected = selectedTrucks.includes(t);
+                return (
+                  <button
+                    key={t}
+                    onClick={() => handleToggleTruck(t)}
+                    className={`px-2 py-0.5 rounded border font-semibold text-[10px] ${
+                      isSelected 
+                        ? 'bg-purple-100 border-[#8E44AD] text-[#7D3C98]' 
+                        : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-100'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-<aside className="col-span-3 space-y-lg bg-surface-container-lowest p-lg rounded-xl border border-outline-variant">
-<div className="flex items-center justify-between">
-<h3 className="font-headline-sm text-primary font-bold">Filters</h3>
-<button className="text-primary text-body-sm font-semibold hover:underline">Clear All</button>
-</div>
-<div className="space-y-md">
-<label className="block">
-<span className="font-label-md text-on-surface-variant block mb-xs">Origin City</span>
-<input className="w-full border-outline-variant rounded-lg p-sm text-body-md focus:ring-primary-container focus:border-primary-container" type="text" value="Delhi"/>
-</label>
-<label className="block">
-<span className="font-label-md text-on-surface-variant block mb-xs">Destination City</span>
-<input className="w-full border-outline-variant rounded-lg p-sm text-body-md focus:ring-primary-container focus:border-primary-container" placeholder="Mumbai" type="text"/>
-</label>
-</div>
-<hr className="border-outline-variant"/>
-<div className="space-y-sm">
-<span className="font-label-md text-on-surface-variant block">Truck Type</span>
-<div className="space-y-xs">
-<label className="flex items-center gap-sm text-body-md">
-<input checked className="rounded-sm border-outline-variant text-primary focus:ring-primary-container" type="checkbox"/>
-                                Heavy Truck (10+ Wheels)
-                            </label>
-<label className="flex items-center gap-sm text-body-md text-on-surface-variant">
-<input className="rounded-sm border-outline-variant text-primary focus:ring-primary-container" type="checkbox"/>
-                                LCV / Medium
-                            </label>
-<label className="flex items-center gap-sm text-body-md text-on-surface-variant">
-<input className="rounded-sm border-outline-variant text-primary focus:ring-primary-container" type="checkbox"/>
-                                Refrigerated
-                            </label>
-</div>
-</div>
-<div className="space-y-sm">
-<span className="font-label-md text-on-surface-variant block">Plan Tier</span>
-<div className="flex flex-wrap gap-xs">
-<button className="px-md py-xs bg-primary-fixed text-on-primary-fixed-variant rounded-full text-body-sm font-semibold border border-primary/20">Trusted</button>
-<button className="px-md py-xs bg-surface-variant text-on-surface-variant rounded-full text-body-sm font-semibold border border-outline-variant">Standard</button>
-<button className="px-md py-xs bg-surface-variant text-on-surface-variant rounded-full text-body-sm font-semibold border border-outline-variant">Premium</button>
-</div>
-</div>
-<div className="space-y-sm">
-<span className="font-label-md text-on-surface-variant block">Experience (Years)</span>
-<div className="flex items-center gap-sm">
-<input className="w-full border-outline-variant rounded-lg p-sm text-body-sm" placeholder="Min" type="number"/>
-<span className="text-outline-variant">—</span>
-<input className="w-full border-outline-variant rounded-lg p-sm text-body-sm" placeholder="Max" type="number"/>
-</div>
-</div>
-<div className="space-y-sm">
-<span className="font-label-md text-on-surface-variant block">License Class</span>
-<select className="w-full border-outline-variant rounded-lg p-sm text-body-md bg-surface">
-<option>Class H (Heavy)</option>
-<option>Class M (Medium)</option>
-<option>Hazardous Goods</option>
-</select>
-</div>
-<button className="w-full bg-primary text-white py-md rounded-lg font-label-md shadow-sm hover:shadow-md transition-shadow">Apply Filter</button>
-</aside>
+          {/* License class */}
+          <div className="space-y-2">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">License Required</label>
+            <div className="flex gap-2">
+              {['HMV', 'LMV', 'MCV'].map(l => {
+                const isSelected = licenseClass.includes(l);
+                return (
+                  <button
+                    key={l}
+                    onClick={() => handleToggleLicense(l)}
+                    className={`flex-1 py-1.5 rounded-lg border font-bold text-center ${
+                      isSelected 
+                        ? 'bg-purple-100 border-[#8E44AD] text-[#7D3C98]' 
+                        : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-100'
+                    }`}
+                  >
+                    {l}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-<div className="col-span-9 space-y-lg">
-<div className="flex justify-between items-center">
-<p className="text-on-surface-variant text-body-md">Showing <span className="font-bold text-on-surface">14 verified drivers</span> matching your criteria</p>
-<div className="flex items-center gap-sm">
-<span className="text-body-sm text-on-surface-variant">Sort by:</span>
-<select className="border-none bg-transparent text-body-sm font-bold text-primary focus:ring-0 cursor-pointer">
-<option>Best Match</option>
-<option>Exp: High to Low</option>
-<option>Last Active</option>
-</select>
-</div>
-</div>
+          {/* Plan tier */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Vetting Plan Tier</label>
+            <div className="space-y-1">
+              {['All', 'Verified', 'Trusted', 'Standard'].map(p => (
+                <label key={p} className="flex items-center gap-2 font-semibold text-gray-700 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="planTier"
+                    checked={planTier === p}
+                    onChange={() => setPlanTier(p)}
+                    className="text-[#8E44AD] focus:ring-[#8E44AD]"
+                  />
+                  <span>{p}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
-<div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden">
-<table className="w-full text-left border-collapse">
-<thead>
-<tr className="bg-surface-container-low border-b border-outline-variant">
-<th className="px-lg py-md font-label-md text-on-surface-variant uppercase tracking-wider">Driver Name</th>
-<th className="px-lg py-md font-label-md text-on-surface-variant uppercase tracking-wider">TMID</th>
-<th className="px-lg py-md font-label-md text-on-surface-variant uppercase tracking-wider">City</th>
-<th className="px-lg py-md font-label-md text-on-surface-variant uppercase tracking-wider">Exp</th>
-<th className="px-lg py-md font-label-md text-on-surface-variant uppercase tracking-wider">Route Pref.</th>
-<th className="px-lg py-md font-label-md text-on-surface-variant uppercase tracking-wider">Last Active</th>
-<th className="px-lg py-md font-label-md text-on-surface-variant uppercase tracking-wider text-right">Actions</th>
-</tr>
-</thead>
-<tbody className="divide-y divide-outline-variant">
+          {/* City / Hub location */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Hub / Base City</label>
+            <input 
+              type="text" 
+              placeholder="e.g. Delhi Hub" 
+              value={locationInput}
+              onChange={(e) => setLocationInput(e.target.value)}
+              className="w-full border border-gray-200 rounded p-1.5 px-2.5 outline-none font-semibold text-gray-800 bg-white"
+            />
+          </div>
 
-<tr className="driver-table-row hover:bg-surface-variant/30 transition-colors group">
-<td className="px-lg py-md">
-<div className="flex items-center gap-md">
-<div className="w-10 h-10 rounded-full bg-surface-variant border border-outline-variant flex-shrink-0">
-<img className="w-full h-full rounded-full object-cover" data-alt="A portrait of a senior Indian truck driver with a kind expression and silver-grey beard, wearing a traditional light brown turban and a simple cotton shirt. The photo is taken in bright daylight with a shallow depth of field, showing the edge of a clean, white heavy-duty truck in the background. The lighting is natural and clear, emphasizing professionalism and experience." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAmE3xZZdGSTsRNhQGIzC2R4iqhUhnIeP2J2Y5bUi82Xslp1ujLPxxaHS_qDVuO9D0XyI2wTRdCi8_n9nCvYacI0T9zeHlXwFPNwnPnhf04h0281Hjn9lkS4fo5FOWXRGVb6FQODECu3Rj48aQuYQOb_L25zMibiQnoF4IjWSYA1u1ZWbU3hrrZnM1JaOwHP5Qs6WGBaxn9Wh3IYd8pi9fYk5y9s5kRL3giLZygrb9rPRKkOZlU5wsY3RN-S1TxB1Y9EyqvZcqauN4"/>
-</div>
-<div>
-<p className="font-bold text-on-surface">Rajesh Kumar</p>
-<span className="text-[10px] uppercase font-bold px-sm py-px rounded bg-primary-fixed text-on-primary-fixed border border-primary/20">Trusted</span>
-</div>
-</div>
-</td>
-<td className="px-lg py-md font-mono-data text-on-surface-variant">TM-99201</td>
-<td className="px-lg py-md text-body-md">New Delhi</td>
-<td className="px-lg py-md">
-<span className="text-body-md font-bold">12 Yrs</span>
-</td>
-<td className="px-lg py-md text-body-sm text-on-surface-variant">North-West Corridor</td>
-<td className="px-lg py-md text-body-sm">
-<div className="flex items-center gap-xs">
-<div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                            Online
-                                        </div>
-</td>
-<td className="px-lg py-md text-right">
-<button className="add-btn opacity-0 bg-primary-container text-on-primary-container font-label-md px-md py-sm rounded-lg hover:opacity-90 active:scale-[0.98] transition-all">Add to Shortlist</button>
-</td>
-</tr>
+          {/* Experience slider */}
+          <div className="space-y-2">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block flex justify-between">
+              <span>Min Experience</span>
+              <span className="text-gray-800 font-bold font-mono">{experienceLimit} years</span>
+            </label>
+            <input 
+              type="range" 
+              min={1}
+              max={15}
+              value={experienceLimit}
+              onChange={(e) => setExperienceLimit(Number(e.target.value))}
+              className="w-full accent-[#8E44AD] cursor-pointer"
+            />
+          </div>
 
-<tr className="driver-table-row hover:bg-surface-variant/30 transition-colors group">
-<td className="px-lg py-md">
-<div className="flex items-center gap-md">
-<div className="w-10 h-10 rounded-full bg-surface-variant border border-outline-variant flex-shrink-0">
-<img className="w-full h-full rounded-full object-cover" data-alt="A close-up portrait of a younger, determined truck driver with short black hair and a clean-shaven face. He is wearing a dark grey utility vest over a white t-shirt. The background is a bustling terminal at sunrise, with warm golden light hitting the side of his face. The style is modern, cinematic, and focuses on the reliability of the worker." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCJ17tnRS6KGB7R01HV-ft54XaINAt8IT3gDQmP-1I4HLd0O5bk1HKhiid08MxO3IgEfIJZziFbf5fHwtwRvjarIudSHg3agc5OT-tWe3YkuNS9XdohDWrT4eR-mgohgX4ua-DT3c1w-yvgFtTuIli2jC4Qm5gcAg9KyaJZBQOwuV3mkGGeqC5k-xVJOlDcDH1nL02-YtistGTL4XP5Ee7FYQHCL4WtF9lSsaaC7fU__eIJJ5v0eUubPe8IFqvPq0IDrtVrP3dZbp8"/>
-</div>
-<div>
-<p className="font-bold text-on-surface">Amit Sharma</p>
-<span className="text-[10px] uppercase font-bold px-sm py-px rounded bg-surface-variant text-on-surface-variant border border-outline-variant">Standard</span>
-</div>
-</div>
-</td>
-<td className="px-lg py-md font-mono-data text-on-surface-variant">TM-10482</td>
-<td className="px-lg py-md text-body-md">Gurgaon</td>
-<td className="px-lg py-md">
-<span className="text-body-md font-bold">8 Yrs</span>
-</td>
-<td className="px-lg py-md text-body-sm text-on-surface-variant">Pan-India Express</td>
-<td className="px-lg py-md text-body-sm">2 hours ago</td>
-<td className="px-lg py-md text-right">
-<button className="add-btn opacity-0 bg-primary-container text-on-primary-container font-label-md px-md py-sm rounded-lg hover:opacity-90 active:scale-[0.98] transition-all">Add to Shortlist</button>
-</td>
-</tr>
+        </div>
 
-<tr className="driver-table-row hover:bg-surface-variant/30 transition-colors group">
-<td className="px-lg py-md">
-<div className="flex items-center gap-md">
-<div className="w-10 h-10 rounded-full bg-surface-variant border border-outline-variant flex-shrink-0">
-<img className="w-full h-full rounded-full object-cover" data-alt="A middle-aged professional driver with a confident smile, wearing a blue button-down shirt. He has a neatly trimmed beard and is standing in a modern cargo warehouse with stacks of pallets in the soft-focus background. The image has a clean corporate aesthetic with high-key lighting and a professional atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVXNZxrFq6Hqv791gDO6guZjnTmettW9NR9MkNycYCoBVdYl8cD15BxKrgmYUnQbEboB5QOcm9_mbivK4I8BWfS3MDcijuCQHbcOrE4gRGQE2JtSQxmjyS1YlP5Fx-zj_73lApAJj0RONK8RBcpRKMvmq_9KNIbshX0te2hkX07381491BJvMj966UB7d34EBlzWiDMiB4_Z6AYzKq5A9eCrMR6Msac0CjqCmP8w2ZkBDrHhDNW14R6EdG-EMVdxxpPxX7IvRPtLo"/>
-</div>
-<div>
-<p className="font-bold text-on-surface">Harpreet Singh</p>
-<span className="text-[10px] uppercase font-bold px-sm py-px rounded bg-primary-fixed text-on-primary-fixed border border-primary/20">Trusted</span>
-</div>
-</div>
-</td>
-<td className="px-lg py-md font-mono-data text-on-surface-variant">TM-08831</td>
-<td className="px-lg py-md text-body-md">Ludhiana</td>
-<td className="px-lg py-md">
-<span className="text-body-md font-bold">15 Yrs</span>
-</td>
-<td className="px-lg py-md text-body-sm text-on-surface-variant">Mumbai-Delhi Route</td>
-<td className="px-lg py-md text-body-sm">
-<div className="flex items-center gap-xs">
-<div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                            Online
-                                        </div>
-</td>
-<td className="px-lg py-md text-right">
-<button className="add-btn opacity-0 bg-primary-container text-on-primary-container font-label-md px-md py-sm rounded-lg hover:opacity-90 active:scale-[0.98] transition-all">Add to Shortlist</button>
-</td>
-</tr>
+        <div className="pt-4 border-t border-gray-200 space-y-2 shrink-0">
+          <button 
+            onClick={handleResetFilters}
+            className="w-full py-2 bg-white border border-gray-200 text-gray-500 rounded-xl font-bold hover:bg-gray-100 transition-colors"
+          >
+            Reset Filters
+          </button>
+        </div>
+      </aside>
 
-<tr className="driver-table-row hover:bg-surface-variant/30 transition-colors group">
-<td className="px-lg py-md">
-<div className="flex items-center gap-md">
-<div className="w-10 h-10 rounded-full bg-surface-variant border border-outline-variant flex-shrink-0">
-<img className="w-full h-full rounded-full object-cover" data-alt="A focused female truck driver in her 30s, wearing a high-visibility yellow vest over a navy shirt. She is leaning against a shiny chrome part of a heavy vehicle. The setting is a clean logistics park at dusk with cool blue and purple ambient lighting. The shot is high-contrast and highlights her professional expertise in a modern, inclusive workplace." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDv2brpu2q15YozzckcB8VDprPBo0VSGFUPzjZfkyEWG5TDzDWMV9d7wzVVfjiTQK9f9XoW4vqz5cdj6b23T0LMY1Y2O92wH5cnZft92izqDybIoTL07j1R8VZmf6AduFK0csuaIa3C_ySpZFRIgjLSXKEGjcpT8cgF-oi0nsoD2ekNREPSxcFpZVuYVQvzjWJLJfxcRH66Pvkm2bDkhz62KrDcp8-c6pcs5iPHNlz-tJu0GromqCnZN8C5Qx3X6tV299CM5n8srAY"/>
-</div>
-<div>
-<p className="font-bold text-on-surface">Sanya Mirza</p>
-<span className="text-[10px] uppercase font-bold px-sm py-px rounded bg-tertiary-fixed text-on-tertiary-fixed border border-tertiary/20">Premium</span>
-</div>
-</div>
-</td>
-<td className="px-lg py-md font-mono-data text-on-surface-variant">TM-11200</td>
-<td className="px-lg py-md text-body-md">Faridabad</td>
-<td className="px-lg py-md">
-<span className="text-body-md font-bold">6 Yrs</span>
-</td>
-<td className="px-lg py-md text-body-sm text-on-surface-variant">Long-Haul Specialty</td>
-<td className="px-lg py-md text-body-sm text-on-surface-variant opacity-60">Last seen: yesterday</td>
-<td className="px-lg py-md text-right">
-<button className="add-btn opacity-0 bg-primary-container text-on-primary-container font-label-md px-md py-sm rounded-lg hover:opacity-90 active:scale-[0.98] transition-all">Add to Shortlist</button>
-</td>
-</tr>
-</tbody>
-</table>
-</div>
+      {/* Main Sourcing Results Section */}
+      <section className="flex-1 flex flex-col overflow-hidden">
+        
+        {/* Linked Job Context Banner */}
+        {jobId && (
+          <div className="bg-purple-50 border-b border-purple-200 text-[#7D3C98] p-3 flex justify-between items-center shrink-0 font-bold">
+            <div className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[18px]">explore</span>
+              <span>Sourcing Candidates for {jobId} ({jobRequirements?.transporter}): {jobRequirements?.source} ➔ {jobRequirements?.destination} · {jobRequirements?.truckType}</span>
+            </div>
+            <button 
+              onClick={() => navigate('/mm/mm-job-board')}
+              className="underline text-[10.5px]"
+            >
+              Back to Job Board
+            </button>
+          </div>
+        )}
 
-<div className="flex items-center justify-between py-md">
-<p className="text-body-sm text-on-surface-variant">Page 1 of 4</p>
-<div className="flex gap-xs">
-<button className="p-sm rounded-lg border border-outline-variant hover:bg-surface-variant transition-colors disabled:opacity-30" disabled>
-<span className="material-symbols-outlined">chevron_left</span>
-</button>
-<button className="w-10 h-10 rounded-lg bg-primary text-white font-bold text-body-sm">1</button>
-<button className="w-10 h-10 rounded-lg hover:bg-surface-variant text-body-sm transition-colors">2</button>
-<button className="w-10 h-10 rounded-lg hover:bg-surface-variant text-body-sm transition-colors">3</button>
-<button className="p-sm rounded-lg border border-outline-variant hover:bg-surface-variant transition-colors">
-<span className="material-symbols-outlined">chevron_right</span>
-</button>
-</div>
-</div>
-</div>
-</div>
-</div>
-</main>
+        {/* Results Toolbar */}
+        <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0 font-bold select-none text-gray-500">
+          <span>Found {filteredDrivers.length} matching driver candidates</span>
+          
+          {selectedDrivers.length > 0 && (
+            <button 
+              onClick={handleAddBulk}
+              className="bg-[#8E44AD] hover:bg-[#7D3C98] text-white px-3.5 py-1.5 rounded-lg shadow-sm text-xs font-bold transition-all flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-sm">group_add</span>
+              <span>Add selected ({selectedDrivers.length}) to shortlist</span>
+            </button>
+          )}
+        </div>
+
+        {/* Drivers table list */}
+        <div className="flex-1 overflow-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-white border-b border-gray-200 text-gray-400 font-bold uppercase text-[9px] sticky top-0 shadow-sm z-10">
+                <th className="p-3 pl-4 w-12">
+                  <input 
+                    type="checkbox" 
+                    checked={filteredDrivers.length > 0 && selectedDrivers.length === filteredDrivers.length}
+                    onChange={handleSelectAll}
+                    className="rounded border-gray-300 text-[#8E44AD] focus:ring-[#8E44AD]"
+                  />
+                </th>
+                <th className="p-3">Driver Details</th>
+                <th className="p-3">Plan Vetting</th>
+                <th className="p-3">Base City</th>
+                <th className="p-3">Truck Type</th>
+                <th className="p-3">Experience</th>
+                <th className="p-3">Preferred Route</th>
+                <th className="p-3 text-right pr-4">Sourcing Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+              {filteredDrivers.map(d => {
+                const isChecked = selectedDrivers.includes(d.id);
+                return (
+                  <tr key={d.id} className={`hover:bg-gray-50/50 transition-colors ${isChecked ? 'bg-purple-50/20' : ''}`}>
+                    <td className="p-3 pl-4">
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked}
+                        onChange={(e) => handleSelectOne(d.id, e.target.checked)}
+                        className="rounded border-gray-300 text-[#8E44AD] focus:ring-[#8E44AD]"
+                      />
+                    </td>
+                    <td className="p-3">
+                      <div className="flex flex-col">
+                        <span className="font-extrabold text-gray-800 text-xs">{d.name}</span>
+                        <span className="text-[10px] text-gray-400 font-mono mt-0.5">{d.id} · {d.phone}</span>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <span className={`text-[9.5px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${
+                        d.tier === 'Verified' ? 'bg-green-50 text-green-700 border-green-200' :
+                        d.tier === 'Trusted' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        'bg-gray-100 text-gray-600 border-gray-200'
+                      }`}>
+                        {d.tier}
+                      </span>
+                    </td>
+                    <td className="p-3 font-semibold text-gray-800">{d.city}</td>
+                    <td className="p-3 text-gray-500 font-semibold">{d.truckType}</td>
+                    <td className="p-3 font-mono font-bold text-gray-900">{d.experience} years</td>
+                    <td className="p-3 font-mono font-bold text-gray-600">{d.routes}</td>
+                    <td className="p-3 text-right pr-4 space-x-2">
+                      <button 
+                        onClick={() => handleAddIndividual(d.name)}
+                        className="text-[#8E44AD] hover:underline font-extrabold text-[10.5px]"
+                      >
+                        Add to Shortlist
+                      </button>
+                      <button 
+                        onClick={() => triggerToast(`Added ${d.name} to personal Driver Bank ✓`)}
+                        className="text-gray-500 hover:text-gray-800 font-semibold text-[10px]"
+                      >
+                        + Bank
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredDrivers.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-gray-400 italic">No candidates match your active sourcing filters.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
   );
 };
 

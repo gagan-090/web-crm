@@ -473,6 +473,15 @@ export const dynamicRoutes: RouteItem[] = [
 
   // ==================== TEAM LEADER (tl) ====================
   {
+    path: '/tl/tl-overview-dashboard',
+    name: 'Overview Dashboard',
+    role: 'tl',
+    permission: 'leads:view',
+    layout: 'dashboard',
+    icon: 'dashboard',
+    showInMenu: true
+  },
+  {
     path: '/tl/tl-real-time-monitor',
     name: 'Real-Time Monitor',
     role: 'tl',
@@ -770,7 +779,7 @@ export const dynamicRoutes: RouteItem[] = [
   },
   {
     path: '/mm/mm-placement-history',
-    name: 'Placement History',
+    name: 'My Placements Dashboard',
     role: 'mm',
     permission: 'calls:dial',
     layout: 'dashboard',
@@ -839,6 +848,15 @@ export const dynamicRoutes: RouteItem[] = [
     layout: 'dashboard',
     icon: 'article',
     showInMenu: false
+  },
+  {
+    path: '/mm/mm-training-hub',
+    name: 'Training Hub',
+    role: 'mm',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'school',
+    showInMenu: true
   },
 
   // ==================== SPECIAL CATEGORIES (sc) ====================

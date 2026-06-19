@@ -1,169 +1,283 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+interface IntroState {
+  jobId: string;
+  jobRoute: string;
+  jobTransporter: string;
+  driverName: string;
+  driverTmid: string;
+}
 
 export const MmIntroManager: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Resolve state passed from Active Call Focus / Job Board
+  const state: IntroState = location.state || {
+    jobId: 'JD-12034',
+    jobRoute: 'Delhi ➔ Mumbai',
+    jobTransporter: 'Sharma Logistics',
+    driverName: 'Suresh Yadav',
+    driverTmid: 'DR-48291'
+  };
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Stepper completed states
+  const [step2Done, setStep2Done] = useState(false);
+  const [step3Done, setStep3Done] = useState(false);
+  const [step4Done, setStep4Done] = useState(false);
+  const [step5Done, setStep5Done] = useState(false);
+
+  // Joining confirmation inline form
+  const [startDateConfirmed, setStartDateConfirmed] = useState(false);
+  const [transporterAcknowledged, setTransporterAcknowledged] = useState(false);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleCreateWhatsAppGroup = () => {
+    setStep2Done(true);
+    triggerToast('Pre-filling WhatsApp 3-Way Intro Group via deep link...');
+    // Simulated WhatsApp Web deep link
+    window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(`Hello! Sourcing introduction for Job ${state.jobId}. Driver: ${state.driverName}, Transporter: ${state.jobTransporter}.`), '_blank');
+  };
+
+  const handleShareContact = () => {
+    setStep3Done(true);
+    triggerToast('Transporter contact credentials sent to driver WhatsApp ✓');
+  };
+
+  const handleSetReminder = () => {
+    setStep4Done(true);
+    triggerToast('24-hour follow-up callback reminder set on calendar ✓');
+  };
+
+  const handleConfirmJoiningSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!startDateConfirmed || !transporterAcknowledged) {
+      triggerToast('All confirmation toggles are required to finalize joining.');
+      return;
+    }
+    setStep5Done(true);
+    triggerToast('Joining confirmed by both parties ✓');
+  };
+
+  const handleMarkJobFilled = () => {
+    navigate('/mm/mm-placement-confirmation', {
+      state: {
+        jobId: state.jobId,
+        jobRoute: state.jobRoute,
+        jobTransporter: state.jobTransporter,
+        driverName: state.driverName,
+        driverTmid: state.driverTmid
+      }
+    });
+  };
+
   return (
-    <main className=" min-h-screen flex flex-col">
+    <main className="p-6 max-w-2xl mx-auto w-full bg-white border border-gray-200 rounded-xl shadow-sm my-6 text-xs relative">
+      
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
+          <span className="w-2 h-2 rounded-full bg-[#8E44AD]"></span>
+          {toastMessage}
+        </div>
+      )}
 
+      {/* Header */}
+      <div className="border-b border-gray-200 pb-4 mb-5">
+        <div className="flex items-center justify-between">
+          <span className="bg-purple-100 text-[#7D3C98] font-extrabold px-2 py-0.5 rounded text-[10px]">
+            3-WAY INTRO STEPS
+          </span>
+          <span className="font-mono text-gray-400 font-bold">{state.jobId}</span>
+        </div>
+        <h2 className="text-sm font-extrabold text-gray-800 mt-2">
+          Introduce Driver {state.driverName} ({state.driverTmid}) to {state.jobTransporter}
+        </h2>
+        <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Route: {state.jobRoute}</p>
+      </div>
 
+      {/* Stepper Checklist */}
+      <div className="space-y-4">
+        
+        {/* Step 1 */}
+        <div className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <div className="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center font-bold">
+              ✓
+            </div>
+            <div className="w-0.5 h-12 bg-gray-200"></div>
+          </div>
+          <div className="flex-1 pt-0.5">
+            <h4 className="font-bold text-gray-800">Step 1: Driver confirmed interest</h4>
+            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Logged via call disposition gate.</p>
+          </div>
+        </div>
 
-<div className="p-margin-desktop space-y-lg">
+        {/* Step 2 */}
+        <div className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold ${
+              step2Done ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+            }`}>
+              {step2Done ? '✓' : '2'}
+            </div>
+            <div className="w-0.5 h-12 bg-gray-200"></div>
+          </div>
+          <div className="flex-1 pt-0.5 flex justify-between items-start">
+            <div>
+              <h4 className="font-bold text-gray-800">Step 2: WhatsApp intro group created</h4>
+              <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Pre-fill chat details to match driver and transporter.</p>
+            </div>
+            {!step2Done ? (
+              <button 
+                onClick={handleCreateWhatsAppGroup}
+                className="bg-[#8E44AD] hover:bg-[#7D3C98] text-white px-3 py-1 rounded font-bold shadow-sm"
+              >
+                Create WA Group
+              </button>
+            ) : (
+              <span className="text-green-600 font-bold">✓ Done</span>
+            )}
+          </div>
+        </div>
 
-<div className="bg-white border border-outline-variant p-lg flex justify-between items-center">
-<div className="flex items-center gap-lg">
-<div className="bg-surface-container-low p-md rounded border border-outline-variant">
-<span className="material-symbols-outlined text-primary" data-icon="local_shipping">local_shipping</span>
-</div>
-<div>
-<div className="flex items-center gap-sm">
-<span className="font-mono-data text-mono-data text-outline">#JD-12034</span>
-<span className="bg-primary-fixed text-on-primary-fixed text-[10px] uppercase tracking-widest px-sm font-bold rounded">Active Intro</span>
-</div>
-<h2 className="font-headline-md text-headline-md">Delhi <span className="text-outline mx-sm">→</span> Mumbai</h2>
-</div>
-</div>
-<div className="flex flex-col items-end">
-<span className="text-label-md text-outline">MATCHING SCORE</span>
-<span className="text-display-lg font-display-lg text-primary">94%</span>
-</div>
-</div>
+        {/* Step 3 */}
+        <div className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold ${
+              step3Done ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+            }`}>
+              {step3Done ? '✓' : '3'}
+            </div>
+            <div className="w-0.5 h-12 bg-gray-200"></div>
+          </div>
+          <div className="flex-1 pt-0.5 flex justify-between items-start">
+            <div>
+              <h4 className="font-bold text-gray-800">Step 3: Share transporter contact credentials</h4>
+              <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Send masked details directly to driver.</p>
+            </div>
+            {!step3Done ? (
+              <button 
+                onClick={handleShareContact}
+                disabled={!step2Done}
+                className={`px-3 py-1 rounded font-bold shadow-sm ${
+                  step2Done ? 'bg-[#8E44AD] text-white hover:bg-[#7D3C98]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                Share Contact
+              </button>
+            ) : (
+              <span className="text-green-600 font-bold">✓ Shared</span>
+            )}
+          </div>
+        </div>
 
-<div className="grid grid-cols-12 gap-lg">
+        {/* Step 4 */}
+        <div className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold ${
+              step4Done ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+            }`}>
+              {step4Done ? '✓' : '4'}
+            </div>
+            <div className="w-0.5 h-12 bg-gray-200"></div>
+          </div>
+          <div className="flex-1 pt-0.5 flex justify-between items-start">
+            <div>
+              <h4 className="font-bold text-gray-800">Step 4: Follow-up reminder</h4>
+              <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Set 24hr follow-up to check response.</p>
+            </div>
+            {!step4Done ? (
+              <button 
+                onClick={handleSetReminder}
+                disabled={!step3Done}
+                className={`px-3 py-1 rounded font-bold shadow-sm ${
+                  step3Done ? 'bg-[#8E44AD] text-white hover:bg-[#7D3C98]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                Set Reminder
+              </button>
+            ) : (
+              <span className="text-green-600 font-bold">✓ Reminder Set</span>
+            )}
+          </div>
+        </div>
 
-<div className="col-span-4 space-y-lg">
-<div className="bg-white border border-outline-variant p-lg space-y-md">
-<div className="flex justify-between items-start">
-<div className="w-20 h-20 rounded-lg overflow-hidden border border-outline-variant">
-<img className="w-full h-full object-cover" data-alt="A portrait of an experienced truck driver in India wearing a clean professional uniform, warm natural lighting, smiling confidently, background showing a modern logistics park." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAdA9XFgyRKEuw66hpppgNEuy0giFYj6_eM0RIKNnVQS6yZw7mRaQKBFsWj7srjwsCK9LO18YvSMehWBUl0Xt1bpLEGT_cKmWq3jfm9zyypFWT4RFqGfsZWNJGTVmYsSOwiUxO-c6MqPMMHIFMHMbTULsbXdlWEVQ9MemxXmq-2wkIAlcyp2VUuYkEdYYLNNTl-9BobUyhFHK_CT_9UxEIcOSE46dM-JSvrdYco24229dzdWdvDiBh1xHwT3qEqXLEdMNfvgwKtLM8"/>
-</div>
-<span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full">VERIFIED</span>
-</div>
-<div>
-<h3 className="font-headline-sm text-headline-sm">Rajesh Kumar</h3>
-<p className="text-body-sm text-outline">DL: MH0420230009841</p>
-</div>
-<div className="grid grid-cols-2 gap-md pt-sm">
-<div className="bg-surface-container-low p-sm rounded border border-outline-variant">
-<p className="text-[10px] text-outline uppercase font-bold">Experience</p>
-<p className="font-mono-data">12 Years</p>
-</div>
-<div className="bg-surface-container-low p-sm rounded border border-outline-variant">
-<p className="text-[10px] text-outline uppercase font-bold">Vehicle Type</p>
-<p className="font-mono-data">Multi-Axle</p>
-</div>
-</div>
-<div className="pt-sm">
-<button className="w-full border border-outline text-on-surface-variant font-bold py-sm rounded hover:bg-surface-variant transition-all flex items-center justify-center gap-sm">
-<span className="material-symbols-outlined text-sm">call</span> Call Driver
-                            </button>
-</div>
-</div>
-<div className="bg-white border border-outline-variant p-lg space-y-md">
-<h4 className="text-label-md text-outline border-b border-outline-variant pb-xs">TRANSPORTER DETAILS</h4>
-<div className="space-y-sm">
-<p className="font-bold">Aggarwal Logistics Pvt Ltd</p>
-<p className="text-body-sm text-outline">Point of Contact: Mr. Amit Sharma</p>
-<div className="flex items-center gap-sm text-accent-purple">
-<span className="material-symbols-outlined text-sm">mail</span>
-<span className="text-body-sm underline">amit.sharma@aglog.com</span>
-</div>
-</div>
-</div>
-</div>
+        {/* Step 5 */}
+        <div className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold ${
+              step5Done ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+            }`}>
+              {step5Done ? '✓' : '5'}
+            </div>
+          </div>
+          <div className="flex-1 pt-0.5">
+            <h4 className="font-bold text-gray-800">Step 5: Confirm joining agreement</h4>
+            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Verify that both parties agree to start date.</p>
 
-<div className="col-span-8 bg-white border border-outline-variant relative">
-<div className="p-lg border-b border-outline-variant flex justify-between items-center">
-<h3 className="font-headline-sm text-headline-sm">3-Way Introduction Checklist</h3>
-<div className="flex items-center gap-sm">
-<span className="text-body-sm text-outline">Progress</span>
-<div className="w-32 h-1.5 bg-surface-variant rounded-full overflow-hidden">
-<div className="bg-accent-purple h-full" style={{"width": "40%"}}></div>
-</div>
-<span className="text-label-md font-bold text-accent-purple">2/5</span>
-</div>
-</div>
-<div className="p-lg space-y-lg relative">
+            {step4Done && !step5Done && (
+              <form onSubmit={handleConfirmJoiningSubmit} className="mt-3 bg-gray-50 border border-gray-150 p-3 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-gray-700">Start date confirmed?</span>
+                  <input 
+                    type="checkbox" 
+                    checked={startDateConfirmed}
+                    onChange={(e) => setStartDateConfirmed(e.target.checked)}
+                    className="rounded text-[#8E44AD] focus:ring-[#8E44AD]"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-gray-700">Transporter acknowledged joining?</span>
+                  <input 
+                    type="checkbox" 
+                    checked={transporterAcknowledged}
+                    onChange={(e) => setTransporterAcknowledged(e.target.checked)}
+                    className="rounded text-[#8E44AD] focus:ring-[#8E44AD]"
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  className="w-full bg-[#8E44AD] text-white py-1.5 rounded-lg font-bold hover:bg-[#7D3C98] shadow-sm"
+                >
+                  Confirm Agreement
+                </button>
+              </form>
+            )}
 
-<div className="intro-step completed-step relative pl-10 flex flex-col gap-xs">
-<div className="absolute left-0 top-0 w-6 h-6 rounded-full bg-accent-purple flex items-center justify-center z-10">
-<span className="material-symbols-outlined text-white text-base">check</span>
-</div>
-<div className="flex justify-between items-center">
-<h4 className="font-bold text-on-surface">1. Driver confirmed</h4>
-<span className="text-xs text-outline italic">Completed 2h ago</span>
-</div>
-<p className="text-body-sm text-on-surface-variant">Interview completed. Driver expressed willingness for the Delhi-Mumbai route.</p>
-</div>
+            {step5Done && (
+              <span className="text-green-600 font-bold block mt-2">✓ Joining Confirmed</span>
+            )}
+          </div>
+        </div>
 
-<div className="intro-step relative pl-10 flex flex-col gap-md">
-<div className="absolute left-0 top-0 w-6 h-6 rounded-full border-2 border-accent-purple bg-white flex items-center justify-center z-10">
-<div className="w-2 h-2 rounded-full bg-accent-purple animate-pulse"></div>
-</div>
-<div className="flex justify-between items-center">
-<h4 className="font-bold text-on-surface">2. WA group created</h4>
-<span className="bg-accent-purple/10 text-accent-purple text-[10px] px-2 py-0.5 font-bold rounded">IN PROGRESS</span>
-</div>
-<p className="text-body-sm text-on-surface-variant">Create a dedicated WhatsApp group including the Driver, Transporter POC, and TruckMitr Coordinator.</p>
-<div className="flex gap-md">
-<button className="bg-[#25D366] text-white font-bold py-2 px-lg rounded flex items-center gap-sm hover:brightness-95 active:scale-95 transition-all">
-<span className="material-symbols-outlined">chat</span> Create WA Group
-                                </button>
-<button className="border border-outline-variant px-md py-2 rounded text-body-sm text-outline hover:bg-surface-variant">Skip for now</button>
-</div>
-</div>
+      </div>
 
-<div className="intro-step relative pl-10 flex flex-col gap-xs opacity-50">
-<div className="absolute left-0 top-0 w-6 h-6 rounded-full border-2 border-outline-variant bg-white flex items-center justify-center z-10">
-<span className="text-xs font-bold text-outline">3</span>
-</div>
-<h4 className="font-bold text-on-surface">3. Transporter contact shared</h4>
-<p className="text-body-sm text-on-surface-variant">Send vCard and introductory message to both parties in the WA group.</p>
-</div>
+      {/* Footer and Mark Filled CTA */}
+      <div className="mt-8 pt-5 border-t border-gray-200 flex flex-col gap-3">
+        <button
+          onClick={handleMarkJobFilled}
+          disabled={!step5Done}
+          className={`w-full py-2.5 rounded-xl font-bold text-center text-xs shadow-md ${
+            step5Done ? 'bg-green-600 hover:bg-green-700 text-white cursor-pointer' : 'bg-gray-100 text-gray-450 cursor-not-allowed'
+          }`}
+        >
+          Proceed to Placement Confirmation
+        </button>
 
-<div className="intro-step relative pl-10 flex flex-col gap-xs opacity-50">
-<div className="absolute left-0 top-0 w-6 h-6 rounded-full border-2 border-outline-variant bg-white flex items-center justify-center z-10">
-<span className="text-xs font-bold text-outline">4</span>
-</div>
-<h4 className="font-bold text-on-surface">4. 24hr follow-up</h4>
-<p className="text-body-sm text-on-surface-variant">Verify if the driver has visited the yard for documentation check.</p>
-</div>
+        <p className="text-[10px] text-gray-400 text-center select-none mt-1">
+          ⚙️ Audit Trail: All intro steps logged with timestamp. Handover record is immutable.
+        </p>
+      </div>
 
-<div className="intro-step relative pl-10 flex flex-col gap-md opacity-50">
-<div className="absolute left-0 top-0 w-6 h-6 rounded-full border-2 border-outline-variant bg-white flex items-center justify-center z-10">
-<span className="text-xs font-bold text-outline">5</span>
-</div>
-<h4 className="font-bold text-on-surface">5. Joining confirmed</h4>
-<p className="text-body-sm text-on-surface-variant">Confirm formal induction into the fleet and first trip assignment.</p>
-<div>
-<button className="bg-primary text-white font-bold py-2 px-lg rounded flex items-center gap-sm disabled:opacity-50" disabled>
-                                    Confirm Joining
-                                </button>
-</div>
-</div>
-</div>
-<div className="p-lg border-t border-outline-variant bg-surface-container-lowest flex justify-end">
-<button className="bg-[#27AE60] text-white font-display-lg text-lg px-xl py-md rounded-lg flex items-center gap-md hover:brightness-95 active:scale-95 transition-all shadow-lg opacity-50 cursor-not-allowed">
-<span className="material-symbols-outlined">verified</span>
-                            Mark Job as Filled
-                        </button>
-</div>
-</div>
-</div>
-
-<div className="bg-white border border-outline-variant p-lg">
-<h4 className="text-label-md text-outline mb-lg">ACTIVITY LOG</h4>
-<div className="space-y-md">
-<div className="flex gap-md">
-<span className="text-xs text-outline font-mono-data w-24">14:20 PM</span>
-<p className="text-body-sm"><span className="font-bold">System:</span> Match created between Rajesh Kumar and JD-12034</p>
-</div>
-<div className="flex gap-md">
-<span className="text-xs text-outline font-mono-data w-24">14:45 PM</span>
-<p className="text-body-sm"><span className="font-bold text-primary">Coordinator:</span> Called driver Rajesh. Confirmed availability for Mumbai route.</p>
-</div>
-</div>
-</div>
-</div>
-</main>
+    </main>
   );
 };
 

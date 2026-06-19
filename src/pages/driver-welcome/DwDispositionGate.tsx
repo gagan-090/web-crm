@@ -1,109 +1,103 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export const DwDispositionGate: React.FC = () => {
+  const navigate = useNavigate();
+
   // Form States
-  const [outcome, setOutcome] = useState<'connected' | 'nr' | 'busy' | 'wrong' | 'off' | null>(null);
-  const [disposition, setDisposition] = useState<'interested' | 'not_interested' | 'callback' | 'already_subs' | null>(null);
+  const [outcome, setOutcome] = useState<'connected' | 'nr' | 'busy' | 'wrong' | 'off' | ''>('');
+  const [disposition, setDisposition] = useState<'interested' | 'not_interested' | 'callback' | 'already_subs' | ''>('');
   
   // Specific detail states
-  const [selectedPlan, setSelectedPlan] = useState<'standard' | 'pro' | 'enterprise'>('pro');
-  const [sendBrochure, setSendBrochure] = useState(true);
+  const [selectedPlan, setSelectedPlan] = useState<'ready' | 'verified' | 'trusted' | ''>('');
+  const [linkSentToggle, setLinkSentToggle] = useState<'yes' | 'no'>('no');
   const [rejectionReason, setRejectionReason] = useState('');
-  const [callbackDate, setCallbackDate] = useState('');
-  const [callbackTime, setCallbackTime] = useState('');
+  const [callbackDate, setCallbackDate] = useState('2026-06-20');
+  const [callbackTime, setCallbackTime] = useState('11:30');
   const [finalNotes, setFinalNotes] = useState('');
+  const [escalateChoice, setEscalateChoice] = useState<'yes' | 'no' | ''>('');
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const showToast = (msg: string) => {
+  const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
-    }, 4000);
+    }, 3000);
   };
 
-  const handleOutcomeSelect = (val: 'connected' | 'nr' | 'busy' | 'wrong' | 'off') => {
-    setOutcome(val);
-    if (val !== 'connected') {
-      // If call didn't connect, skip disposition step directly to notes/submit
-      setDisposition(null);
-    }
+  // Block exit check
+  const handleExitBlocked = () => {
+    triggerToast('⚠️ Exit blocked. You must save call disposition details before leaving.');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    let summary = `Outcome: ${outcome?.toUpperCase()}`;
-    if (outcome === 'connected' && disposition) {
-      summary += `, Disposition: ${disposition.toUpperCase()}`;
-      if (disposition === 'interested') {
-        summary += `, Plan: ${selectedPlan.toUpperCase()}, Whatsapp brochure: ${sendBrochure ? 'Yes' : 'No'}`;
-      } else if (disposition === 'not_interested') {
-        summary += `, Reason: ${rejectionReason}`;
-      } else if (disposition === 'callback') {
-        summary += `, Callback: ${callbackDate} at ${callbackTime}`;
-      }
+    if (outcome === 'connected' && disposition === 'interested' && selectedPlan) {
+      triggerToast('Marked as Converted ✓');
+    } else {
+      triggerToast('Disposition logged successfully');
     }
-    summary += `, Notes: ${finalNotes || 'None'}`;
     
-    showToast(`Disposition Saved successfully!\n${summary}`);
-    
-    // Reset form after saving
-    setOutcome(null);
-    setDisposition(null);
-    setFinalNotes('');
-    setCallbackDate('');
-    setCallbackTime('');
-    setRejectionReason('');
+    // Frictionless loop: reload queue
+    setTimeout(() => {
+      navigate('/dw/dw-call-queue');
+    }, 800);
   };
 
   return (
-    <main className="bg-surface-container-lowest max-w-4xl mx-auto flex flex-col shadow-xl rounded-xl border border-outline-variant relative p-lg">
-      
+    <main className="max-w-xl mx-auto bg-white border border-gray-200 shadow-xl rounded-xl relative p-6 mt-4">
       {/* Toast Overlay */}
       {toastMessage && (
-        <div className="absolute top-md left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface px-lg py-md rounded shadow-lg z-50 text-xs font-semibold flex flex-col gap-1 border border-outline whitespace-pre-line animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center gap-xs font-bold text-accent-success">
-            <span className="material-symbols-outlined text-[16px]">check_circle</span>
-            <span>Disposition Gate Submitted</span>
-          </div>
-          <p className="text-[11px] font-normal leading-relaxed opacity-90">{toastMessage}</p>
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#27AE60]"></span>
+          {toastMessage}
         </div>
       )}
 
       {/* Header Info */}
-      <div className="border-b border-outline-variant pb-md mb-lg">
-        <h1 className="font-headline-md text-headline-md font-bold text-on-surface">Call Disposition Gate</h1>
-        <p className="text-xs text-on-surface-variant mt-1">Log final call status outcomes and operational closing metadata.</p>
+      <div className="border-b border-gray-100 pb-3 mb-5">
+        <div className="flex justify-between items-center">
+          <h1 className="text-lg font-bold text-gray-900">Log Call Disposition</h1>
+          <span className="bg-[#EAFAF1] text-[#27AE60] text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+            DW Gated Mode
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          Active Lead: <span className="text-gray-800 font-semibold">Suresh Yadav</span> · Monospace DR-48291
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex-1 space-y-xl overflow-y-auto no-scrollbar">
+      <form onSubmit={handleSubmit} className="space-y-6">
         
         {/* Step 1: Call Outcome */}
-        <section className="space-y-sm">
-          <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Step 1: Call Outcome</h2>
-          <div className="grid grid-cols-5 gap-sm">
+        <section className="space-y-3">
+          <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">Step 1 — Call Outcome *</label>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {[
-              { key: 'connected', label: 'Connected', icon: 'call_made', color: 'text-accent-success' },
-              { key: 'nr', label: 'No Response', icon: 'call_missed', color: 'text-on-surface-variant' },
-              { key: 'busy', label: 'Line Busy', icon: 'ring_volume', color: 'text-on-surface-variant' },
-              { key: 'wrong', label: 'Wrong Number', icon: 'person_off', color: 'text-on-surface-variant' },
-              { key: 'off', label: 'Switched Off', icon: 'mobile_off', color: 'text-on-surface-variant' }
+              { id: 'connected', label: 'Connected', icon: 'check_circle' },
+              { id: 'nr', label: 'No Response', icon: 'phone_disabled' },
+              { id: 'busy', label: 'Busy', icon: 'timer' },
+              { id: 'wrong', label: 'Wrong Num', icon: 'person_off' },
+              { id: 'off', label: 'Switch Off', icon: 'power_off' }
             ].map(o => {
-              const isSelected = outcome === o.key;
+              const isSelected = outcome === o.id;
               return (
                 <button
-                  key={o.key}
+                  key={o.id}
                   type="button"
-                  onClick={() => handleOutcomeSelect(o.key as any)}
-                  className={`flex flex-col items-center justify-center p-md border rounded-lg transition-all ${
+                  onClick={() => {
+                    setOutcome(o.id as any);
+                    if (o.id !== 'connected') setDisposition('');
+                  }}
+                  className={`flex flex-col items-center justify-center p-2.5 border rounded-lg transition-all ${
                     isSelected
-                      ? 'border-primary bg-primary/5 text-primary font-bold shadow-sm'
-                      : 'border-outline-variant bg-white hover:bg-surface-container-high text-on-surface'
+                      ? 'border-[#27AE60] bg-[#EAFAF1]/30 text-[#27AE60] font-bold shadow-sm'
+                      : 'border-gray-200 bg-white hover:bg-gray-50 text-gray-700'
                   }`}
                 >
-                  <span className={`material-symbols-outlined text-[22px] mb-xs ${isSelected ? 'text-primary' : o.color}`}>
-                    {o.icon}
-                  </span>
-                  <span className="text-xs">{o.label}</span>
+                  <span className="material-symbols-outlined text-[18px] mb-1">{o.icon}</span>
+                  <span className="text-[10px] whitespace-nowrap">{o.label}</span>
                 </button>
               );
             })}
@@ -112,31 +106,28 @@ export const DwDispositionGate: React.FC = () => {
 
         {/* Step 2: Disposition (Visible only if outcome is connected) */}
         {outcome === 'connected' && (
-          <section className="space-y-sm animate-in fade-in duration-300">
-            <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Step 2: Disposition status</h2>
-            <div className="grid grid-cols-4 gap-sm">
+          <section className="space-y-3 animate-in fade-in duration-300">
+            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">Step 2 — Client Response *</label>
+            <div className="grid grid-cols-2 gap-2">
               {[
-                { key: 'interested', label: 'Interested', icon: 'thumb_up', color: 'text-accent-success' },
-                { key: 'not_interested', label: 'Not Interested', icon: 'thumb_down', color: 'text-error' },
-                { key: 'callback', label: 'Request Callback', icon: 'schedule', color: 'text-primary' },
-                { key: 'already_subs', label: 'Already Subscribed', icon: 'verified', color: 'text-tertiary' }
+                { id: 'interested', label: 'Interested / Converted' },
+                { id: 'not_interested', label: 'Not Interested' },
+                { id: 'callback', label: 'Callback Requested' },
+                { id: 'already_subs', label: 'Already Subscribed' }
               ].map(d => {
-                const isSelected = disposition === d.key;
+                const isSelected = disposition === d.id;
                 return (
                   <button
-                    key={d.key}
+                    key={d.id}
                     type="button"
-                    onClick={() => setDisposition(d.key as any)}
-                    className={`flex items-center gap-sm px-md py-sm border rounded-lg transition-all ${
+                    onClick={() => setDisposition(d.id as any)}
+                    className={`px-3 py-2 border text-xs font-semibold rounded-lg transition-all text-center ${
                       isSelected
-                        ? 'border-primary bg-primary/5 text-primary font-bold shadow-sm'
-                        : 'border-outline-variant bg-white hover:bg-surface-container-high text-on-surface'
+                        ? 'border-[#27AE60] bg-[#EAFAF1]/30 text-[#27AE60] font-bold'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                     }`}
                   >
-                    <span className={`material-symbols-outlined text-[18px] ${isSelected ? 'text-primary' : d.color}`}>
-                      {d.icon}
-                    </span>
-                    <span className="text-xs font-semibold">{d.label}</span>
+                    {d.label}
                   </button>
                 );
               })}
@@ -146,126 +137,91 @@ export const DwDispositionGate: React.FC = () => {
 
         {/* Detail Input Panels */}
         {outcome === 'connected' && disposition === 'interested' && (
-          <section className="bg-surface-container-low p-lg border border-outline-variant rounded-xl space-y-md animate-in fade-in duration-300">
-            <div className="flex justify-between items-center">
-              <label className="text-sm font-bold text-on-surface">Select Drivers Subscription Plan</label>
-              <div className="flex items-center gap-sm bg-surface-container-highest px-md py-1.5 rounded-full border border-outline-variant text-xs cursor-pointer">
-                <span className="material-symbols-outlined text-[#25D366] text-[18px]">chat</span>
-                <span className="font-semibold text-on-surface-variant">Send WhatsApp Brochure</span>
-                <input 
-                  checked={sendBrochure} 
-                  onChange={(e) => setSendBrochure(e.target.checked)}
-                  className="w-3.5 h-3.5 text-primary focus:ring-primary border-outline rounded cursor-pointer" 
-                  type="checkbox"
-                />
-              </div>
+          <section className="bg-gray-50 p-4 border border-gray-200 rounded-xl space-y-4 text-xs animate-in fade-in duration-300">
+            <div className="font-bold text-gray-700 uppercase tracking-wider">Subscription Selection *</div>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'ready', label: 'Job Ready ₹199' },
+                { id: 'verified', label: 'Verified ₹299' },
+                { id: 'trusted', label: 'Trusted ₹499' }
+              ].map(plan => (
+                <button
+                  key={plan.id}
+                  type="button"
+                  onClick={() => setSelectedPlan(plan.id as any)}
+                  className={`p-2.5 border rounded-lg font-bold text-center transition-all ${
+                    selectedPlan === plan.id 
+                      ? 'bg-[#27AE60] text-white border-[#27AE60]' 
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {plan.label}
+                </button>
+              ))}
             </div>
             
-            <div className="grid grid-cols-3 gap-md text-xs">
-              <div 
-                onClick={() => setSelectedPlan('standard')}
-                className={`p-md border-2 cursor-pointer rounded-xl bg-white group transition-all ${
-                  selectedPlan === 'standard' ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary-container'
-                }`}
-              >
-                <div className="flex justify-between items-start mb-sm">
-                  <span className="bg-primary/10 text-primary text-[9px] font-extrabold px-2 py-0.5 rounded uppercase">Job Ready</span>
-                  <input 
-                    checked={selectedPlan === 'standard'} 
-                    onChange={() => setSelectedPlan('standard')}
-                    className="text-primary cursor-pointer w-3.5 h-3.5" 
-                    type="radio" 
-                    name="plan"
-                  />
-                </div>
-                <div className="text-lg font-bold text-on-surface">₹199<span className="text-[10px] font-normal text-on-surface-variant">/mo</span></div>
-                <p className="text-[11px] text-on-surface-variant mt-1.5 leading-tight">Standard order loading pipeline with fast verification setup.</p>
-              </div>
-
-              <div 
-                onClick={() => setSelectedPlan('pro')}
-                className={`p-md border-2 cursor-pointer rounded-xl relative overflow-hidden bg-white transition-all ${
-                  selectedPlan === 'pro' ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary-container'
-                }`}
-              >
-                <div className="absolute -right-6 top-3 rotate-45 bg-primary text-on-primary text-[8px] font-extrabold px-6 py-0.5 tracking-wider">RECOMMENDED</div>
-                <div className="flex justify-between items-start mb-sm">
-                  <span className="bg-primary text-on-primary text-[9px] font-extrabold px-2 py-0.5 rounded uppercase">Verified</span>
-                  <input 
-                    checked={selectedPlan === 'pro'} 
-                    onChange={() => setSelectedPlan('pro')}
-                    className="text-primary cursor-pointer w-3.5 h-3.5" 
-                    type="radio" 
-                    name="plan"
-                  />
-                </div>
-                <div className="text-lg font-bold text-on-surface">₹299<span className="text-[10px] font-normal text-on-surface-variant">/mo</span></div>
-                <p className="text-[11px] text-on-surface-variant mt-1.5 leading-tight">Profile badge + 3X priority order dispatch allocation algorithm.</p>
-              </div>
-
-              <div 
-                onClick={() => setSelectedPlan('enterprise')}
-                className={`p-md border-2 cursor-pointer rounded-xl bg-white group transition-all ${
-                  selectedPlan === 'enterprise' ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary-container'
-                }`}
-              >
-                <div className="flex justify-between items-start mb-sm">
-                  <span className="bg-secondary-container text-on-secondary-container text-[9px] font-extrabold px-2 py-0.5 rounded uppercase">Trusted</span>
-                  <input 
-                    checked={selectedPlan === 'enterprise'} 
-                    onChange={() => setSelectedPlan('enterprise')}
-                    className="text-primary cursor-pointer w-3.5 h-3.5" 
-                    type="radio" 
-                    name="plan"
-                  />
-                </div>
-                <div className="text-lg font-bold text-on-surface">₹499<span className="text-[10px] font-normal text-on-surface-variant">/mo</span></div>
-                <p className="text-[11px] text-on-surface-variant mt-1.5 leading-tight">100% Secure Payment Protection fund cover + 24/7 Ops support.</p>
+            <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
+              <span className="font-semibold text-gray-600">Payment link sent via WhatsApp? *</span>
+              <div className="flex gap-2">
+                <button 
+                  type="button"
+                  onClick={() => setLinkSentToggle('yes')}
+                  className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${linkSentToggle === 'yes' ? 'bg-[#27AE60] text-white' : 'bg-gray-100 text-gray-500'}`}
+                >
+                  Yes
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setLinkSentToggle('no')}
+                  className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${linkSentToggle === 'no' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-500'}`}
+                >
+                  No
+                </button>
               </div>
             </div>
           </section>
         )}
 
         {outcome === 'connected' && disposition === 'not_interested' && (
-          <section className="bg-surface-container-low p-lg border border-outline-variant rounded-xl space-y-md animate-in fade-in duration-300">
-            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">Reason for Rejection</label>
+          <section className="bg-gray-50 p-4 border border-gray-200 rounded-xl space-y-3 text-xs animate-in fade-in duration-300">
+            <label className="font-bold text-gray-700 block mb-1">Reason for Rejection *</label>
             <select 
               value={rejectionReason} 
               onChange={(e) => setRejectionReason(e.target.value)}
-              required
-              className="w-full h-11 px-md bg-white border border-outline-variant rounded-lg focus:ring-1 focus:ring-primary outline-none text-xs"
+              className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg outline-none text-xs"
             >
               <option value="">Select a reason...</option>
-              <option value="Pricing too high">Pricing feels too high</option>
-              <option value="Happy with current vendor">Happy with competitor systems</option>
-              <option value="Does not fit operational flow">Route schedules do not align</option>
-              <option value="Technical limitations">Does not use smartphones / apps</option>
-              <option value="Other">Other (Specify in notes)</option>
+              <option value="expensive">Pricing feels too high</option>
+              <option value="competitor">Happy with competitor systems</option>
+              <option value="no_interest">Not interested in jobs right now</option>
+              <option value="no_smartphone">No smartphone access</option>
+              <option value="other">Other reason</option>
             </select>
+            <div className="text-[11px] text-blue-700 bg-blue-50 border border-blue-100 p-2 rounded">
+              💡 Follow-up reminder will be scheduled on D+3 automatically.
+            </div>
           </section>
         )}
 
         {outcome === 'connected' && disposition === 'callback' && (
-          <section className="bg-surface-container-low p-lg border border-outline-variant rounded-xl space-y-md animate-in fade-in duration-300">
-            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">Schedule Follow-up Call</label>
-            <div className="grid grid-cols-2 gap-md text-xs">
-              <div className="space-y-xs">
-                <span className="text-on-surface-variant">Preferred Date</span>
+          <section className="bg-gray-50 p-4 border border-gray-200 rounded-xl space-y-3 text-xs animate-in fade-in duration-300">
+            <label className="font-bold text-gray-700 block">Schedule Follow-up Call *</label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <span className="text-gray-500 block mb-1">Preferred Date</span>
                 <input 
                   value={callbackDate} 
                   onChange={(e) => setCallbackDate(e.target.value)}
-                  required
-                  className="w-full h-11 px-md bg-white border border-outline-variant rounded-lg focus:ring-1 focus:ring-primary outline-none" 
+                  className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg outline-none" 
                   type="date"
                 />
               </div>
-              <div className="space-y-xs">
-                <span className="text-on-surface-variant">Preferred Time</span>
+              <div>
+                <span className="text-gray-500 block mb-1">Preferred Time</span>
                 <input 
                   value={callbackTime} 
                   onChange={(e) => setCallbackTime(e.target.value)}
-                  required
-                  className="w-full h-11 px-md bg-white border border-outline-variant rounded-lg focus:ring-1 focus:ring-primary outline-none" 
+                  className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg outline-none" 
                   type="time"
                 />
               </div>
@@ -273,81 +229,85 @@ export const DwDispositionGate: React.FC = () => {
           </section>
         )}
 
-        {/* Final Notes & Submit Action (Visible only when outcome is selected) */}
+        {/* Step 4: Remarks (Optional, All Paths) */}
         {outcome && (
-          <section className="space-y-md animate-in fade-in duration-300">
+          <section className="space-y-2 text-xs">
             <div className="flex justify-between items-center">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Final Interaction Remarks</label>
+              <label className="font-bold text-gray-700 block">General Remarks / Notes</label>
               <button 
                 type="button"
-                onClick={() => { setFinalNotes('Driver has agreed to the Verified Plan package and will clear the payment link by EOD.'); showToast('Speech Recognition simulated: Note filled.'); }}
-                className="flex items-center gap-xs text-primary hover:bg-primary-container/10 px-sm py-1 rounded transition-colors text-xs font-bold"
+                onClick={() => { setFinalNotes('Client agreed to verify registration profile tonight.'); triggerToast('Mock Speech Recognition active'); }}
+                className="text-[10px] font-bold text-[#27AE60] flex items-center gap-0.5 hover:underline"
               >
-                <span className="material-symbols-outlined text-[16px]">mic</span>
-                <span>Voice Input</span>
+                🎙️ Voice Input
               </button>
             </div>
             <textarea 
               value={finalNotes}
               onChange={(e) => setFinalNotes(e.target.value)}
-              className="w-full min-h-[100px] p-md bg-white border border-outline-variant rounded-xl focus:ring-1 focus:ring-primary outline-none resize-none text-xs" 
-              placeholder="Add specific call log summaries, primary driver objections, or operational requests here..."
+              className="w-full min-h-[80px] p-3 border border-gray-200 rounded-lg focus:ring-1 focus:ring-[#27AE60] outline-none text-xs resize-none" 
+              placeholder="Add call remarks..."
             />
           </section>
         )}
 
-        {/* Algo Match Recommendation Panel (Example Trigger logic) */}
-        {outcome === 'connected' && disposition === 'interested' && selectedPlan === 'pro' && (
-          <section className="animate-in slide-in-from-bottom-3 duration-300 bg-primary-container/5 border border-primary p-md rounded-xl flex items-start gap-md text-xs">
-            <div className="bg-primary text-on-primary p-sm rounded-lg shrink-0">
-              <span className="material-symbols-outlined text-sm">auto_graph</span>
+        {/* Funnel Escalation Alert */}
+        {outcome === 'nr' && (
+          <div className="bg-[#FFF9E6] border border-[#F2C94C] p-3 rounded-lg text-xs text-[#D35400] space-y-2">
+            <div className="font-bold">⚠️ Funnel Escalation Check</div>
+            <p className="text-[11px] leading-tight">This lead qualifies for funnel escalation (3 consecutive NR attempts). Escalate?</p>
+            <div className="flex gap-2">
+              <button 
+                type="button" 
+                onClick={() => setEscalateChoice('yes')}
+                className={`px-3 py-1 rounded text-[10px] font-bold ${escalateChoice === 'yes' ? 'bg-[#FB641B] text-white' : 'bg-white border border-gray-200'}`}
+              >
+                Yes, Escalate
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setEscalateChoice('no')}
+                className={`px-3 py-1 rounded text-[10px] font-bold ${escalateChoice === 'no' ? 'bg-gray-600 text-white' : 'bg-white border border-gray-200'}`}
+              >
+                No, Keep
+              </button>
             </div>
-            <div className="flex-1">
-              <div className="flex justify-between items-center">
-                <h4 className="text-on-primary-container font-bold">Priority Closing Assistance recommended</h4>
-                <span className="bg-primary text-on-primary text-[8px] font-extrabold px-2 py-0.5 rounded uppercase tracking-widest">ALGO MATCH</span>
-              </div>
-              <p className="text-on-surface-variant mt-1">Based on this high-priority prospect, they qualify for a seniors closing call. Route to TL now?</p>
-              <div className="mt-md flex gap-sm">
-                <button 
-                  type="button"
-                  onClick={() => showToast('Lead routed to Team Leader closing queue.')}
-                  className="px-md py-1.5 bg-primary text-on-primary rounded font-bold hover:opacity-90 transition-opacity"
-                >
-                  Yes, Route to TL
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => showToast('Recommendation dismissed')}
-                  className="px-md py-1.5 border border-outline-variant text-on-surface-variant rounded hover:bg-surface-container transition-colors"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          </section>
+          </div>
         )}
-      </form>
 
-      {/* Footer Buttons */}
-      <footer className="mt-lg border-t border-outline-variant pt-lg flex gap-md shrink-0">
-        <button 
-          type="submit"
-          disabled={!outcome}
-          onClick={handleSubmit}
-          className="flex-1 h-12 bg-accent-success disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-sm hover:brightness-95 transition-all shadow-md uppercase"
-        >
-          <span className="material-symbols-outlined text-[18px]">rocket_launch</span>
-          Submit &amp; Load Next Lead
-        </button>
-        <button 
-          type="button"
-          onClick={() => { setOutcome(null); setDisposition(null); showToast('Form inputs discarded.'); }}
-          className="h-12 px-lg border border-outline-variant text-on-surface-variant font-semibold rounded-xl hover:bg-surface-container transition-colors text-xs uppercase"
-        >
-          Discard &amp; Exit
-        </button>
-      </footer>
+        {/* Submit Actions */}
+        <footer className="border-t border-gray-100 pt-4 flex gap-3">
+          <button 
+            type="button"
+            onClick={handleExitBlocked}
+            className="w-1/3 h-12 border border-gray-200 text-gray-400 font-bold rounded-lg text-xs uppercase"
+          >
+            Bypass Blocked
+          </button>
+          <button 
+            type="submit"
+            disabled={
+              !outcome || 
+              (outcome === 'connected' && !disposition) ||
+              (outcome === 'connected' && disposition === 'interested' && !selectedPlan) ||
+              (outcome === 'connected' && disposition === 'not_interested' && !rejectionReason) ||
+              (outcome === 'nr' && !escalateChoice)
+            }
+            className={`flex-grow h-12 font-bold text-xs rounded-lg flex items-center justify-center gap-1 shadow-md uppercase transition-all ${
+              (!outcome || 
+               (outcome === 'connected' && !disposition) ||
+               (outcome === 'connected' && disposition === 'interested' && !selectedPlan) ||
+               (outcome === 'connected' && disposition === 'not_interested' && !rejectionReason) ||
+               (outcome === 'nr' && !escalateChoice))
+                ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                : 'bg-[#27AE60] hover:bg-[#219653] text-white'
+            }`}
+          >
+            Submit &amp; Load Next Lead →
+          </button>
+        </footer>
+
+      </form>
     </main>
   );
 };

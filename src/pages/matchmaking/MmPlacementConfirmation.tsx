@@ -1,149 +1,162 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+interface ConfirmState {
+  jobId: string;
+  jobRoute: string;
+  jobTransporter: string;
+  driverName: string;
+  driverTmid: string;
+}
 
 export const MmPlacementConfirmation: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Resolve state passed from Intro Manager / Job Detail
+  const state: ConfirmState = location.state || {
+    jobId: 'JD-12034',
+    jobRoute: 'Delhi ➔ Mumbai',
+    jobTransporter: 'Sharma Logistics',
+    driverName: 'Suresh Yadav',
+    driverTmid: 'DR-48291'
+  };
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Required checklist toggles
+  const [startDateConfirmed, setStartDateConfirmed] = useState(false);
+  const [jobCompletionConfirmed, setJobCompletionConfirmed] = useState(false);
+  const [transporterConfirmedViaApp, setTransporterConfirmedViaApp] = useState(false);
+  
+  const [placementNotes, setPlacementNotes] = useState('');
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Auto commission check simulation: Suresh Yadav (DR-48291) is linked to Ramesh Foreman (FM-00231)
+  const isDriverLinkedToForeman = state.driverTmid === 'DR-48291';
+  const foremanId = 'FM-00231';
+  const foremanName = 'Ramesh Foreman Services';
+
+  const handleConfirmPlacement = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!startDateConfirmed || !jobCompletionConfirmed || !transporterConfirmedViaApp) {
+      triggerToast('Please check all confirmation toggles to finalize.');
+      return;
+    }
+
+    // Redirect with success toast
+    navigate('/mm/mm-job-board');
+    // We send triggerToast msg in navigation redirect simulation
+    setTimeout(() => {
+      alert(`Job ${state.jobId} marked Filled successfully! Incentive added.`);
+    }, 50);
+  };
+
   return (
-    <main className=" flex flex-col ">
+    <main className="p-6 max-w-md mx-auto w-full bg-white border border-gray-200 rounded-xl shadow-sm my-6 text-xs relative">
+      
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
+          <span className="w-2 h-2 rounded-full bg-[#8E44AD]"></span>
+          {toastMessage}
+        </div>
+      )}
 
+      {/* Header */}
+      <div className="border-b border-gray-200 pb-4 mb-4">
+        <h2 className="text-sm font-extrabold text-gray-800 flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[#8E44AD] text-base">check_circle</span>
+          Confirm Placement Handover
+        </h2>
+        <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Formalize EOD commission payout and filled status</p>
+      </div>
 
+      <form onSubmit={handleConfirmPlacement} className="space-y-4">
+        
+        {/* Read-only Job/Driver context */}
+        <div className="bg-gray-50 border border-gray-150 rounded-xl p-3 space-y-1.5 font-bold text-gray-700 select-none">
+          <div>Job ID: <span className="font-mono text-gray-900">{state.jobId}</span></div>
+          <div>Transporter: <span className="text-gray-900">{state.jobTransporter}</span></div>
+          <div>Placed Driver: <span className="text-gray-900">{state.driverName} ({state.driverTmid})</span></div>
+        </div>
 
-<div className="p-margin-desktop flex-1">
-<div className="max-w-5xl mx-auto">
+        {/* COMMISSION AUTO-CHECK CARD */}
+        {isDriverLinkedToForeman && (
+          <div className="bg-purple-50 border border-purple-200 text-[#7D3C98] rounded-xl p-3.5 space-y-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider block">⚡ COMMISSION AUTO-CREDIT DETECTED</span>
+            <p className="font-semibold leading-relaxed">
+              This driver is linked to <span className="font-bold">{foremanId} ({foremanName})</span>.
+            </p>
+            <p className="text-[10px] text-gray-500 font-semibold leading-relaxed">
+              ₹100 commission will be auto-credited to the Foreman. Your incentive: ₹50 (Super Premium) for this placement event.
+            </p>
+          </div>
+        )}
 
-<div className="mb-lg flex justify-between items-end">
-<div>
-<div className="flex items-center gap-xs text-on-surface-variant font-label-md mb-xs">
-<span>Intro Manager</span>
-<span className="material-symbols-outlined text-[14px]">chevron_right</span>
-<span className="text-brand-purple">MM-07 Placement</span>
-</div>
-<h2 className="font-display-lg text-display-lg">Placement Confirmation</h2>
-</div>
-<div className="bg-tertiary-container/20 text-tertiary px-md py-xs rounded-full flex items-center gap-sm">
-<span className="material-symbols-outlined text-[18px]">verified</span>
-<span className="font-label-md">Intro Stage: Complete</span>
-</div>
-</div>
+        {/* Confirmation checkboxes */}
+        <div className="space-y-3 pt-2">
+          <label className="text-[10px] font-extrabold text-gray-450 uppercase tracking-wider block">Compliance Checks</label>
+          
+          <label className="flex items-center justify-between p-2.5 bg-gray-50 border border-gray-150 rounded-lg cursor-pointer">
+            <span className="font-semibold text-gray-700">Start date confirmed by transporter?</span>
+            <input 
+              type="checkbox" 
+              checked={startDateConfirmed}
+              onChange={(e) => setStartDateConfirmed(e.target.checked)}
+              className="rounded text-[#8E44AD] focus:ring-[#8E44AD]"
+            />
+          </label>
 
-<div className="bento-grid">
+          <label className="flex items-center justify-between p-2.5 bg-gray-50 border border-gray-150 rounded-lg cursor-pointer">
+            <span className="font-semibold text-gray-700">Job completion confirmed (not just matched)?</span>
+            <input 
+              type="checkbox" 
+              checked={jobCompletionConfirmed}
+              onChange={(e) => setJobCompletionConfirmed(e.target.checked)}
+              className="rounded text-[#8E44AD] focus:ring-[#8E44AD]"
+            />
+          </label>
 
-<div className="col-span-8 space-y-md">
-<div className="glass-card p-lg rounded-xl grid grid-cols-3 gap-lg">
-<div className="space-y-sm">
-<span className="font-label-md text-on-surface-variant block uppercase tracking-wider">Driver</span>
-<div className="flex items-center gap-md">
-<div className="w-10 h-10 rounded-lg bg-primary-fixed flex items-center justify-center">
-<span className="material-symbols-outlined text-primary">person</span>
-</div>
-<div>
-<p className="font-headline-sm text-headline-sm">Rajesh Kumar</p>
-<p className="font-body-sm text-on-surface-variant">ID: D-9921 • Hazmat Certified</p>
-</div>
-</div>
-</div>
-<div className="space-y-sm">
-<span className="font-label-md text-on-surface-variant block uppercase tracking-wider">Job Post</span>
-<div className="flex items-center gap-md">
-<div className="w-10 h-10 rounded-lg bg-secondary-fixed flex items-center justify-center">
-<span className="material-symbols-outlined text-secondary">local_shipping</span>
-</div>
-<div>
-<p className="font-headline-sm text-headline-sm">Long Haul - DL01</p>
-<p className="font-body-sm text-on-surface-variant">Delhi to Mumbai • 1400km</p>
-</div>
-</div>
-</div>
-<div className="space-y-sm">
-<span className="font-label-md text-on-surface-variant block uppercase tracking-wider">Transporter</span>
-<div className="flex items-center gap-md">
-<div className="w-10 h-10 rounded-lg bg-tertiary-fixed flex items-center justify-center">
-<span className="material-symbols-outlined text-tertiary">business</span>
-</div>
-<div>
-<p className="font-headline-sm text-headline-sm">Apex Logistics</p>
-<p className="font-body-sm text-on-surface-variant">Fleet Tier 1 • Pan India</p>
-</div>
-</div>
-</div>
-</div>
+          <label className="flex items-center justify-between p-2.5 bg-gray-50 border border-gray-150 rounded-lg cursor-pointer">
+            <span className="font-semibold text-gray-700">Transporter confirmed via app?</span>
+            <input 
+              type="checkbox" 
+              checked={transporterConfirmedViaApp}
+              onChange={(e) => setTransporterConfirmedViaApp(e.target.checked)}
+              className="rounded text-[#8E44AD] focus:ring-[#8E44AD]"
+            />
+          </label>
+        </div>
 
-<div className="glass-card p-lg rounded-xl">
-<div className="flex items-center gap-sm mb-md">
-<span className="material-symbols-outlined text-brand-purple">edit_note</span>
-<h3 className="font-headline-sm text-headline-sm">Placement Notes</h3>
-</div>
-<textarea className="w-full h-32 p-md border border-outline-variant rounded-lg bg-surface-container-lowest focus:ring-2 focus:ring-primary-container focus:border-primary-container outline-none transition-all font-body-md" placeholder="Add specific operational notes, driver preferences, or transporter specific instructions for this placement..."></textarea>
-</div>
-</div>
+        {/* Notes */}
+        <div>
+          <label className="text-gray-500 block mb-1 font-semibold">Placement notes (optional)</label>
+          <textarea 
+            value={placementNotes}
+            onChange={(e) => setPlacementNotes(e.target.value)}
+            placeholder="Add any specific delivery/dispatch notes here..."
+            rows={2}
+            className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none font-medium text-gray-800 resize-none"
+          />
+        </div>
 
-<div className="col-span-4 space-y-md">
+        {/* CTA */}
+        <div className="pt-2">
+          <button 
+            type="submit"
+            className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl font-bold text-center shadow-md shadow-green-100 transition-all active:scale-95 text-xs"
+          >
+            Confirm Placement &amp; Close Job
+          </button>
+        </div>
 
-<div className="glass-card p-lg rounded-xl space-y-md">
-<h3 className="font-label-md text-on-surface-variant uppercase tracking-widest mb-md">Checklist</h3>
-<label className="flex items-center justify-between cursor-pointer group">
-<span className="font-body-md">Start date confirmed</span>
-<input className="form-checkbox h-5 w-5 text-primary rounded border-outline-variant focus:ring-primary-container cursor-pointer" type="checkbox"/>
-</label>
-<div className="h-px bg-outline-variant/30"></div>
-<label className="flex items-center justify-between cursor-pointer">
-<span className="font-body-md">Job completion confirmed</span>
-<input className="form-checkbox h-5 w-5 text-primary rounded border-outline-variant focus:ring-primary-container cursor-pointer" type="checkbox"/>
-</label>
-<div className="h-px bg-outline-variant/30"></div>
-<label className="flex items-center justify-between cursor-pointer">
-<span className="font-body-md">Transporter confirmed</span>
-<input className="form-checkbox h-5 w-5 text-primary rounded border-outline-variant focus:ring-primary-container cursor-pointer" type="checkbox"/>
-</label>
-</div>
-
-<div className="bg-brand-purple/5 border border-brand-purple/20 p-lg rounded-xl">
-<div className="flex items-center gap-md mb-sm">
-<div className="w-10 h-10 rounded-full bg-brand-purple flex items-center justify-center">
-<span className="material-symbols-outlined text-white">account_balance_wallet</span>
-</div>
-<div>
-<h4 className="font-label-md text-brand-purple">Commission Ready</h4>
-<p className="font-display-lg text-display-lg text-on-surface">₹150.00</p>
-</div>
-</div>
-<div className="p-sm bg-white/50 rounded border border-brand-purple/10 text-body-sm flex items-start gap-sm">
-<span className="material-symbols-outlined text-brand-purple text-[18px]">info</span>
-<span>Driver is linked to <strong>FM-8821</strong>. Commission will be auto-credited upon final confirmation.</span>
-</div>
-</div>
-
-<button className="w-full bg-[#27ae60] hover:bg-[#219150] text-white py-lg rounded-xl font-headline-sm flex items-center justify-center gap-md shadow-lg shadow-green-900/10 active:scale-[0.98] transition-all">
-<span className="material-symbols-outlined">check_circle</span>
-                            Confirm Placement
-                        </button>
-</div>
-
-<div className="col-span-12 glass-card p-md rounded-xl flex items-center justify-between border-l-4 border-l-primary-container">
-<div className="flex items-center gap-lg">
-<div className="flex -space-x-3">
-<div className="w-10 h-10 rounded-full border-2 border-white bg-surface-container overflow-hidden">
-<img className="w-full h-full object-cover" data-alt="A portrait of a senior dispatcher with 10 years experience, focusing intently on their work. The style is hyper-realistic with high-density lighting, echoing a corporate professional vibe. The background shows a modern fleet management hub with teal and amber status indicators." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCPbEH7EBj6lQicH9ryQVxvs0qXczn_2MiTW33UksLrCHx2nS5HXEDz56E-NMqq40DIQNe4Jqzu5s7PXRDwgMEhKAj6ThnfGDR-xFA6fw68YgLOuzXZuC9rlapUV9nvjSlMUYMmotDioRZu3dYtkwGxx-XkXhBt0jsVVoH5iwKX_JPGtTx5GorrBc2jFiPkCVHznN_wAe_-Y1ZoNNZq0rZlT9GVpr1VBCiyhjEX-il1POoQW8FaAd1elIQTpcMTuoCfrfi4xGhlgu4"/>
-</div>
-<div className="w-10 h-10 rounded-full border-2 border-white bg-primary-container text-white flex items-center justify-center font-bold text-xs">+3</div>
-</div>
-<div>
-<p className="font-label-md">Team Visibility</p>
-<p className="font-body-sm text-on-surface-variant">Shared with Regional Ops North</p>
-</div>
-</div>
-<div className="flex items-center gap-xl">
-<div className="text-right">
-<p className="font-label-md text-on-surface-variant">SLA Deadline</p>
-<p className="font-body-md font-bold text-error">42m remaining</p>
-</div>
-<div className="w-48 h-2 bg-outline-variant/30 rounded-full overflow-hidden">
-<div className="h-full bg-primary-container w-[80%]"></div>
-</div>
-</div>
-</div>
-</div>
-</div>
-</div>
-</main>
+      </form>
+    </main>
   );
 };
 

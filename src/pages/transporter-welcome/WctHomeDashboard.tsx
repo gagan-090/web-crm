@@ -1,185 +1,288 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+interface SLARow {
+  id: string;
+  company: string;
+  tmid: string;
+  registeredMinutesAgo: number;
+  slaMinutesLeft: number;
+}
 
 export const WctHomeDashboard: React.FC = () => {
-  const [callingLead, setCallingLead] = useState(false);
+  const navigate = useNavigate();
 
-  const handleCallNow = () => {
-    setCallingLead(true);
-    setTimeout(() => setCallingLead(false), 3000);
+  // Dashboard state for premium interactivity
+  const [monthlyRevenue, setMonthlyRevenue] = useState(11200);
+  const [slaList, setSlaList] = useState<SLARow[]>([
+    { id: '1', company: 'Sharma Logistics', tmid: 'TR-12094', registeredMinutesAgo: 107, slaMinutesLeft: 133 },
+    { id: '2', company: 'Anand Transport Co', tmid: 'TR-12098', registeredMinutesAgo: 178, slaMinutesLeft: 62 }
+  ]);
+
+  const baseSalary = 14000;
+  const gateThreshold = baseSalary * 2; // ₹28,000
+  const isGateCrossed = monthlyRevenue >= gateThreshold;
+  const remainingToGate = Math.max(0, gateThreshold - monthlyRevenue);
+  const gateProgressPercent = Math.min(100, Math.round((monthlyRevenue / gateThreshold) * 100));
+
+  // Ticking SLA countdown
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSlaList(prevList => 
+        prevList.map(item => ({
+          ...item,
+          registeredMinutesAgo: item.registeredMinutesAgo + 1,
+          slaMinutesLeft: item.slaMinutesLeft - 1
+        }))
+      );
+    }, 60000); // ticks every minute
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatMinutes = (mins: number) => {
+    if (mins < 0) {
+      const positiveMins = Math.abs(mins);
+      const h = Math.floor(positiveMins / 60);
+      const m = positiveMins % 60;
+      return `${h}h ${m}m overdue`;
+    }
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h}h ${m}m left`;
+  };
+
+  const getSLATextColor = (mins: number) => {
+    if (mins < 0) return 'text-red-600 font-extrabold';
+    if (mins <= 60) return 'text-red-500 font-bold'; // <1hr
+    if (mins <= 180) return 'text-orange-500 font-bold'; // 1-3hrs
+    return 'text-[#27AE60] font-semibold'; // >3hrs
+  };
+
+  const handleCallLead = (lead: SLARow) => {
+    // Remove from SLA watch list once call starts
+    setSlaList(prev => prev.filter(item => item.id !== lead.id));
+    
+    // Navigate directly to active call with lead context
+    navigate('/wct/wct-active-call-focus', {
+      state: {
+        name: lead.company,
+        tmid: lead.tmid,
+        registeredTime: `${Math.floor(lead.registeredMinutesAgo / 60)}h ${lead.registeredMinutesAgo % 60}m ago`,
+        slaLeft: lead.slaMinutesLeft
+      }
+    });
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-5 pb-6">
-
-      {/* Page Title */}
-      <div className="flex items-end justify-between">
+    <div className="space-y-6 max-w-7xl mx-auto w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
+      
+      {/* Simulation Bar */}
+      <section className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 pb-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-on-surface-variant">WCT Portal</p>
-          <h1 className="text-2xl font-bold text-on-surface mt-0.5">Home Dashboard</h1>
+          <p className="text-[#666666] text-xs font-semibold uppercase tracking-widest">Transporter Welcome calling Process</p>
+          <h2 className="text-2xl font-bold text-gray-800">Transporter Connect Control</h2>
         </div>
-        <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full font-semibold">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse block" />
-          Online &amp; Syncing
+        
+        {/* Interactive Simulator */}
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 p-2 rounded-lg text-xs select-none">
+          <span className="font-bold text-gray-600">Simulate:</span>
+          <button 
+            onClick={() => setMonthlyRevenue(prev => prev === 11200 ? 29500 : 11200)}
+            className="px-2.5 py-1 bg-white border rounded hover:bg-gray-100 transition-colors"
+          >
+            Gate Status ({isGateCrossed ? 'Crossed' : 'Not Crossed'})
+          </button>
+          <button 
+            onClick={() => {
+              // Add a breached lead
+              setSlaList(prev => [
+                ...prev, 
+                { id: `S_${Date.now()}`, company: 'Grover Logistics', tmid: 'TR-19208', registeredMinutesAgo: 320, slaMinutesLeft: -80 }
+              ]);
+            }}
+            className="px-2.5 py-1 bg-white border rounded hover:bg-gray-100 transition-colors text-red-600 font-semibold"
+          >
+            + Add Breached SLA Lead
+          </button>
         </div>
-      </div>
+      </section>
 
-      {/* SLA Alert */}
-      <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 rounded-xl px-5 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="material-symbols-outlined text-red-500 text-[20px] shrink-0">warning</span>
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-red-700 uppercase tracking-wide">Critical SLA Alert</p>
-            <p className="text-sm text-red-800 font-medium truncate">
-              TR-10024 — Express Logistics &nbsp;·&nbsp;
-              <span className="text-red-600">Expires in 2h 13m</span>
-            </p>
-          </div>
+      {/* SLA WATCH STRIP (sticky-feeling dedicated horizontal strip) */}
+      <section className={`border rounded-xl p-4 shadow-sm ${
+        slaList.length > 0 ? 'bg-[#FFF4EC] border-[#FB641B]' : 'bg-white border-gray-200'
+      }`}>
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-xs font-bold text-[#FB641B] uppercase tracking-wider flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[16px] animate-pulse">alarm</span>
+            SLA WATCH
+          </h3>
+          {slaList.length === 0 && (
+            <span className="text-xs text-[#27AE60] font-bold flex items-center gap-1">
+              ✓ All on track
+            </span>
+          )}
         </div>
-        <button
-          onClick={handleCallNow}
-          className={`shrink-0 px-4 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 ${
-            callingLead ? 'bg-emerald-600 text-white' : 'bg-red-600 hover:bg-red-700 text-white'
-          }`}
-        >
-          <span className="material-symbols-outlined text-[15px]">
-            {callingLead ? 'check_circle' : 'phone'}
-          </span>
-          {callingLead ? 'Calling…' : 'Call Now'}
-        </button>
-      </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: 'Calls Made',    value: '42',      icon: 'call',       accent: 'text-primary' },
-          { label: 'Converted',     value: '5',       icon: 'handshake',  accent: 'text-emerald-600' },
-          { label: 'Daily Revenue', value: '₹9,995',  icon: 'payments',   accent: 'text-orange-500' },
-          { label: 'Conv. Rate',    value: '11.9%',   icon: 'avg_pace',   accent: 'text-violet-600' },
-        ].map(s => (
-          <div key={s.label} className="bg-white border border-outline-variant rounded-xl p-4 flex items-center gap-3">
-            <div className="w-10 h-10 bg-surface-container-low rounded-lg flex items-center justify-center shrink-0">
-              <span className={`material-symbols-outlined text-[22px] ${s.accent}`}>{s.icon}</span>
-            </div>
-            <div>
-              <p className="text-lg font-bold text-on-surface leading-tight">{s.value}</p>
-              <p className="text-xs text-on-surface-variant">{s.label}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Revenue + SLA Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Monthly Revenue */}
-        <div className="lg:col-span-2 bg-white border border-outline-variant rounded-xl p-5 space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-on-surface-variant">Monthly Revenue</p>
-              <p className="text-3xl font-bold text-on-surface mt-1">
-                ₹42,000
-                <span className="text-base font-normal text-on-surface-variant"> / ₹67,000</span>
-              </p>
-            </div>
-            <div className="text-right">
-              <span className="text-orange-500 font-bold text-xl">62.6%</span>
-              <p className="text-xs text-emerald-600 font-medium">Ahead of schedule</p>
-            </div>
-          </div>
-
-          {/* Progress bar */}
-          <div className="space-y-1">
-            <div className="flex justify-between text-xs text-on-surface-variant">
-              <span>Target Progress</span>
-              <span>₹25,000 remaining</span>
-            </div>
-            <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-              <div className="h-full bg-orange-500 rounded-full" style={{ width: '62.6%' }} />
-            </div>
-          </div>
-
-          {/* Gate Breakdown */}
-          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-outline-variant">
-            {[
-              { label: 'Gate 1 Revenue', value: '₹12,000', target: '₹28,000', pct: '42.8%', w: '42.8%', color: 'bg-orange-400' },
-              { label: 'Gate 2 Revenue', value: '₹8,450',  target: '₹28,000', pct: '30.1%', w: '30.1%', color: 'bg-violet-400' },
-            ].map(g => (
-              <div key={g.label} className="bg-surface-container-low rounded-lg p-3">
-                <p className="text-[11px] font-semibold uppercase text-on-surface-variant">{g.label}</p>
-                <p className="text-base font-bold text-on-surface mt-0.5">{g.value}</p>
-                <p className="text-xs text-on-surface-variant mb-2">Target: {g.target}</p>
-                <div className="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
-                  <div className={`h-full ${g.color} rounded-full`} style={{ width: g.w }} />
+        {slaList.length > 0 ? (
+          <div className="divide-y divide-orange-100/50">
+            {slaList.map((lead) => (
+              <div key={lead.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold text-gray-900 text-sm">{lead.company}</span>
+                  <span className="font-mono bg-white text-gray-400 px-1 border border-orange-100 rounded">{lead.tmid}</span>
+                  <span className="text-gray-500">·</span>
+                  <span className="text-gray-500">Registered {Math.floor(lead.registeredMinutesAgo / 60)}h {lead.registeredMinutesAgo % 60}m ago</span>
+                </div>
+                
+                <div className="flex items-center gap-4">
+                  <span className={getSLATextColor(lead.slaMinutesLeft)}>
+                    {lead.slaMinutesLeft < 0 ? '⚠️ SLA BREACHED — ' : 'SLA: '}
+                    {formatMinutes(lead.slaMinutesLeft)}
+                  </span>
+                  
+                  <button
+                    onClick={() => handleCallLead(lead)}
+                    className="bg-[#FB641B] hover:bg-[#e4540d] text-white px-3.5 py-1.5 rounded-lg font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-xs">phone</span> Call
+                  </button>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        ) : (
+          <p className="text-xs text-gray-400 italic py-2">No SLA-urgent registrations in queue right now.</p>
+        )}
+      </section>
 
-        {/* SLA Compliance */}
-        <div className="bg-white border border-outline-variant rounded-xl p-5 flex flex-col items-center justify-center text-center gap-3">
-          <p className="text-xs font-semibold uppercase tracking-widest text-on-surface-variant">SLA Compliance</p>
-
-          <div className="relative w-24 h-24">
-            <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 80 80">
-              <circle cx="40" cy="40" r="32" fill="transparent" stroke="#f3f4f6" strokeWidth="7" />
-              <circle
-                cx="40" cy="40" r="32" fill="transparent"
-                stroke="#f97316" strokeWidth="7"
-                strokeDasharray={`${2 * Math.PI * 32}`}
-                strokeDashoffset={`${2 * Math.PI * 32 * (1 - 0.913)}`}
-                strokeLinecap="round"
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-lg font-bold text-on-surface">91.3%</span>
+      {/* KPI Cards Row (4 cards) */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        
+        {/* Card 1 — Monthly Revenue */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[150px]">
+          <div>
+            <span className="text-xs text-gray-500 uppercase font-semibold">Monthly Revenue</span>
+            <div className="text-2xl font-bold text-gray-800 mt-1">
+              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹67,000</span>
+            </div>
+            <div className="text-xs text-gray-500 mt-1">26 days remaining this month</div>
+          </div>
+          <div className="mt-3">
+            <div className="w-full h-2 bg-gray-150 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-[#FB641B] rounded-full transition-all duration-500" 
+                style={{ width: `${(monthlyRevenue / 67000) * 100}%` }}
+              ></div>
             </div>
           </div>
-
-          <div>
-            <p className="text-sm font-semibold text-on-surface">Monthly Compliance</p>
-            <p className="text-xs text-on-surface-variant">Target: <span className="text-orange-500 font-bold">100%</span></p>
-          </div>
-
-          <span className="text-[11px] font-bold uppercase tracking-wide bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1 rounded-full">
-            Needs Attention
-          </span>
         </div>
+
+        {/* Card 2 — 2× Salary Gate */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[150px]">
+          <div>
+            <span className={`text-xs uppercase font-semibold ${isGateCrossed ? 'text-[#27AE60]' : 'text-gray-500'}`}>
+              {isGateCrossed ? '✓ Gate Crossed' : '2× Salary Gate'}
+            </span>
+            <div className="text-2xl font-bold text-gray-800 mt-1">
+              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹{gateThreshold.toLocaleString()}</span>
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {isGateCrossed 
+                ? 'Incentives active — every conversion now pays out' 
+                : `₹${remainingToGate.toLocaleString()} to unlock incentives`
+              }
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all duration-500 ${isGateCrossed ? 'bg-[#27AE60]' : 'bg-[#FB641B]'}`} 
+                style={{ width: `${gateProgressPercent}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3 — Today's Stats */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[150px]">
+          <div>
+            <span className="text-xs text-gray-500 uppercase font-semibold">Today's Stats</span>
+            <div className="text-2xl font-bold text-gray-850 mt-1">8 <span className="text-xs text-gray-400 font-normal">calls</span></div>
+            <div className="text-xs text-gray-500 mt-2 space-y-0.5">
+              <div>· 2 conversions</div>
+              <div>· 25% conversion rate</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4 — Conversion Rate (Monthly) */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[150px]">
+          <div>
+            <span className="text-xs text-gray-500 uppercase font-semibold">Conversion Rate</span>
+            <div className="text-2xl font-bold text-[#27AE60] mt-1">13.8%</div>
+            <div className="text-xs text-[#27AE60] font-semibold mt-1">✓ Met ≥12% target</div>
+          </div>
+        </div>
+
       </div>
 
-      {/* Action Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-orange-500 rounded-lg flex items-center justify-center text-white shrink-0">
-              <span className="material-symbols-outlined text-[18px]">trending_up</span>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-orange-600 uppercase tracking-wide">Action Required</p>
-              <p className="text-sm font-bold text-on-surface">D+7 Upsell Due</p>
-              <p className="text-xs text-on-surface-variant">3 free-plan transporters ready</p>
+      {/* Secondary Dashboard Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+        
+        {/* D+7 Upsell Due (Left, 1/3, orange bordered) */}
+        <div className="bg-white border-l-4 border-[#FB641B] border-t border-r border-b border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-xs font-bold text-[#FB641B] uppercase tracking-wider mb-2">D+7 Upsell Due</h3>
+            <p className="text-xs text-gray-500 font-semibold mb-2">3 free-plan transporters ready for upsell today</p>
+            
+            <div className="space-y-2 mt-2 text-xs">
+              {[
+                { name: 'Gopal Roadways', freeSince: '12 Jun' },
+                { name: 'Karan Carriers', freeSince: '11 Jun' }
+              ].map((up, idx) => (
+                <div key={idx} className="flex justify-between items-center bg-orange-50/30 p-2 border border-orange-100 rounded">
+                  <div>
+                    <div className="font-bold text-gray-800">{up.name}</div>
+                    <div className="text-[10px] text-gray-500">Free since: {up.freeSince} (7 days ago)</div>
+                  </div>
+                  <button 
+                    onClick={() => navigate('/wct/wct-d7-upsell-queue')}
+                    className="px-2 py-1 bg-[#FB641B] hover:bg-[#e4540d] text-white text-[10px] font-bold rounded shadow-sm"
+                  >
+                    Upsell Now
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
-          <button className="shrink-0 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg transition-colors active:scale-95 whitespace-nowrap">
-            View List
-          </button>
         </div>
 
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-red-500 rounded-lg flex items-center justify-center text-white shrink-0 animate-pulse">
-              <span className="material-symbols-outlined text-[18px]">phone_callback</span>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-red-600 uppercase tracking-wide">Overdue</p>
-              <p className="text-sm font-bold text-on-surface">Missed Callbacks</p>
-              <p className="text-xs text-red-600 font-medium">1 callback overdue by 45m</p>
+        {/* Missed Callbacks (Center, 1/3) */}
+        <div className="bg-white border-l-4 border-red-500 border-t border-r border-b border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-xs font-bold text-red-600 uppercase tracking-wider mb-2 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[16px]">phone_callback</span> Missed Callbacks
+            </h3>
+            <div className="text-xs text-[#27AE60] font-bold flex items-center justify-center h-24 bg-green-50 rounded-lg">
+              All callbacks on schedule ✓
             </div>
           </div>
-          <button className="shrink-0 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors active:scale-95 whitespace-nowrap">
-            Resolve Now
-          </button>
         </div>
+
+        {/* First-Call SLA Compliance (Right, 1/3) */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">First-Call SLA Compliance</h3>
+            <div className="text-2xl font-bold text-[#FB641B] mt-1">91.3%</div>
+            <div className="text-xs text-gray-500 mt-1">% of TR leads called within 4 business hours</div>
+            
+            <div className="mt-3 flex justify-between items-center text-[11px] border-t border-gray-100 pt-2 text-gray-500">
+              <span className="text-[#27AE60] font-bold">↑ 3.1% vs last month</span>
+              <span>Target: 100%</span>
+            </div>
+          </div>
+        </div>
+
       </div>
 
     </div>

@@ -1,249 +1,222 @@
-import React from 'react';
+import React, { useState } from 'react';
+
+interface ObjectionCard {
+  reason: 'route' | 'truck' | 'pay' | 'placed';
+  driverSays: string;
+  response: string;
+  bookmarked: boolean;
+}
 
 export const MmScriptLibrary: React.FC = () => {
+  const [activeSection, setActiveSection] = useState<'opening' | 'interest' | 'intro' | 'rejection' | 'closure' | 'reopening'>('reopening');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Rejection/objection scripts database
+  const [objections, setObjections] = useState<ObjectionCard[]>([
+    {
+      reason: 'route',
+      driverSays: 'सैलरी बहुत कम है, मुझे कम से कम 25,000 चाहिए।',
+      response: 'सर, इस सुपर प्रीमियम ट्रिप के लिए ट्रांसपोर्टर ₹35,000 एडवांस दे रहे हैं और बाकी डिलीवरी के तुरंत बाद। यह मार्केट रेट से ज्यादा है।',
+      bookmarked: false
+    },
+    {
+      reason: 'route',
+      driverSays: 'यह लोकेशन मेरे घर से बहुत दूर है।',
+      response: 'दूर तो है, लेकिन वहां कंपनी क्वार्टर दे रही है और रूट बहुत आसान है। क्या आप एक बार मालिक से बात करना चाहेंगे?',
+      bookmarked: false
+    },
+    {
+      reason: 'pay',
+      driverSays: 'मुझे एडवांस में आधा पेमेंट चाहिए, वरना गाड़ी स्टार्ट नहीं करूँगा।',
+      response: 'सर, शर्मा लॉजिस्टिक्स एक सुपर प्रीमियम वेंडर हैं, इनका भुगतान रिकॉर्ड १००% सुरक्षित है। हम व्हाट्सएप ग्रुप में इसका एग्रीमेंट शेयर कर देंगे।',
+      bookmarked: false
+    },
+    {
+      reason: 'truck',
+      driverSays: 'मेरे पास ट्रेलर चलाने का लाइसेंस नहीं है, मुझे डम्पर वाली जॉब चाहिए।',
+      response: 'कोई बात नहीं सर, हमारे पास पटना और सूरत रूट पर डम्पर की भी २ वैकेंसी ओपन हैं, मैं आपका शॉर्टलिस्ट वहाँ ट्रांसफर कर देता हूँ।',
+      bookmarked: false
+    },
+    {
+      reason: 'placed',
+      driverSays: 'मैं पहले ही दूसरी जगह काम शुरू कर चुका हूँ।',
+      response: 'बहुत अच्छा सर! क्या आपकी पहचान में कोई और ड्राइवर है जो दिल्ली-मुंबई रूट पर भारी गाड़ी चला सकता है? हम उन्हें रेफरल इंसेंटिव देंगे।',
+      bookmarked: false
+    }
+  ]);
+
+  const handleToggleBookmark = (idx: number) => {
+    setObjections(prev => prev.map((obj, i) => 
+      i === idx ? { ...obj, bookmarked: !obj.bookmarked } : obj
+    ));
+    triggerToast('Bookmarks list updated ✓');
+  };
+
+  const handlePlayAudio = (section: string) => {
+    triggerToast(`Playing call audio snippet for section: ${section}...`);
+  };
+
+  const filteredObjections = objections.filter(obj => 
+    obj.driverSays.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    obj.response.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Sorting bookmarked to top
+  const sortedObjections = [...filteredObjections].sort((a, b) => 
+    a.bookmarked === b.bookmarked ? 0 : a.bookmarked ? -1 : 1
+  );
+
   return (
-    <main className=" mt-16 p-margin-desktop">
+    <main className="flex h-[calc(100vh-60px)] bg-white overflow-hidden relative text-xs">
+      
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
+          <span className="w-2 h-2 rounded-full bg-[#8E44AD]"></span>
+          {toastMessage}
+        </div>
+      )}
 
-<section className="mb-xl flex items-end justify-between">
-<div>
-<h2 className="font-display-lg text-display-lg text-on-background mb-xs">Script Library</h2>
-<p className="text-body-lg text-on-surface-variant">Standard operating procedures for matchmaking calls.</p>
-</div>
-<div className="flex gap-sm">
-<span className="bg-accent-purple/10 text-accent-purple px-md py-xs rounded-full font-label-md flex items-center gap-xs">
-<span className="material-symbols-outlined text-[16px]">language</span>
-                    Hindi Devanagari Enabled
-                </span>
-<span className="bg-surface-container-high text-on-surface-variant px-md py-xs rounded-full font-label-md">
-                    v2.4 Updated Today
-                </span>
-</div>
-</section>
+      {/* Left Sub nav Sidebar */}
+      <aside className="w-56 bg-gray-50 border-r border-gray-200 p-4 flex flex-col justify-between shrink-0 select-none">
+        <div className="space-y-4">
+          <h3 className="text-xs font-extrabold text-gray-800 uppercase tracking-wide border-b border-gray-200 pb-2">
+            Match Dialogue Sections
+          </h3>
 
-<div className="grid grid-cols-12 gap-lg">
+          <div className="flex flex-col gap-2 font-bold text-gray-450">
+            {[
+              { id: 'opening', label: 'Opening (Job Pitch)' },
+              { id: 'interest', label: 'Interest discovery' },
+              { id: 'intro', label: '3-Way Intro explain' },
+              { id: 'rejection', label: 'Rejection/Objections' },
+              { id: 'closure', label: 'Placement Closure' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveSection(tab.id as any)}
+                className={`p-2.5 rounded-lg text-left transition-colors ${
+                  activeSection === tab.id ? 'bg-purple-100 text-[#7D3C98]' : 'hover:bg-gray-100 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-<div className="col-span-12 lg:col-span-8 glass-card rounded-xl p-lg flex flex-col gap-md border-l-4 border-l-primary">
-<div className="flex justify-between items-start">
-<div>
-<span className="text-label-md text-primary uppercase tracking-widest">Stage 01</span>
-<h3 className="font-headline-sm text-headline-sm">Opening: Job Pitch</h3>
-</div>
-<button className="p-xs text-outline hover:text-primary transition-colors">
-<span className="material-symbols-outlined">content_copy</span>
-</button>
-</div>
-<div className="bg-white/50 p-md rounded-lg border border-outline-variant/30">
-<p className="hindi-font text-body-lg leading-relaxed text-on-background">
-                        "नमस्कार! मैं TruckMitr से बात कर रहा हूँ। आपकी प्रोफाइल हमारे पास एक बेहतरीन ड्राइविंग अवसर के लिए मैच हुई है। क्या आपके पास 2 मिनट हैं इस शानदार ऑफर के बारे में जानने के लिए?"
-                    </p>
-</div>
-<div className="grid grid-cols-2 gap-md">
-<div className="flex items-start gap-sm p-sm bg-surface-container-low rounded-lg">
-<span className="material-symbols-outlined text-primary">tips_and_updates</span>
-<div>
-<p className="font-label-md">Tone Note</p>
-<p className="text-body-sm text-on-surface-variant">Keep it energetic and professional. Do not pause too long after the intro.</p>
-</div>
-</div>
-<div className="flex items-start gap-sm p-sm bg-surface-container-low rounded-lg">
-<span className="material-symbols-outlined text-primary">priority_high</span>
-<div>
-<p className="font-label-md">Value Proposition</p>
-<p className="text-body-sm text-on-surface-variant">Focus on "Selected Profile" to build importance.</p>
-</div>
-</div>
-</div>
-</div>
+        <div className="bg-purple-50 border border-purple-200 p-3 rounded-xl">
+          <span className="text-[10px] font-extrabold text-purple-750 uppercase tracking-wider block">Language Vetting</span>
+          <p className="text-[9.5px] text-gray-450 mt-1 leading-normal font-semibold">
+            All pitch scripts are vetted for Noto Sans Devanagari Hindi communication standards.
+          </p>
+        </div>
+      </aside>
 
-<div className="col-span-12 lg:col-span-4 bg-primary text-on-primary rounded-xl p-lg flex flex-col justify-between">
-<div>
-<h3 className="font-headline-sm mb-sm">Call Success Rate</h3>
-<p className="text-body-sm opacity-90 mb-lg">Current performance for Script MM-10 across all active callers.</p>
-<div className="flex items-baseline gap-xs">
-<span className="text-[48px] font-bold">68%</span>
-<span className="text-body-md opacity-80">Conversion</span>
-</div>
-</div>
-<div className="space-y-sm">
-<div className="flex justify-between text-label-md">
-<span>Daily Target</span>
-<span>42/60</span>
-</div>
-<div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
-<div className="bg-white h-full w-[70%]"></div>
-</div>
-</div>
-</div>
+      {/* Main Scripts Workspace */}
+      <section className="flex-1 flex flex-col overflow-hidden bg-white">
+        
+        {/* Header toolbar */}
+        <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0">
+          <div>
+            <h2 className="text-sm font-extrabold text-gray-800 uppercase tracking-wide">Vetted Dialogue Script Console</h2>
+            <p className="text-[10px] text-gray-400 mt-0.5">Use standard scripts to maintain compliance and improve matching conversion rates</p>
+          </div>
 
-<div className="col-span-12 lg:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-lg">
-<div className="col-span-1 border border-outline-variant rounded-xl p-md bg-white hover:border-accent-purple transition-all group">
-<div className="flex items-center gap-sm mb-md">
-<span className="w-8 h-8 rounded bg-red-100 text-red-600 flex items-center justify-center">
-<span className="material-symbols-outlined text-[18px]">block</span>
-</span>
-<h4 className="font-headline-sm text-[16px]">Objection: Salary</h4>
-</div>
-<div className="space-y-md">
-<div>
-<p className="text-[10px] font-bold text-outline uppercase mb-xs">Driver Says:</p>
-<p className="hindi-font text-body-md italic text-on-surface-variant">"सैलरी बहुत कम है, मुझे कम से कम 25,000 चाहिए।"</p>
-</div>
-<div className="p-sm bg-accent-purple/5 rounded border-l-2 border-accent-purple">
-<p className="text-[10px] font-bold text-accent-purple uppercase mb-xs">Response:</p>
-<p className="hindi-font text-body-md">"मैं आपकी बात समझ सकता हूँ। इस जॉब में बेसिक के साथ इंसेंटिव और रहने का खर्च भी कंपनी दे रही है, जिससे आपकी बचत ज्यादा होगी।"</p>
-</div>
-</div>
-</div>
-<div className="col-span-1 border border-outline-variant rounded-xl p-md bg-white hover:border-accent-purple transition-all group">
-<div className="flex items-center gap-sm mb-md">
-<span className="w-8 h-8 rounded bg-yellow-100 text-yellow-600 flex items-center justify-center">
-<span className="material-symbols-outlined text-[18px]">location_on</span>
-</span>
-<h4 className="font-headline-sm text-[16px]">Objection: Location</h4>
-</div>
-<div className="space-y-md">
-<div>
-<p className="text-[10px] font-bold text-outline uppercase mb-xs">Driver Says:</p>
-<p className="hindi-font text-body-md italic text-on-surface-variant">"यह लोकेशन मेरे घर से बहुत दूर है।"</p>
-</div>
-<div className="p-sm bg-accent-purple/5 rounded border-l-2 border-accent-purple">
-<p className="text-[10px] font-bold text-accent-purple uppercase mb-xs">Response:</p>
-<p className="hindi-font text-body-md">"दूर तो है, लेकिन वहां कंपनी क्वार्टर दे रही है और रूट बहुत आसान है। क्या आप एक बार मालिक से बात करना चाहेंगे?"</p>
-</div>
-</div>
-</div>
-<div className="col-span-1 border border-outline-variant rounded-xl p-md bg-white hover:border-accent-purple transition-all group">
-<div className="flex items-center gap-sm mb-md">
-<span className="w-8 h-8 rounded bg-blue-100 text-blue-600 flex items-center justify-center">
-<span className="material-symbols-outlined text-[18px]">history</span>
-</span>
-<h4 className="font-headline-sm text-[16px]">Objection: Delay</h4>
-</div>
-<div className="space-y-md">
-<div>
-<p className="text-[10px] font-bold text-outline uppercase mb-xs">Driver Says:</p>
-<p className="hindi-font text-body-md italic text-on-surface-variant">"मैं अभी बिजी हूँ, 4 दिन बाद बताऊंगा।"</p>
-</div>
-<div className="p-sm bg-accent-purple/5 rounded border-l-2 border-accent-purple">
-<p className="text-[10px] font-bold text-accent-purple uppercase mb-xs">Response:</p>
-<p className="hindi-font text-body-md">"सर, ये वैकेंसी कल तक बंद हो जाएगी। सिर्फ 2 मिनट की बात है, अभी मालिक लाइन पर हैं, बात खत्म कर लेते हैं?"</p>
-</div>
-</div>
-</div>
-</div>
+          <div className="flex gap-2">
+            <span className="bg-white border border-gray-200 px-3 py-1 rounded-lg font-bold text-[10px] text-gray-500">v2.6 Vetted today</span>
+          </div>
+        </div>
 
-<div className="col-span-12 lg:col-span-6 bg-surface-container-high rounded-xl p-lg border border-outline-variant">
-<div className="flex items-center gap-md mb-lg">
-<div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white">
-<span className="material-symbols-outlined text-[28px]">groups</span>
-</div>
-<div>
-<h3 className="font-headline-sm">3-Way Intro Explanation</h3>
-<p className="text-body-sm text-on-surface-variant">Transitioning the driver to the Transporter.</p>
-</div>
-</div>
-<div className="space-y-md">
-<div className="bg-white p-md rounded-lg">
-<p className="hindi-font text-body-md leading-relaxed">
-                            "बहुत अच्छा! अब मैं लाइन पर कंपनी के मालिक को ले रहा हूँ। मैं आपका परिचय उनसे कराऊंगा और फिर आप सीधे उनसे रूट और पेमेंट की डिटेल्स फाइनल कर लेना।"
-                        </p>
-</div>
-<ul className="space-y-sm">
-<li className="flex items-center gap-sm text-body-sm">
-<span className="material-symbols-outlined text-primary text-[18px]">check_circle</span>
-                            Briefly explain who the Transporter is.
-                        </li>
-<li className="flex items-center gap-sm text-body-sm">
-<span className="material-symbols-outlined text-primary text-[18px]">check_circle</span>
-                            Mute yourself but stay on the line to monitor.
-                        </li>
-</ul>
-</div>
-</div>
+        {/* Content detail space */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5 font-devanagari text-[12px] leading-relaxed text-gray-850">
+          
+          {activeSection !== 'rejection' ? (
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4 max-w-xl">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Dialogue pitch script</span>
+              
+              <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-150 text-gray-800 leading-relaxed italic">
+                {activeSection === 'opening' && '"नमस्कार! मैं ट्रकमित्र से बात कर रहा हूँ। आपकी प्रोफाइल हमारे पास एक बेहतरीन ड्राइविंग अवसर के लिए मैच हुई है। क्या आपके पास २ मिनट हैं?"'}
+                {activeSection === 'interest' && '"सर, यह ट्रिप शर्मा लॉजिस्टिक्स के साथ ३ महीने की अवधि का है। इसमें प्रति ट्रिप एडवांस पेमेंट सुरक्षा एग्रीमेंट के साथ मिलती है।"'}
+                {activeSection === 'intro' && '"सहमति होने पर मैं आपका और ट्रांसपोर्टर के मैनेजर का एक व्हाट्सएप ग्रुप बना देता हूँ, जहाँ आप सीधे ट्रिप एग्रीमेंट फाइनल कर सकते हैं।"'}
+                {activeSection === 'closure' && '"बधाई हो सुरेश जी! आपकी जॉइनिंग पक्की हो गई है। कल सुबह १० बजे आपको रिपोर्ट करना है। मैं डिटेल्स व्हाट्सएप पर शेयर कर रहा हूँ।"'}
+                {activeSection === 'reopening' && '"नमस्कार! सुरेश जी, दिल्ली-मुंबई रूट पर ट्रेलर चलाने का वैकेंसी आज ओपन हुआ है। आपकी पिछली कॉल नोट के हिसाब से मैंने आपके लिए इसे रोक कर रखा है।"'}
+              </div>
 
-<div className="col-span-12 lg:col-span-6 bg-surface-container-high rounded-xl p-lg border border-outline-variant">
-<div className="flex items-center gap-md mb-lg">
-<div className="w-12 h-12 rounded-full bg-accent-purple flex items-center justify-center text-white">
-<span className="material-symbols-outlined text-[28px]">verified</span>
-</div>
-<div>
-<h3 className="font-headline-sm">Placement Closure</h3>
-<p className="text-body-sm text-on-surface-variant">Confirming the final selection.</p>
-</div>
-</div>
-<div className="space-y-md">
-<div className="bg-white p-md rounded-lg">
-<p className="hindi-font text-body-md leading-relaxed">
-                            "बधाई हो! आपकी जॉइनिंग पक्की हो गई है। कल सुबह 10 बजे आपको ऑफिस पहुँचना है। मैं आपको एड्रेस और मालिक का नंबर मैसेज कर रहा हूँ।"
-                        </p>
-</div>
-<div className="p-sm bg-yellow-50 border border-yellow-200 rounded-lg flex gap-sm">
-<span className="material-symbols-outlined text-yellow-700">warning</span>
-<p className="text-body-sm text-yellow-800 italic">Ensure you confirm the reporting date/time twice before hanging up.</p>
-</div>
-</div>
-</div>
+              <div className="pt-2 border-t border-gray-100 flex justify-between items-center">
+                <span className="text-[10px] text-gray-400 font-semibold uppercase">Script communication guideline</span>
+                <button 
+                  onClick={() => handlePlayAudio(activeSection)}
+                  className="bg-white border border-[#8E44AD] text-[#8E44AD] hover:bg-[#8E44AD] hover:text-white px-3 py-1.5 rounded-lg font-bold transition-all shadow-sm flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">play_arrow</span>
+                  <span>Play model call audio</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            // Rejection/Objection scripts search list
+            <div className="space-y-4 max-w-2xl">
+              
+              {/* Search objections */}
+              <div className="relative">
+                <input 
+                  type="text" 
+                  placeholder="Search Devanagari objections by keyword..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full border border-gray-250 rounded-xl pl-9 pr-4 py-2 outline-none font-semibold text-gray-850"
+                />
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">search</span>
+              </div>
 
-<div className="col-span-12 border border-outline-variant rounded-xl overflow-hidden flex flex-col md:flex-row bg-white">
-<div className="md:w-1/3 p-lg border-r border-outline-variant flex flex-col gap-md">
-<div className="flex items-center gap-md">
-<div className="w-14 h-14 rounded-full overflow-hidden bg-surface-container">
-<img className="w-full h-full object-cover" data-alt="A professional headshot of a middle-aged Indian truck driver with a short beard, wearing a clean collared shirt. He has a confident, friendly expression. The background is a slightly blurred transport hub with large trucks, rendered in a crisp, high-key modern UI style with natural daylighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQzLcAXP34zfeuSfQo8n_QlGIqP0HWtYcl3Nf3YkBxeINzyIlADnJsND4Qi_-qIjRsOWUZ_oZn-R5QIp7RS4CYlNf63ENzBbdgl2wJ_YNTuxKxSMWgFAr7ZsksEMvIQeCwtOzS1zlEmHh69nIeI0JVtjbjAL6XLoZSvBGMGo1chaAgHcEc87SPH-VA3--AdhJAp2kWZceyqQ5Jk9qujGc5eHWSTDLCTa0Hi2KXqJeweQDn5EoWlrJ55qGR7CZY9cU395rxbdkS-Ek"/>
-</div>
-<div>
-<h4 className="font-headline-sm">Rakesh Kumar</h4>
-<p className="text-body-sm text-on-surface-variant">12 Yrs Experience • Delhi NCR</p>
-</div>
-</div>
-<div className="grid grid-cols-2 gap-sm">
-<div className="p-sm bg-surface-container-low rounded">
-<p className="text-[10px] font-bold text-outline">CURRENT SALARY</p>
-<p className="font-mono-data">₹18,500</p>
-</div>
-<div className="p-sm bg-surface-container-low rounded">
-<p className="text-[10px] font-bold text-outline">EXPECTED</p>
-<p className="font-mono-data text-primary">₹22,000+</p>
-</div>
-</div>
-<div className="flex flex-wrap gap-xs">
-<span className="bg-green-100 text-green-700 px-sm py-1 rounded text-[10px] font-bold">VERIFIED KYC</span>
-<span className="bg-blue-100 text-blue-700 px-sm py-1 rounded text-[10px] font-bold">HAZMAT EXP</span>
-</div>
-</div>
-<div className="flex-1 p-lg flex flex-col justify-between">
-<div>
-<h4 className="font-label-md text-outline uppercase mb-md">Active Script Matching</h4>
-<div className="space-y-sm">
-<div className="flex items-center justify-between p-sm border border-outline-variant rounded-lg">
-<span className="text-body-md">Recommended Script</span>
-<span className="bg-accent-purple text-white px-md py-xs rounded-full text-[10px] font-bold">MM-10 High Value</span>
-</div>
-<div className="flex items-center justify-between p-sm border border-outline-variant rounded-lg">
-<span className="text-body-md">Best Opening</span>
-<span className="text-body-sm font-medium">"Senior Expert Pitch"</span>
-</div>
-</div>
-</div>
-<div className="flex justify-end gap-md mt-lg">
-<button className="px-lg py-sm border border-outline text-on-surface rounded-lg font-bold hover:bg-surface-variant transition-all">Send SMS</button>
-<button className="px-xl py-sm bg-primary text-on-primary rounded-lg font-bold flex items-center gap-sm hover:opacity-90 transition-all">
-<span className="material-symbols-outlined">call</span>
-                            Start Matchmaking
-                        </button>
-</div>
-</div>
-</div>
-</div>
+              {/* Stacked objections cards */}
+              <div className="space-y-3">
+                {sortedObjections.map((obj, i) => (
+                  <div key={i} className="bg-white border border-gray-250 rounded-xl p-4 shadow-sm space-y-3 relative">
+                    <button 
+                      onClick={() => handleToggleBookmark(i)}
+                      className={`absolute top-4 right-4 material-symbols-outlined text-base ${
+                        obj.bookmarked ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                      title={obj.bookmarked ? 'Bookmarked' : 'Add bookmark'}
+                    >
+                      star
+                    </button>
 
-<footer className="mt-xl pt-lg border-t border-outline-variant flex justify-between items-center text-body-sm text-on-surface-variant">
-<p>© 2024 TruckMitr Matchmaking Systems. All calls are recorded for quality assurance.</p>
-<div className="flex gap-lg">
-<a className="hover:text-primary transition-colors" href="#">Privacy Policy</a>
-<a className="hover:text-primary transition-colors" href="#">Help Center</a>
-<a className="hover:text-primary transition-colors" href="#">System Status</a>
-</div>
-</footer>
-</main>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-purple-50 text-purple-700 text-[9.5px] font-extrabold px-2 py-0.5 rounded uppercase">
+                        {obj.reason}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-[10px] text-gray-450 font-bold uppercase block mb-1">Driver Objection:</span>
+                        <p className="italic text-gray-850 font-bold">"{obj.driverSays}"</p>
+                      </div>
+                      <div className="bg-purple-50/40 p-3 rounded-lg border-l-4 border-l-[#8E44AD]">
+                        <span className="text-[10px] text-[#7D3C98] font-bold uppercase block mb-1">Suggested Pivot Response:</span>
+                        <p className="text-gray-800">"{obj.response}"</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+            </div>
+          )}
+
+        </div>
+      </section>
+
+    </main>
   );
 };
 

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-interface CallHistoryItem {
-  id: string;
-  type: string;
-  timestamp: string;
-  content: string;
+interface CallHistory {
+  date: string;
+  duration: string;
+  status: string;
+  caller: string;
 }
 
 interface Lead {
@@ -12,419 +13,540 @@ interface Lead {
   tmid: string;
   name: string;
   phone: string;
-  location: string;
-  registrationDate: string;
-  category: 'fresh' | 'callbacks' | 'nr' | 'funnel';
-  statusLabel: string;
+  city: string;
+  state: string;
+  registeredDaysAgo: number;
+  attempts: ('nr' | 'connected' | 'empty')[];
+  lastStatus: string;
   vehicleType: string;
-  vehicleReg: string;
   licenseType: string;
-  licenseExp: string;
-  routes: string;
-  routesType: string;
-  kycStatus: string;
-  history: CallHistoryItem[];
+  experience: string;
+  preferredRoute: string;
+  subscribed: boolean;
+  whatsapp: boolean;
+  history: CallHistory[];
   notes: string;
 }
 
 export const DwCallQueue: React.FC = () => {
-  // Mock Leads Data
+  const navigate = useNavigate();
+
+  // Mock Leads Data conforming to Spec
   const [leads, setLeads] = useState<Lead[]>([
     {
       id: 'L1',
-      tmid: '8842',
-      name: 'Arjun Vardhan',
-      phone: '+91 98765 43210',
-      location: 'Mumbai, MH',
-      registrationDate: '22 Oct',
-      category: 'funnel',
-      statusLabel: 'UNSUBSCRIBED',
-      vehicleType: 'TATA ACE (14ft)',
-      vehicleReg: 'MH 01 CZ 2234',
-      licenseType: 'Active / HGV',
-      licenseExp: '14 Nov 2026',
-      routes: 'Mumbai - Pune',
-      routesType: 'Inter-state approved',
-      kycStatus: 'KYC Done',
+      tmid: 'DR-48291',
+      name: 'Suresh Yadav',
+      phone: '+91-98765-43210',
+      city: 'Agra',
+      state: 'Uttar Pradesh',
+      registeredDaysAgo: 2,
+      attempts: ['nr', 'nr', 'empty'],
+      lastStatus: 'NR',
+      vehicleType: 'Heavy Truck',
+      licenseType: 'HMV',
+      experience: '6 years',
+      preferredRoute: 'Delhi–Agra',
+      subscribed: false,
+      whatsapp: true,
+      notes: 'Wants to check contract details. Try calling before 12 PM.',
       history: [
-        { id: 'H11', type: 'Call Failed - No Response', timestamp: 'Today, 11:20 AM', content: 'Attempted standard registration follow-up. Dialed twice, no response.' },
-        { id: 'H12', type: 'Connected (08:14)', timestamp: '24 Oct, 04:45 PM', content: 'Discussed route pricing. Lead is interested but requested a callback next week after confirming vehicle maintenance schedule.' },
-        { id: 'H13', type: 'WhatsApp Sent', timestamp: '22 Oct, 10:00 AM', content: 'Onboarding link and documentation list sent via automated trigger.' }
-      ],
-      notes: 'Fleet owner. Interested in Bhiwandi terminal loading contracts.'
+        { date: '17 Jun, 10:42 AM', duration: '2m 14s', status: 'NR', caller: 'You' },
+        { date: '17 Jun, 9:15 AM', duration: '0m 0s', status: 'Switch Off', caller: 'You' }
+      ]
     },
     {
       id: 'L2',
-      tmid: '9012',
-      name: 'Priya Sharma',
-      phone: '+91 81234 56789',
-      location: 'Indore, MP',
-      registrationDate: '24 Oct',
-      category: 'nr',
-      statusLabel: 'NR x2 (LAST: 2H AGO)',
-      vehicleType: 'Mahindra Bolero',
-      vehicleReg: 'MP 09 AB 5678',
-      licenseType: 'Active / LMV',
-      licenseExp: '18 Dec 2027',
-      routes: 'Indore - Dewas',
-      routesType: 'Local logistics route',
-      kycStatus: 'Pending Verification',
+      tmid: 'DR-48292',
+      name: 'Rajesh Kumar',
+      phone: '+91-98123-45678',
+      city: 'Bhiwandi',
+      state: 'Maharashtra',
+      registeredDaysAgo: 4, // >3 days -> Red border / funnel escalation
+      attempts: ['nr', 'nr', 'nr'],
+      lastStatus: 'NR',
+      vehicleType: 'Tata Ace',
+      licenseType: 'LMV',
+      experience: '3 years',
+      preferredRoute: 'Mumbai–Pune',
+      subscribed: true,
+      whatsapp: true,
+      notes: 'Subscribed but has not uploaded DL yet.',
       history: [
-        { id: 'H21', type: 'No Response', timestamp: 'Today, 02:30 PM', content: 'Customer did not pick up. Left a voicemail.' },
-        { id: 'H22', type: 'No Response', timestamp: 'Today, 12:15 PM', content: 'Call rang out completely. No callback received.' }
-      ],
-      notes: 'Needs help uploading driving license. Try calling in evening.'
+        { date: '16 Jun, 11:20 AM', duration: '1m 05s', status: 'NR', caller: 'You' },
+        { date: '15 Jun, 2:30 PM', duration: '0m 0s', status: 'Busy', caller: 'You' },
+        { date: '15 Jun, 9:00 AM', duration: '0m 0s', status: 'Switch Off', caller: 'You' }
+      ]
     },
     {
       id: 'L3',
-      tmid: '1154',
-      name: 'Rahul Deshmukh',
-      phone: '+91 71234 56789',
-      location: 'Pune, MH',
-      registrationDate: 'Today',
-      category: 'fresh',
-      statusLabel: 'FRESH LEAD',
+      tmid: 'DR-48293',
+      name: 'Amit Singh',
+      phone: '+91-88888-88888',
+      city: 'Patna',
+      state: 'Bihar',
+      registeredDaysAgo: 0, // fresh -> Blue border
+      attempts: ['empty', 'empty', 'empty'],
+      lastStatus: '',
       vehicleType: 'E-Rickshaw Cargo',
-      vehicleReg: 'MH 12 XY 9876',
-      licenseType: 'Active / LMV',
-      licenseExp: '02 Jan 2028',
-      routes: 'Pune City',
-      routesType: 'Intra-city short-haul',
-      kycStatus: 'KYC Done',
-      history: [
-        { id: 'H31', type: 'Lead Created', timestamp: 'Today, 08:00 AM', content: 'Self-registered via driver app.' }
-      ],
-      notes: 'Very interested in local grocery delivery load contracts.'
+      licenseType: 'LMV',
+      experience: '2 years',
+      preferredRoute: 'Patna Local',
+      subscribed: false,
+      whatsapp: false,
+      notes: '',
+      history: []
     },
     {
       id: 'L4',
-      tmid: '7721',
-      name: 'Meera Reddy',
-      phone: '+91 90909 09090',
-      location: 'Bangalore, KA',
-      registrationDate: '20 Oct',
-      category: 'callbacks',
-      statusLabel: 'CALLBACK: 14:30',
-      vehicleType: 'Ashok Leyland Dost',
-      vehicleReg: 'KA 03 MN 4321',
-      licenseType: 'Active / HGV',
-      licenseExp: '19 Aug 2026',
-      routes: 'Bangalore - Chennai',
-      routesType: 'National Highway corridor',
-      kycStatus: 'KYC Done',
+      tmid: 'DR-48294',
+      name: 'Mahendra Singh',
+      phone: '+91-77777-77777',
+      city: 'Jaipur',
+      state: 'Rajasthan',
+      registeredDaysAgo: 1, // Callback scheduled for today -> Green border
+      attempts: ['connected', 'empty', 'empty'],
+      lastStatus: 'Callback Requested',
+      vehicleType: 'Heavy Truck',
+      licenseType: 'HMV',
+      experience: '8 years',
+      preferredRoute: 'Jaipur–Delhi',
+      subscribed: false,
+      whatsapp: true,
+      notes: 'Call back to finalize Verified Plan setup.',
       history: [
-        { id: 'H41', type: 'Connected (04:12)', timestamp: '20 Oct, 02:00 PM', content: 'Requested callback on Thursday to review standard pricing for Chennai long-haul.' }
-      ],
-      notes: 'Regular driver with steady fleet. High priority closure.'
+        { date: '18 Jun, 4:00 PM', duration: '4m 12s', status: 'Connected', caller: 'You' }
+      ]
     }
   ]);
 
   // UI States
-  const [selectedLeadId, setSelectedLeadId] = useState('L1');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'fresh' | 'callbacks' | 'nr' | 'funnel'>('all');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string>('L1');
+  const [activeTab, setActiveTab] = useState<'all' | 'fresh' | 'callbacks' | 'nr' | 'funnel'>('all');
+  const [sortBy, setSortBy] = useState<'oldest' | 'callbacks' | 'sla'>('oldest');
+  const [backupMode, setBackupMode] = useState<boolean>(true);
+  const [toast, setToast] = useState<string | null>(null);
+  
+  // Note auto-save states
+  const [notesText, setNotesText] = useState<string>('');
+  const [saveTimestamp, setSaveTimestamp] = useState<string>('');
+  const saveTimerRef = useRef<any | null>(null);
 
-  const selectedLead = leads.find(l => l.id === selectedLeadId) || leads[0];
+  const selectedLead = leads.find(l => l.id === selectedId) || leads[0];
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
+  // Sync notes when selected lead changes
+  useEffect(() => {
+    if (selectedLead) {
+      setNotesText(selectedLead.notes);
+      setSaveTimestamp('');
+    }
+  }, [selectedId]);
+
+  // Auto-save logic (5s after typing stops)
+  const handleNotesChange = (val: string) => {
+    setNotesText(val);
+    
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    saveTimerRef.current = setTimeout(() => {
+      setLeads(prevLeads =>
+        prevLeads.map(l => (l.id === selectedLead.id ? { ...l, notes: val } : l))
+      );
+      const now = new Date();
+      setSaveTimestamp(`Saved at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`);
+    }, 5000);
   };
 
-  const handleDialLead = (leadName: string) => {
-    showToast(`Dialing ${leadName}... Connecting via Softphone Engine.`);
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
+  const triggerToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
   };
 
-  const handleSendWhatsapp = (leadName: string) => {
-    showToast(`WhatsApp onboarding brochure sent to ${leadName}!`);
+  // Helper for left border color
+  const getBorderColorClass = (l: Lead) => {
+    if (l.lastStatus === 'Callback Requested' || l.id === 'L4') {
+      return 'border-[#27AE60]'; // Green
+    }
+    if (l.registeredDaysAgo > 3) {
+      return 'border-[#E74C3C]'; // Red (registered >3 days)
+    }
+    const nrCount = l.attempts.filter(a => a === 'nr').length;
+    if (nrCount >= 2) {
+      return 'border-[#F29C12]'; // Orange
+    }
+    if (l.attempts.every(a => a === 'empty')) {
+      return 'border-[#3498DB]'; // Blue
+    }
+    return 'border-gray-200';
   };
 
-  const handleUpdateNotes = (notesText: string) => {
-    setLeads(prevLeads =>
-      prevLeads.map(l => (l.id === selectedLead.id ? { ...l, notes: notesText } : l))
-    );
+  // Filter & Sort Logic
+  const getFilteredLeads = () => {
+    let result = [...leads];
+
+    // Filter
+    if (activeTab === 'fresh') {
+      result = result.filter(l => l.registeredDaysAgo <= 1 && l.attempts.length === 0);
+    } else if (activeTab === 'callbacks') {
+      result = result.filter(l => l.lastStatus === 'Callback Requested');
+    } else if (activeTab === 'nr') {
+      result = result.filter(l => l.attempts.includes('nr'));
+    } else if (activeTab === 'funnel') {
+      result = result.filter(l => l.registeredDaysAgo > 3);
+    }
+
+    // Sort
+    if (sortBy === 'oldest') {
+      result.sort((a, b) => b.registeredDaysAgo - a.registeredDaysAgo);
+    } else if (sortBy === 'callbacks') {
+      result.sort((a, b) => {
+        const aVal = a.lastStatus === 'Callback Requested' ? 1 : 0;
+        const bVal = b.lastStatus === 'Callback Requested' ? 1 : 0;
+        return bVal - aVal;
+      });
+    } else if (sortBy === 'sla') {
+      // SLA order: days in queue descending
+      result.sort((a, b) => b.registeredDaysAgo - a.registeredDaysAgo);
+    }
+
+    return result;
   };
 
-  const filteredLeads = leads.filter(
-    l => activeFilter === 'all' || l.category === activeFilter
-  );
+  const filteredLeads = getFilteredLeads();
+
+  // Active call trigger
+  const handleCallNow = (lead: Lead) => {
+    navigate('/dw/dw-active-call-focus', {
+      state: {
+        leadId: lead.id,
+        tmid: lead.tmid,
+        name: lead.name,
+        phone: lead.phone,
+        location: `${lead.city}, ${lead.state}`,
+        vehicleType: lead.vehicleType,
+        licenseType: lead.licenseType,
+        experience: lead.experience,
+        preferredRoute: lead.preferredRoute,
+        subscribed: lead.subscribed,
+        whatsapp: lead.whatsapp,
+        history: lead.history
+      }
+    });
+  };
 
   return (
-    <main className="h-[calc(100vh-88px)] flex bg-white overflow-hidden border border-outline-variant rounded-xl relative">
+    <main className="h-[calc(100vh-80px)] flex bg-white overflow-hidden border border-gray-200 rounded-xl relative">
       
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="absolute top-md left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface px-lg py-sm rounded shadow-lg z-50 text-xs font-semibold flex items-center gap-xs border border-outline animate-in fade-in slide-in-from-top-2">
-          <span className="material-symbols-outlined text-[16px] text-accent-success">check_circle</span>
-          {toastMessage}
+      {/* Toast */}
+      {toast && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
+          <span className="w-2 h-2 rounded-full bg-[#27AE60]"></span>
+          {toast}
         </div>
       )}
 
-      {/* Left List Pane (Call Queue) */}
-      <section className="w-[380px] flex flex-col border-r border-outline-variant bg-surface-container-lowest shrink-0">
-        <div className="p-md bg-surface-container-low border-b border-outline-variant shrink-0">
-          <div className="flex justify-between items-center mb-md">
-            <h2 className="text-headline-sm font-headline-sm font-bold">Call Queue</h2>
-            <div className="flex items-center gap-xs text-on-surface-variant cursor-pointer text-xs">
-              <span>Sort by: Priority</span>
-              <span className="material-symbols-outlined text-sm">expand_more</span>
+      {/* Left Panel - Staging Call Queue */}
+      <section className="w-[380px] border-r border-gray-200 flex flex-col bg-gray-50/50 shrink-0">
+        
+        {/* Backup Mode Banner */}
+        {backupMode && (
+          <div className="bg-[#FFF9E6] border-b border-[#F2C94C] px-3 py-1.5 text-[11px] text-[#D35400] font-semibold flex justify-between items-center shrink-0">
+            <span>⚠️ BACKUP MODE — Handling overflow from primary queue</span>
+            <button onClick={() => setBackupMode(false)} className="hover:text-black font-bold">×</button>
+          </div>
+        )}
+
+        {/* Tab & Sort Header */}
+        <div className="p-3 border-b border-gray-200 shrink-0 bg-white">
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Queue Routing</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-gray-400">Sort:</span>
+              <select 
+                value={sortBy} 
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-transparent text-[11px] font-semibold text-gray-700 border-none outline-none cursor-pointer focus:ring-0 p-0"
+              >
+                <option value="oldest">Oldest First</option>
+                <option value="callbacks">Callbacks First</option>
+                <option value="sla">SLA First</option>
+              </select>
             </div>
           </div>
-          <div className="flex gap-sm overflow-x-auto pb-xs custom-scrollbar">
+
+          {/* Filter Tab Row */}
+          <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
             {[
-              { filter: 'all', label: `All (${leads.length})` },
-              { filter: 'fresh', label: 'Fresh' },
-              { filter: 'callbacks', label: 'Callbacks' },
-              { filter: 'nr', label: 'NR' },
-              { filter: 'funnel', label: 'Funnel' }
-            ].map(t => (
+              { id: 'all', label: `All (${leads.length})` },
+              { id: 'fresh', label: 'Fresh (1)' },
+              { id: 'callbacks', label: 'Callbacks (1)' },
+              { id: 'nr', label: 'NR (2)' },
+              { id: 'funnel', label: 'Funnel (1)' }
+            ].map(tab => (
               <button
-                key={t.filter}
-                onClick={() => setActiveFilter(t.filter as any)}
-                className={`px-3 py-1 text-xs font-semibold rounded-full flex-shrink-0 transition-colors ${
-                  activeFilter === t.filter
-                    ? 'bg-primary text-on-primary font-bold'
-                    : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap border transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-[#27AE60] text-white border-[#27AE60]'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
                 }`}
               >
-                {t.label}
+                {tab.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Lead Rows list */}
-        <div className="flex-grow overflow-y-auto custom-scrollbar">
+        {/* Lead List Area */}
+        <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-gray-100">
           {filteredLeads.length > 0 ? (
-            filteredLeads.map(l => {
-              const isLeadSelected = l.id === selectedLeadId;
-              // Set left border color based on category
-              const categoryColorMap = {
-                fresh: 'border-[#3498DB]',
-                callbacks: 'border-[#27AE60]',
-                nr: 'border-[#F39C12]',
-                funnel: 'border-[#E74C3C]'
-              };
-              return (
-                <div
-                  key={l.id}
-                  onClick={() => setSelectedLeadId(l.id)}
-                  className={`group flex border-l-4 ${categoryColorMap[l.category]} p-md border-b border-outline-variant hover:bg-surface-container-low cursor-pointer transition-colors ${
-                    isLeadSelected ? 'bg-surface-container-low font-bold' : 'bg-white'
-                  }`}
-                >
-                  <div className="flex-1">
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-bold text-sm text-on-surface">{l.name}</h3>
-                      <span className="bg-primary/10 text-primary text-[10px] px-1.5 py-0.5 rounded font-bold">TMID: {l.tmid}</span>
-                    </div>
-                    <div className="flex items-center gap-xs mt-1 text-on-surface-variant text-xs font-normal">
-                      <span>{l.location}</span>
-                      <span className="w-1 h-1 bg-outline-variant rounded-full"></span>
-                      <span>Reg: {l.registrationDate}</span>
-                    </div>
-                    {l.statusLabel && (
-                      <div className="mt-2 inline-flex items-center px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant text-[10px] font-bold uppercase tracking-wide border border-outline-variant/30">
-                        {l.statusLabel}
-                      </div>
-                    )}
+            filteredLeads.map(l => (
+              <div 
+                key={l.id}
+                onClick={() => setSelectedId(l.id)}
+                className={`p-3 cursor-pointer flex border-l-4 transition-all relative ${getBorderColorClass(l)} ${
+                  l.id === selectedId ? 'bg-[#EAFAF1]/30 font-medium' : 'bg-white hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex-1 min-w-0 pr-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-gray-900 truncate">{l.name}</span>
+                    <span className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1 rounded">{l.tmid}</span>
                   </div>
-                  <div className="flex flex-col justify-center pl-sm">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleDialLead(l.name); }}
-                      className="bg-primary hover:bg-primary-container text-white p-2 rounded-full shadow-sm hover:scale-105 active:scale-95 transition-all"
-                    >
-                      <span className="material-symbols-outlined text-[16px] flex items-center justify-center" style={{ fontVariationSettings: "'FILL' 1" }}>call</span>
-                    </button>
+                  
+                  <div className="text-[12px] text-gray-500 mt-0.5">{l.city}, {l.state}</div>
+
+                  <div className="flex justify-between items-center mt-2.5">
+                    <span className="text-[11px] text-gray-400">
+                      {l.registeredDaysAgo === 0 ? 'Registered today' : `Registered: ${l.registeredDaysAgo} days ago`}
+                    </span>
+                    
+                    {/* Attempt dots */}
+                    <div className="flex gap-1">
+                      {l.attempts.map((att, i) => (
+                        <span 
+                          key={i} 
+                          className={`w-2.5 h-2.5 rounded-full border ${
+                            att === 'nr' ? 'bg-red-500 border-red-500' :
+                            att === 'connected' ? 'bg-[#27AE60] border-[#27AE60]' :
+                            'bg-transparent border-gray-300'
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
+
+                  {/* Last Status Tag */}
+                  {l.lastStatus && (
+                    <div className="mt-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                      Last: {l.lastStatus}
+                    </div>
+                  )}
                 </div>
-              );
-            })
+
+                <div className="flex flex-col justify-center">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleCallNow(l); }}
+                    className="w-8 h-8 rounded-full bg-[#27AE60] hover:bg-[#219653] text-white flex items-center justify-center shadow transition-transform active:scale-95"
+                    title="Call Lead"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">call</span>
+                  </button>
+                </div>
+              </div>
+            ))
           ) : (
-            <div className="p-xl text-center text-on-surface-variant italic text-xs">No leads found in this queue category.</div>
+            <div className="p-8 text-center text-gray-400 text-xs italic">
+              Queue clear for today. New leads arrive from 9 AM tomorrow.
+            </div>
           )}
         </div>
       </section>
 
-      {/* Right Detail Pane */}
-      <section className="flex-grow flex flex-col bg-surface overflow-hidden">
+      {/* Right Panel - Lead details profile cockpit */}
+      <section className="flex-1 flex flex-col bg-white overflow-hidden min-w-0">
         
-        {/* Detail Header */}
-        <div className="flex-grow overflow-y-auto custom-scrollbar p-xl space-y-lg">
-          <div className="flex justify-between items-start">
+        {/* Detail Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          
+          {/* Header block */}
+          <div className="flex justify-between items-start gap-4">
             <div>
-              <div className="flex items-center gap-md">
-                <h1 className="text-headline-md font-bold text-on-surface">{selectedLead.name}</h1>
-                <span className="px-2 py-0.5 bg-error-container text-on-error-container text-[11px] rounded border border-error/20 font-bold uppercase tracking-wider">
-                  {selectedLead.category === 'callbacks' ? 'Pending Action' : 'Unsubscribed'}
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-bold text-gray-900">{selectedLead.name}</h1>
+                <span className="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{selectedLead.tmid}</span>
+                <span className="border border-[#27AE60] text-[#27AE60] text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                  DRIVER
                 </span>
-                <div className="flex items-center gap-1 px-2 py-0.5 bg-[#25D366]/10 text-[#25D366] text-[11px] rounded border border-[#25D366]/20 font-bold">
-                  <span className="material-symbols-outlined text-[14px]">chat</span> WhatsApp Active
-                </div>
               </div>
-              <div className="flex items-center gap-md mt-sm text-xs text-on-surface-variant font-medium">
-                <span>TMID: {selectedLead.tmid}-X</span>
-                <span>•</span>
-                <span>Fleet Partner</span>
-                <span>•</span>
-                <span>{selectedLead.location}</span>
-              </div>
+              <div className="text-sm text-gray-500 mt-1">{selectedLead.city}, {selectedLead.state}</div>
             </div>
-            <div className="flex gap-sm">
-              <button 
-                onClick={() => showToast('Edit lead profile modal details...')}
-                className="p-2 border border-outline-variant rounded hover:bg-surface-container-high transition-colors"
-                title="Edit Details"
-              >
-                <span className="material-symbols-outlined text-[18px]">edit</span>
-              </button>
-              <button 
-                onClick={() => showToast('Sharing driver credentials links...')}
-                className="p-2 border border-outline-variant rounded hover:bg-surface-container-high transition-colors"
-                title="Share Profile"
-              >
-                <span className="material-symbols-outlined text-[18px]">share</span>
-              </button>
+            
+            {/* WhatsApp Status Chip */}
+            <div>
+              {selectedLead.whatsapp ? (
+                <span className="bg-[#EAFAF1] text-[#27AE60] text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border border-[#27AE60]/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60]"></span> Has WhatsApp ✓
+                </span>
+              ) : (
+                <span className="bg-gray-100 text-gray-400 text-xs font-semibold px-2.5 py-1 rounded-full">
+                  No WhatsApp recorded
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Quick Specifications Cards */}
-          <div className="grid grid-cols-4 gap-md text-xs">
-            <div className="bg-white p-lg border border-outline-variant rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider block font-semibold mb-1">Vehicle Details</span>
-              <div className="font-bold text-on-surface text-sm">{selectedLead.vehicleType}</div>
-              <span className="text-on-surface-variant mt-sm block text-[11px] font-mono-data">{selectedLead.vehicleReg}</span>
-            </div>
-            <div className="bg-white p-lg border border-outline-variant rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider block font-semibold mb-1">Driving License</span>
-              <div className="font-bold text-on-surface text-sm">{selectedLead.licenseType}</div>
-              <span className="text-error mt-sm block text-[11px] font-bold">Expiry: {selectedLead.licenseExp}</span>
-            </div>
-            <div className="bg-white p-lg border border-outline-variant rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider block font-semibold mb-1">Preferred Corridor</span>
-              <div className="font-bold text-on-surface text-sm">{selectedLead.routes}</div>
-              <span className="text-on-surface-variant mt-sm block text-[11px]">{selectedLead.routesType}</span>
-            </div>
-            <div className="bg-white p-lg border border-outline-variant rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider block font-semibold mb-1">KYC Status</span>
-              <div className="flex items-center gap-xs mt-1 text-sm font-bold text-primary">
-                <span className="material-symbols-outlined text-[16px] text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
-                <span>{selectedLead.kycStatus}</span>
+          {/* Subscription Status Badge */}
+          <div className="w-full">
+            {selectedLead.subscribed ? (
+              <div className="bg-[#EAFAF1] border border-[#27AE60]/20 text-[#27AE60] p-3 rounded-lg flex items-center justify-between text-xs font-bold shadow-sm">
+                <span>SUBSCRIBED: VERIFIED PLAN</span>
+                <span>Verified ₹299 — expires 12 Sep 2026</span>
+              </div>
+            ) : (
+              <div className="bg-[#FDEDEC] border border-red-100 text-[#C0392B] p-3 rounded-lg flex items-center justify-between text-xs font-bold shadow-sm">
+                <span>NOT SUBSCRIBED</span>
+                <span className="uppercase text-[10px] bg-red-100 px-1.5 py-0.5 rounded">Conversion Target Pending</span>
+              </div>
+            )}
+          </div>
+
+          {/* Profile Card key-value grid */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Driver Profile</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+              <div>
+                <span className="text-gray-400 block uppercase text-[10px]">Vehicle Type</span>
+                <span className="font-bold text-gray-800 mt-0.5 block">{selectedLead.vehicleType}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 block uppercase text-[10px]">License Type</span>
+                <span className="font-bold text-gray-800 mt-0.5 block">{selectedLead.licenseType}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 block uppercase text-[10px]">Experience</span>
+                <span className="font-bold text-gray-800 mt-0.5 block">{selectedLead.experience}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 block uppercase text-[10px]">Preferred Route</span>
+                <span className="font-bold text-gray-800 mt-0.5 block">{selectedLead.preferredRoute}</span>
               </div>
             </div>
           </div>
 
-          {/* History Timeline & Notes Grid */}
-          <div className="grid grid-cols-12 gap-lg items-start">
+          {/* History and Notes Column Layout */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             
             {/* Timeline */}
-            <div className="col-span-7">
-              <h3 className="font-bold text-xs uppercase text-on-surface-variant tracking-wider mb-md flex items-center gap-xs">
-                <span className="material-symbols-outlined text-[16px]">history</span> Call & Message History
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1">
+                <span className="material-symbols-outlined text-[16px]">history</span> Call History Timeline
               </h3>
               
-              <div className="relative space-y-md before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-outline-variant pl-4">
-                {selectedLead.history.map(item => (
-                  <div key={item.id} className="relative pl-8 animate-in fade-in duration-300">
-                    <div className="absolute left-0 top-1 w-6 h-6 bg-surface-container-high rounded-full border-2 border-white flex items-center justify-center z-10">
-                      <div className="w-2.5 h-2.5 bg-outline rounded-full"></div>
-                    </div>
-                    <div className="bg-white p-md rounded-lg border border-outline-variant/60 shadow-sm text-xs">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-on-surface">{item.type}</span>
-                        <span className="text-[10px] text-on-surface-variant">{item.timestamp}</span>
+              <div className="border border-gray-200 rounded-xl p-4 bg-white max-h-[250px] overflow-y-auto divide-y divide-gray-100">
+                {selectedLead.history.length > 0 ? (
+                  selectedLead.history.map((hist, idx) => (
+                    <div key={idx} className="py-2.5 first:pt-0 last:pb-0 text-xs">
+                      <div className="flex justify-between items-center mb-1 font-semibold">
+                        <span className="text-gray-800">{hist.date} — {hist.duration}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                          hist.status === 'Connected' ? 'bg-[#EAFAF1] text-[#27AE60]' : 'bg-red-50 text-red-500'
+                        }`}>
+                          {hist.status}
+                        </span>
                       </div>
-                      <p className="text-on-surface-variant leading-relaxed font-normal">{item.content}</p>
+                      <p className="text-gray-500">Caller: {hist.caller}</p>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-400 italic text-center py-4">No previous calls — this will be the first attempt.</p>
+                )}
               </div>
             </div>
-            
-            {/* Operator Notes editor */}
-            <div className="col-span-5 space-y-lg">
-              <h3 className="font-bold text-xs uppercase text-on-surface-variant tracking-wider mb-md flex items-center gap-xs">
-                <span className="material-symbols-outlined text-[16px]">notes</span> Operator Remarks
+
+            {/* Note Editor */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1">
+                <span className="material-symbols-outlined text-[16px]">notes</span> Lead Notes
               </h3>
               
-              <div className="bg-white border border-outline-variant rounded-lg flex flex-col min-h-[200px] shadow-sm">
-                <textarea 
-                  className="flex-1 p-md bg-transparent border-none focus:ring-0 text-xs resize-none placeholder:text-on-surface-variant outline-none" 
-                  placeholder="Enter custom driver notes or log follow-up details..."
-                  value={selectedLead.notes}
-                  onChange={(e) => handleUpdateNotes(e.target.value)}
+              <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm flex flex-col relative min-h-[140px]">
+                <textarea
+                  value={notesText}
+                  onChange={(e) => handleNotesChange(e.target.value)}
+                  placeholder="Type notes here... Auto-saves 5s after typing stops."
+                  className="flex-grow w-full border-none p-0 focus:ring-0 text-xs resize-none outline-none placeholder:text-gray-400 min-h-[100px]"
                 />
-                <div className="p-sm bg-surface-container-low border-t border-outline-variant flex justify-between items-center shrink-0">
-                  <span className="text-[10px] text-on-surface-variant italic">Changes auto-saved</span>
-                  <button 
-                    onClick={() => showToast('Custom tag added successfully!')}
-                    className="text-primary font-bold text-[10px] uppercase hover:bg-surface-container-high px-2 py-1 rounded transition-colors"
-                  >
-                    ADD TAG
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-white p-md border border-outline-variant rounded-lg shadow-sm text-xs">
-                <span className="text-[10px] text-on-surface-variant uppercase font-bold block mb-sm">Frequent Operational Issues</span>
-                <div className="flex flex-wrap gap-xs">
-                  {['Pricing Objection', 'DL Pending', 'Corridor Mismatch', 'E-Rickshaw Range'].map(tag => (
-                    <span 
-                      key={tag} 
-                      onClick={() => handleUpdateNotes(selectedLead.notes ? `${selectedLead.notes} [${tag}]` : `[${tag}]`)}
-                      className="px-2 py-1 bg-surface-container hover:bg-surface-container-high rounded text-[10px] font-semibold border border-outline-variant/40 cursor-pointer transition-colors"
-                    >
-                      {tag}
-                    </span>
-                  ))}
+                <div className="text-[10px] text-gray-400 text-right mt-1 italic select-none">
+                  {saveTimestamp || 'All changes saved'}
                 </div>
               </div>
             </div>
+
           </div>
+
         </div>
 
-        {/* Footer Actions Panel */}
-        <div className="bg-white border-t border-outline-variant h-20 px-xl flex justify-between items-center shrink-0 shadow-[0_-2px_12px_rgba(0,0,0,0.03)] z-10">
-          <div className="flex gap-md">
+        {/* Bottom Fixed Action Bar */}
+        <div className="border-t border-gray-200 bg-white p-4 flex flex-wrap justify-between items-center gap-2 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] shrink-0 z-10">
+          <div className="flex items-center gap-2 flex-grow md:flex-grow-0">
             <button 
-              onClick={() => handleDialLead(selectedLead.name)}
-              className="bg-primary hover:bg-primary-container text-white h-12 px-8 rounded-lg font-bold flex items-center gap-3 transition-colors shadow-md text-xs uppercase"
+              onClick={() => handleCallNow(selectedLead)}
+              className="bg-[#27AE60] hover:bg-[#219653] text-white h-11 px-6 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-sm flex-1 md:flex-none justify-center active:scale-[0.98]"
             >
-              <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>call</span>
-              <span>CALL NOW</span>
+              <span className="material-symbols-outlined text-[18px]">phone</span> Call Now
             </button>
+            
             <button 
-              onClick={() => handleSendWhatsapp(selectedLead.name)}
-              className="bg-[#25D366] hover:bg-[#20ba59] text-white h-12 px-6 rounded-lg font-bold flex items-center gap-3 transition-colors shadow-md text-xs uppercase"
+              onClick={() => triggerToast(`WhatsApp brochure template sent to ${selectedLead.name}`)}
+              className="whatsapp-btn border border-[#27AE60] text-[#27AE60] hover:bg-[#EAFAF1] h-11 px-4 rounded-lg font-bold text-xs flex items-center justify-center transition-all"
+              title="Send WhatsApp Link"
+              data-lead-name={selectedLead.name}
+              data-phone={selectedLead.phone}
+              data-tmid={selectedLead.tmid}
+              data-whatsapp="true"
             >
               <span className="material-symbols-outlined text-[18px]">chat</span>
-              <span>SEND WHATSAPP</span>
             </button>
+
             <button 
-              onClick={() => showToast(`Callback scheduler opened for ${selectedLead.name}`)}
-              className="bg-surface-container-high hover:bg-surface-container-highest text-on-surface h-12 px-6 rounded-lg font-bold flex items-center gap-3 transition-colors border border-outline-variant text-xs uppercase"
+              onClick={() => triggerToast(`Navigated to calendar to schedule callback`)}
+              className="border border-gray-300 text-gray-600 hover:bg-gray-50 h-11 px-4 rounded-lg font-bold text-xs flex items-center justify-center transition-all"
+              title="Schedule Callback"
             >
               <span className="material-symbols-outlined text-[18px]">calendar_today</span>
-              <span>SCHEDULE CALLBACK</span>
             </button>
           </div>
-          
-          <div className="flex items-center gap-md text-xs">
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-on-surface-variant font-semibold uppercase">Last Attempt</span>
-              <span className="text-on-surface font-bold mt-0.5">{selectedLead.history[0]?.timestamp}</span>
-            </div>
-            <button 
-              onClick={() => showToast('Displaying extended lead audit logs...')}
-              className="p-3 hover:bg-surface-container-high rounded-full transition-colors"
+
+          <div className="flex items-center gap-1">
+            <select 
+              onChange={(e) => {
+                if (e.target.value) {
+                  triggerToast(`Lead status updated: ${e.target.value}`);
+                  e.target.value = '';
+                }
+              }}
+              className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold rounded-lg h-11 px-3 outline-none focus:ring-0"
             >
-              <span className="material-symbols-outlined">more_vert</span>
-            </button>
+              <option value="">Choose Quick Action...</option>
+              <option value="wrong_number">Mark Wrong Number</option>
+              <option value="already_subscribed">Mark Already Subscribed</option>
+              <option value="escalate">Escalate to Funnel</option>
+            </select>
           </div>
         </div>
+
       </section>
+
     </main>
   );
 };

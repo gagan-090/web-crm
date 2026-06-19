@@ -1,255 +1,288 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+interface UpsellLead {
+  id: string;
+  tmid: string;
+  companyName: string;
+  location: string;
+  freePlanDate: string;
+  daysSinceFree: number;
+  contactName: string;
+  contactPhone: string;
+  lastCallNote: string;
+  fleetSize: number;
+  segment: string;
+  avgKmMonth: string;
+  preferredRoutes: string;
+}
 
 export const WctD7UpsellQueue: React.FC = () => {
+  const navigate = useNavigate();
+
+  const [leads] = useState<UpsellLead[]>([
+    {
+      id: 'TR_U1',
+      tmid: 'TR-10024',
+      companyName: 'Express Logistics Hub',
+      location: 'Mumbai, MH',
+      freePlanDate: '12 Jun 2026',
+      daysSinceFree: 9,
+      contactName: 'Rajesh Khanna',
+      contactPhone: '+91-98765-43210',
+      lastCallNote: 'Interested in fleet tracking module but wanted to test free version first.',
+      fleetSize: 12,
+      segment: 'Long-haul, FMCG',
+      avgKmMonth: '10,000',
+      preferredRoutes: 'Mumbai-Pune'
+    },
+    {
+      id: 'TR_U2',
+      tmid: 'TR-88219',
+      companyName: 'Vishwa Transport',
+      location: 'Pune, MH',
+      freePlanDate: '13 Jun 2026',
+      daysSinceFree: 8,
+      contactName: 'Amitabh S.',
+      contactPhone: '+91-98220-11000',
+      lastCallNote: 'Owner requested a demo for bulk pricing next week.',
+      fleetSize: 6,
+      segment: 'Industrial Heavy Load',
+      avgKmMonth: '12,000',
+      preferredRoutes: 'Pune-Bangalore'
+    },
+    {
+      id: 'TR_U3',
+      tmid: 'TR-77631',
+      companyName: 'Rapid Roadlines',
+      location: 'Surat, GJ',
+      freePlanDate: '14 Jun 2026',
+      daysSinceFree: 7,
+      contactName: 'Sanjay Patel',
+      contactPhone: '+91-94260-55888',
+      lastCallNote: 'Called twice, no response. Busy season.',
+      fleetSize: 4,
+      segment: 'Retail, Local Delivery',
+      avgKmMonth: '6,000',
+      preferredRoutes: 'Surat City'
+    },
+    {
+      id: 'TR_U4',
+      tmid: 'TR-10443',
+      companyName: 'BlueSky Logistics',
+      location: 'Delhi, NCR',
+      freePlanDate: '14 Jun 2026',
+      daysSinceFree: 7,
+      contactName: 'Kiran Bedi',
+      contactPhone: '+91-88001-22334',
+      lastCallNote: 'High usage on free plan. Prime target for upsell call.',
+      fleetSize: 9,
+      segment: 'Long-haul, FMCG',
+      avgKmMonth: '15,050',
+      preferredRoutes: 'Delhi-Mumbai'
+    }
+  ]);
+
+  const [selectedId, setSelectedId] = useState<string>('TR_U1');
+  const [toast, setToast] = useState<string | null>(null);
+
+  const selectedLead = leads.find(l => l.id === selectedId) || leads[0];
+
+  const triggerToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleUpsellNow = (lead: UpsellLead) => {
+    navigate('/wct/wct-active-call-focus', {
+      state: {
+        leadId: lead.id,
+        tmid: lead.tmid,
+        name: lead.companyName,
+        contactName: lead.contactName,
+        phone: lead.contactPhone,
+        location: lead.location,
+        fleetSize: lead.fleetSize,
+        segment: lead.segment,
+        avgKmMonth: lead.avgKmMonth,
+        preferredRoutes: lead.preferredRoutes,
+        subscribedStatus: 'free',
+        whatsapp: true,
+        history: [],
+        notes: lead.lastCallNote
+      }
+    });
+  };
+
   return (
-    <main className=" mt-16 p-lg bg-surface flex gap-lg min-h-[calc(100vh-64px)]">
+    <main className="h-[calc(100vh-80px)] flex bg-white overflow-hidden border border-gray-200 rounded-xl relative">
+      
+      {/* Toast */}
+      {toast && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#FB641B]"></span>
+          {toast}
+        </div>
+      )}
 
-<section className="flex-1 bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden flex flex-col shadow-sm">
-<div className="p-lg border-b border-outline-variant flex justify-between items-center bg-white">
-<div>
-<h1 className="font-headline-sm text-headline-sm text-on-surface">D+7 Upsell Queue</h1>
-<p className="text-body-sm text-on-surface-variant">Manage free-tier transporters ready for conversion</p>
-</div>
-<div className="flex items-center gap-md">
-<div className="flex items-center px-3 py-1 bg-surface-container-low rounded-full border border-outline-variant">
-<span className="material-symbols-outlined text-sm mr-2 text-primary">filter_list</span>
-<span className="text-label-md font-label-md">78 leads pending</span>
-</div>
-<button className="bg-primary-container text-on-primary px-4 py-2 rounded-lg font-label-md flex items-center gap-2 hover:opacity-90 transition-opacity">
-<span className="material-symbols-outlined text-sm">refresh</span>
-                        Refresh Queue
-                    </button>
-</div>
-</div>
+      {/* Left Table Panel */}
+      <section className="flex-1 bg-white flex flex-col min-w-0">
+        
+        {/* Header */}
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50/50 shrink-0">
+          <div>
+            <h1 className="text-sm font-bold text-gray-800 uppercase tracking-wide">D+7 Upsell Queue</h1>
+            <p className="text-xs text-gray-500 mt-0.5">Transporter Leads on Free tier approaching conversion deadline</p>
+          </div>
+          
+          <div className="bg-white border border-gray-200 text-xs px-3 py-1.5 rounded-lg font-bold text-gray-700">
+            {leads.length} leads pending
+          </div>
+        </div>
 
-<div className="overflow-x-auto">
-<table className="w-full text-left border-collapse">
-<thead>
-<tr className="bg-surface-container-low border-b border-outline-variant">
-<th className="px-md py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Company</th>
-<th className="px-md py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">TMID</th>
-<th className="px-md py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Free Plan Date</th>
-<th className="px-md py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Days Since Free</th>
-<th className="px-md py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Contact</th>
-<th className="px-md py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Last Call Note</th>
-<th className="px-md py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider text-right">Action</th>
-</tr>
-</thead>
-<tbody className="divide-y divide-outline-variant">
+        {/* Scannable Table */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <table className="w-full text-xs text-left border-collapse">
+            <thead className="bg-gray-100 text-gray-500 uppercase text-[9px] sticky top-0 z-10 border-b border-gray-200">
+              <tr>
+                <th className="p-3">Company</th>
+                <th className="p-3">TMID</th>
+                <th className="p-3">Free Plan Date</th>
+                <th className="p-3 text-center">Days Since Free</th>
+                <th className="p-3">Contact</th>
+                <th className="p-3">Last Call Note</th>
+                <th className="p-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-gray-700">
+              {leads.map(lead => {
+                const isSelected = lead.id === selectedId;
+                return (
+                  <tr 
+                    key={lead.id}
+                    onClick={() => setSelectedId(lead.id)}
+                    className={`cursor-pointer transition-colors ${
+                      isSelected ? 'bg-orange-50/20 font-semibold' : 'hover:bg-gray-50/50'
+                    }`}
+                  >
+                    <td className="p-3">
+                      <div>
+                        <span className="font-bold text-gray-800 block">{lead.companyName}</span>
+                        <span className="text-[10px] text-gray-400">{lead.location}</span>
+                      </div>
+                    </td>
+                    <td className="p-3 font-mono text-gray-500">{lead.tmid}</td>
+                    <td className="p-3">{lead.freePlanDate}</td>
+                    <td className="p-3 text-center">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        lead.daysSinceFree >= 9 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
+                      }`}>
+                        {lead.daysSinceFree} Days
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div>
+                        <span className="font-semibold text-gray-800 block">{lead.contactName}</span>
+                        <span className="text-[10px] text-gray-400">{lead.contactPhone}</span>
+                      </div>
+                    </td>
+                    <td className="p-3 max-w-[200px] truncate italic text-gray-500">
+                      "{lead.lastCallNote}"
+                    </td>
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleUpsellNow(lead); }}
+                        className="bg-[#FB641B] hover:bg-[#e4540d] text-white px-3 py-1.5 rounded font-bold text-[10px] shadow-sm active:scale-95 transition-all"
+                      >
+                        Upsell Now
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
-<tr className="hover:bg-surface-container-low transition-colors cursor-pointer group border-l-4 border-l-transparent hover:border-l-primary-container" >
-<td className="px-md py-4">
-<div className="flex flex-col">
-<span className="font-body-md font-bold text-on-surface">Express Logistics Hub</span>
-<span className="text-body-sm text-on-surface-variant">Mumbai, MH</span>
-</div>
-</td>
-<td className="px-md py-4 text-mono-data font-mono-data text-on-surface-variant">TM-9021</td>
-<td className="px-md py-4 text-body-md">Oct 24, 2023</td>
-<td className="px-md py-4">
-<span className="bg-error-container text-on-error-container text-xs font-bold px-2 py-0.5 rounded">9 Days</span>
-</td>
-<td className="px-md py-4">
-<div className="flex flex-col">
-<span className="font-body-md">Rajesh Khanna</span>
-<span className="text-body-sm text-on-surface-variant">+91 98765 43210</span>
-</div>
-</td>
-<td className="px-md py-4 max-w-xs overflow-hidden text-ellipsis whitespace-nowrap text-body-sm text-on-surface-variant italic">
-                                "Interested in fleet tracking module..."
-                            </td>
-<td className="px-md py-4 text-right">
-<button className="bg-primary-container text-on-primary px-4 py-1.5 rounded font-label-md hover:bg-orange-600 transition-all shadow-sm active:scale-95">Upsell Now</button>
-</td>
-</tr>
+      </section>
 
-<tr className="hover:bg-surface-container-low transition-colors cursor-pointer group border-l-4 border-l-transparent hover:border-l-primary-container" >
-<td className="px-md py-4">
-<div className="flex flex-col">
-<span className="font-body-md font-bold text-on-surface">Vishwa Transport</span>
-<span className="text-body-sm text-on-surface-variant">Pune, MH</span>
-</div>
-</td>
-<td className="px-md py-4 text-mono-data font-mono-data text-on-surface-variant">TM-8442</td>
-<td className="px-md py-4 text-body-md">Oct 25, 2023</td>
-<td className="px-md py-4">
-<span className="bg-secondary-container text-on-secondary-container text-xs font-bold px-2 py-0.5 rounded">8 Days</span>
-</td>
-<td className="px-md py-4">
-<div className="flex flex-col">
-<span className="font-body-md">Amitabh S.</span>
-<span className="text-body-sm text-on-surface-variant">+91 98220 11000</span>
-</div>
-</td>
-<td className="px-md py-4 max-w-xs overflow-hidden text-ellipsis whitespace-nowrap text-body-sm text-on-surface-variant italic">
-                                "Owner requested a demo for bulk pricing"
-                            </td>
-<td className="px-md py-4 text-right">
-<button className="bg-primary-container text-on-primary px-4 py-1.5 rounded font-label-md hover:bg-orange-600 transition-all shadow-sm active:scale-95">Upsell Now</button>
-</td>
-</tr>
+      {/* Right Column: Lead Detail Sidebar */}
+      <section className="w-[360px] border-l border-gray-200 bg-white flex flex-col shrink-0 overflow-hidden">
+        
+        <div className="p-4 border-b border-gray-200 bg-gray-50/50 shrink-0">
+          <span className="text-[10px] text-[#FB641B] font-bold uppercase tracking-wider block">Lead Profile Detail</span>
+          <h3 className="text-base font-bold text-gray-900 mt-1 truncate">{selectedLead.companyName}</h3>
+          <p className="text-[11px] text-gray-400 font-mono mt-0.5">{selectedLead.tmid}</p>
+        </div>
 
-<tr className="hover:bg-surface-container-low transition-colors cursor-pointer group border-l-4 border-l-primary-container bg-surface-container-low" >
-<td className="px-md py-4">
-<div className="flex flex-col">
-<span className="font-body-md font-bold text-on-surface">Rapid Roadlines</span>
-<span className="text-body-sm text-on-surface-variant">Surat, GJ</span>
-</div>
-</td>
-<td className="px-md py-4 text-mono-data font-mono-data text-on-surface-variant">TM-7711</td>
-<td className="px-md py-4 text-body-md">Oct 26, 2023</td>
-<td className="px-md py-4">
-<span className="bg-primary-fixed text-on-primary-fixed text-xs font-bold px-2 py-0.5 rounded">7 Days</span>
-</td>
-<td className="px-md py-4">
-<div className="flex flex-col">
-<span className="font-body-md">Sanjay Patel</span>
-<span className="text-body-sm text-on-surface-variant">+91 94260 55888</span>
-</div>
-</td>
-<td className="px-md py-4 max-w-xs overflow-hidden text-ellipsis whitespace-nowrap text-body-sm text-on-surface-variant italic">
-                                "Called twice, no response. Busy season."
-                            </td>
-<td className="px-md py-4 text-right">
-<button className="bg-primary-container text-on-primary px-4 py-1.5 rounded font-label-md hover:bg-orange-600 transition-all shadow-sm active:scale-95">Upsell Now</button>
-</td>
-</tr>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 p-2.5 rounded border border-gray-150">
+              <span className="text-[10px] text-gray-400 uppercase font-semibold">Fleet Size</span>
+              <span className="block font-bold text-gray-800 text-sm mt-0.5">{selectedLead.fleetSize} trucks</span>
+            </div>
+            <div className="bg-gray-50 p-2.5 rounded border border-gray-150">
+              <span className="text-[10px] text-gray-400 uppercase font-semibold">Corridor Route</span>
+              <span className="block font-bold text-gray-800 text-sm mt-0.5 truncate">{selectedLead.preferredRoutes}</span>
+            </div>
+          </div>
 
-<tr className="hover:bg-surface-container-low transition-colors cursor-pointer group border-l-4 border-l-transparent hover:border-l-primary-container" >
-<td className="px-md py-4">
-<div className="flex flex-col">
-<span className="font-body-md font-bold text-on-surface">BlueSky Logistics</span>
-<span className="text-body-sm text-on-surface-variant">Delhi, NCR</span>
-</div>
-</td>
-<td className="px-md py-4 text-mono-data font-mono-data text-on-surface-variant">TM-1044</td>
-<td className="px-md py-4 text-body-md">Oct 26, 2023</td>
-<td className="px-md py-4">
-<span className="bg-primary-fixed text-on-primary-fixed text-xs font-bold px-2 py-0.5 rounded">7 Days</span>
-</td>
-<td className="px-md py-4">
-<div className="flex flex-col">
-<span className="font-body-md">Kiran Bedi</span>
-<span className="text-body-sm text-on-surface-variant">+91 88001 22334</span>
-</div>
-</td>
-<td className="px-md py-4 max-w-xs overflow-hidden text-ellipsis whitespace-nowrap text-body-sm text-on-surface-variant italic">
-                                "High usage on free plan. Prime target."
-                            </td>
-<td className="px-md py-4 text-right">
-<button className="bg-primary-container text-on-primary px-4 py-1.5 rounded font-label-md hover:bg-orange-600 transition-all shadow-sm active:scale-95">Upsell Now</button>
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div className="mt-auto p-md border-t border-outline-variant flex justify-between items-center bg-surface-container-lowest">
-<span className="text-body-sm text-on-surface-variant">Showing 1-10 of 78 leads</span>
-<div className="flex gap-2">
-<button className="p-1 border border-outline-variant rounded hover:bg-surface-container transition-colors"><span className="material-symbols-outlined">chevron_left</span></button>
-<button className="p-1 border border-outline-variant rounded hover:bg-surface-container transition-colors"><span className="material-symbols-outlined">chevron_right</span></button>
-</div>
-</div>
-</section>
+          <div className="space-y-1">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Decision Maker</span>
+            <div className="bg-white p-3 rounded-lg border border-gray-200 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-orange-100 text-[#FB641B] flex items-center justify-center font-bold text-sm select-none">
+                {selectedLead.contactName.slice(0,2).toUpperCase()}
+              </div>
+              <div 
+                className="cursor-pointer group flex-1"
+                title="Click to copy phone number"
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedLead.contactPhone);
+                  triggerToast('Phone number copied to clipboard ✓');
+                }}
+              >
+                <span className="font-bold text-gray-800 block text-xs group-hover:text-[#FB641B] transition-colors">{selectedLead.contactName}</span>
+                <span className="text-[10px] text-gray-400 group-hover:underline">{selectedLead.contactPhone}</span>
+              </div>
+            </div>
+          </div>
 
-<aside className="w-96 bg-white border border-outline-variant rounded-xl flex flex-col shadow-lg transition-all duration-300" id="lead-panel">
+          <div className="space-y-1">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Fleet Details</span>
+            <div className="bg-white p-3 rounded-lg border border-gray-200 space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Segment:</span>
+                <span className="font-semibold">{selectedLead.segment}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Avg KM/Month:</span>
+                <span className="font-semibold">{selectedLead.avgKmMonth} KM</span>
+              </div>
+            </div>
+          </div>
 
-<div className="p-lg border-b border-outline-variant bg-surface-container-low rounded-t-xl">
-<div className="flex justify-between items-start mb-md">
-<span className="text-label-md font-label-md text-primary font-bold uppercase tracking-widest">Lead Detail</span>
-<button className="text-on-surface-variant hover:text-on-surface transition-colors">
-<span className="material-symbols-outlined">close</span>
-</button>
-</div>
-<h3 className="font-headline-sm text-headline-sm text-on-surface" id="panel-company">Rapid Roadlines</h3>
-<p className="text-mono-data text-primary-container" id="panel-tmid">TM-7711 • Priority Lead</p>
-</div>
+          <div className="space-y-1.5">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Last Outbound Note</span>
+            <div className="bg-[#FFF9E6] border border-[#F2C94C] p-3 rounded-lg text-gray-700 italic">
+              "{selectedLead.lastCallNote}"
+            </div>
+          </div>
 
-<div className="p-lg flex-1 overflow-y-auto hide-scrollbar flex flex-col gap-lg">
+        </div>
 
-<div className="grid grid-cols-2 gap-md">
-<div className="p-md bg-surface border border-outline-variant rounded-lg">
-<p className="text-label-md font-label-md text-on-surface-variant">Fleet Size</p>
-<p className="font-display-lg text-display-lg text-on-surface">42</p>
-</div>
-<div className="p-md bg-surface border border-outline-variant rounded-lg">
-<p className="text-label-md font-label-md text-on-surface-variant">App Activity</p>
-<p className="font-display-lg text-display-lg text-tertiary">High</p>
-</div>
-</div>
+        <div className="p-4 border-t border-gray-200 bg-white">
+          <button
+            onClick={() => handleUpsellNow(selectedLead)}
+            className="w-full bg-[#FB641B] hover:bg-[#e4540d] text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95"
+          >
+            <span className="material-symbols-outlined text-[18px]">phone</span> Call Now
+          </button>
+        </div>
 
-<div className="space-y-md">
-<h4 className="font-label-md text-label-md text-on-surface-variant uppercase">Decision Maker</h4>
-<div className="flex items-center gap-md">
-<div className="w-12 h-12 bg-secondary-container rounded-full flex items-center justify-center text-on-secondary-container font-bold text-headline-sm">SP</div>
-<div>
-<p className="font-body-md font-bold">Sanjay Patel</p>
-<p className="text-body-sm text-on-surface-variant">Owner &amp; MD</p>
-</div>
-</div>
-<div className="space-y-2">
-<div className="flex items-center gap-md text-on-surface-variant">
-<span className="material-symbols-outlined text-sm">phone</span>
-<span className="text-body-md">+91 94260 55888</span>
-</div>
-<div className="flex items-center gap-md text-on-surface-variant">
-<span className="material-symbols-outlined text-sm">mail</span>
-<span className="text-body-md">sanjay.patel@rapidrl.in</span>
-</div>
-</div>
-</div>
+      </section>
 
-<div className="space-y-md">
-<h4 className="font-label-md text-label-md text-on-surface-variant uppercase">Usage Highlights</h4>
-<div className="space-y-xs">
-<div className="flex justify-between text-body-sm">
-<span>KYC Verified</span>
-<span className="material-symbols-outlined text-green-600" style={{"fontVariationSettings": "\'FILL\' 1"}}>check_circle</span>
-</div>
-<div className="flex justify-between text-body-sm">
-<span>Lorry Receipts</span>
-<span className="font-bold">150+ / month</span>
-</div>
-<div className="flex justify-between text-body-sm">
-<span>Wallet Usage</span>
-<span className="font-bold">₹1.2L+</span>
-</div>
-</div>
-<div className="w-full bg-outline-variant h-1.5 rounded-full overflow-hidden mt-2">
-<div className="bg-primary-container h-full w-[85%]"></div>
-</div>
-<p className="text-[10px] text-on-surface-variant">85% propensity to upgrade based on activity patterns</p>
-</div>
-
-<div className="space-y-md">
-<h4 className="font-label-md text-label-md text-on-surface-variant uppercase">Interaction History</h4>
-<div className="border-l-2 border-outline-variant ml-2 pl-4 space-y-md">
-<div className="relative">
-<div className="absolute -left-[21px] top-1 w-2 h-2 bg-primary-container rounded-full"></div>
-<p className="text-body-sm font-bold">Follow-up Call <span className="font-normal text-on-surface-variant ml-2">Yesterday</span></p>
-<p className="text-body-sm text-on-surface-variant">Customer busy with Diwali season dispatches. Asked to call on weekend for plan breakdown.</p>
-</div>
-<div className="relative">
-<div className="absolute -left-[21px] top-1 w-2 h-2 bg-outline rounded-full"></div>
-<p className="text-body-sm font-bold">Intro Demo <span className="font-normal text-on-surface-variant ml-2">4 days ago</span></p>
-<p className="text-body-sm text-on-surface-variant">Gave walkthrough of premium dashboard. Sanjay liked the automatic reporting feature.</p>
-</div>
-</div>
-</div>
-</div>
-
-<div className="p-lg bg-surface-container-low border-t border-outline-variant flex flex-col gap-md rounded-b-xl">
-<button className="w-full bg-primary-container text-on-primary py-3 rounded font-headline-sm flex items-center justify-center gap-2 hover:bg-orange-600 transition-all shadow-md active:scale-[0.98]">
-<span className="material-symbols-outlined">call</span>
-                    Call Sanjay Now
-                </button>
-<div className="flex gap-md">
-<button className="flex-1 border border-outline-variant bg-white py-2 rounded text-body-sm font-bold hover:bg-surface transition-colors">Add Note</button>
-<button className="flex-1 border border-outline-variant bg-white py-2 rounded text-body-sm font-bold hover:bg-surface transition-colors">Re-assign</button>
-</div>
-</div>
-</aside>
-</main>
+    </main>
   );
 };
 

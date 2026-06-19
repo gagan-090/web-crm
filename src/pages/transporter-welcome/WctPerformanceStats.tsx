@@ -1,187 +1,409 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export const WctPerformanceStats: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'thisMonth' | 'lastMonth' | 'history'>('thisMonth');
+
+  // Simulator & gate states
+  const [simulatePremium, setSimulatePremium] = useState<number>(4); 
+  const [monthlyRevenue, setMonthlyRevenue] = useState<number>(11200); 
+
+  const baseSalary = 14000;
+  const gateThreshold = baseSalary * 2; // ₹28,000
+  const isGateCrossed = monthlyRevenue >= gateThreshold;
+  const remainingToGate = Math.max(0, gateThreshold - monthlyRevenue);
+  const gateProgressPercent = Math.min(100, Math.round((monthlyRevenue / gateThreshold) * 100));
+
+  // WCT Incentive calculations
+  // Free Plan (pipeline): 4 qty @ ₹20 = ₹80
+  // Premium: 3 qty @ ₹100 = ₹300
+  // Super Premium: 1 qty @ ₹200 = ₹200
+  // Total = ₹580
+  const baseIncentive = 580;
+  const simulatedCount = simulatePremium;
+  const projectedIncentive = baseIncentive + (simulatedCount * 100);
+  const additionalIncentive = simulatedCount * 100;
+
+  // Mini Chart data (WCT Target ₹67,000)
+  const chartData = [
+    { month: 'Jan', revenue: 42000 },
+    { month: 'Feb', revenue: 58000 },
+    { month: 'Mar', revenue: 71000 }, // target crossed
+    { month: 'Apr', revenue: 54000 },
+    { month: 'May', revenue: 62000 },
+    { month: 'Jun', revenue: monthlyRevenue }
+  ];
+
+  // SLA Miss details log
+  const [showSlaMissDetails, setShowSlaMissDetails] = useState(false);
+  const slaMisses = [
+    { company: 'Balaji Freight Carrier', delay: 'Missed by 47 min', date: '14 Jun' },
+    { company: 'Riddhi Logistics', delay: 'Missed by 1h 12m', date: '08 Jun' },
+    { company: 'Hindustan Cargo Co', delay: 'Missed by 23 min', date: '03 Jun' }
+  ];
+
   return (
-    <main className=" mt-16 p-8 min-h-screen bg-surface-container-lowest">
+    <div className="space-y-6 max-w-5xl mx-auto w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
+      
+      {/* Top Header & Tab Switcher */}
+      <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-4">
+        <div>
+          <p className="text-[#666666] text-xs font-semibold uppercase tracking-widest font-sans">WCT Performance Stats</p>
+          <h2 className="text-2xl font-bold text-gray-800">Transporter Connect KPI Dashboard</h2>
+        </div>
+        
+        {/* Tab switch buttons */}
+        <div className="bg-gray-100 p-1 rounded-lg flex items-center gap-1 select-none">
+          <button
+            onClick={() => setActiveTab('thisMonth')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded transition-all ${
+              activeTab === 'thisMonth' ? 'bg-white text-gray-800 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            This Month
+          </button>
+          <button
+            onClick={() => setActiveTab('lastMonth')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded transition-all ${
+              activeTab === 'lastMonth' ? 'bg-white text-gray-800 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            Last Month
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded transition-all ${
+              activeTab === 'history' ? 'bg-white text-gray-800 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            History
+          </button>
+        </div>
+      </section>
 
-<div className="flex justify-between items-end mb-8">
-<div>
-<h1 className="font-display-lg text-display-lg mb-1">My Performance</h1>
-<p className="font-body-md text-on-surface-variant">Track your efficiency and incentive goals</p>
-</div>
-<div className="bg-primary-container/10 border border-primary-container/20 px-6 py-4 rounded-xl flex items-center gap-4">
-<div className="w-12 h-12 bg-primary-container rounded-full flex items-center justify-center text-white">
-<span className="material-symbols-outlined" style={{"fontVariationSettings": "\'FILL\' 1"}}>emoji_events</span>
-</div>
-<div>
-<p className="font-label-md text-label-md uppercase tracking-wider text-primary">Leaderboard Position</p>
-<p className="font-headline-sm text-headline-sm font-bold">#3 in WCT Team</p>
-</div>
-</div>
-</div>
+      {/* Simulator Quick Toggles */}
+      <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl flex items-center justify-between text-xs select-none">
+        <span className="font-semibold text-gray-600">Simulate Salary Gate Target:</span>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setMonthlyRevenue(11200)}
+            className={`px-3 py-1 rounded border transition-colors ${monthlyRevenue === 11200 ? 'bg-[#FB641B] text-white border-[#FB641B] font-bold' : 'bg-white text-gray-600 border-gray-200'}`}
+          >
+            Under Gate (₹11,200)
+          </button>
+          <button 
+            onClick={() => setMonthlyRevenue(29500)}
+            className={`px-3 py-1 rounded border transition-colors ${monthlyRevenue === 29500 ? 'bg-[#FB641B] text-white border-[#FB641B] font-bold' : 'bg-white text-gray-600 border-gray-200'}`}
+          >
+            Crossed Gate (₹29,500)
+          </button>
+        </div>
+      </div>
 
-<div className="grid grid-cols-12 gap-6">
+      {activeTab === 'thisMonth' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          
+          {/* Main stats blocks grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            {/* Revenue Block */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Monthly Revenue Target</span>
+              <div className="text-2xl font-bold text-gray-800 mt-1">
+                ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹67,000</span>
+              </div>
+              <div className="mt-3">
+                <div className="w-full h-3.5 bg-gray-100 rounded-full overflow-hidden relative flex items-center justify-center">
+                  <div 
+                    className="h-full bg-[#FB641B] rounded-full transition-all duration-500 absolute left-0 top-0" 
+                    style={{ width: `${(monthlyRevenue / 67000) * 100}%` }}
+                  ></div>
+                  <span className="z-10 text-[9px] font-bold text-gray-700">
+                    {((monthlyRevenue / 67000) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-gray-400">
+                26 days remaining this month
+              </div>
+            </div>
 
-<div className="col-span-12 lg:col-span-4 bg-white border border-outline-variant p-6 rounded-xl flex flex-col justify-between">
-<div>
-<h3 className="font-label-md text-label-md uppercase tracking-wider text-on-surface-variant mb-4">Monthly Target</h3>
-<div className="flex items-baseline gap-2 mb-2">
-<span className="font-display-lg text-display-lg font-bold accent-orange">₹48,250</span>
-<span className="font-body-md text-on-surface-variant">/ ₹67,000</span>
-</div>
-<div className="w-full bg-surface-container h-3 rounded-full overflow-hidden mb-6">
-<div className="bg-accent-orange h-full rounded-full" style={{"width": "72%"}}></div>
-</div>
-</div>
-<div className="grid grid-cols-2 gap-4 border-t border-outline-variant pt-4">
-<div>
-<p className="font-label-md text-label-md text-on-surface-variant">Conversion Rate</p>
-<p className="font-headline-sm text-headline-sm font-bold">14.2%</p>
-<p className="font-body-sm text-emerald-600">Target ≥12%</p>
-</div>
-<div>
-<p className="font-label-md text-label-md text-on-surface-variant">Remaining</p>
-<p className="font-headline-sm text-headline-sm font-bold text-on-surface-variant">₹18,750</p>
-<p className="font-body-sm text-on-surface-variant">12 Days Left</p>
-</div>
-</div>
-</div>
+            {/* Conversion Rate Block */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Monthly Conversion Rate</span>
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="text-2xl font-bold text-[#27AE60]">13.8%</span>
+                <span className="text-xs text-gray-500">vs ≥12% target</span>
+              </div>
+              <div className="mt-3 py-1 bg-[#EAFAF1] text-[#27AE60] text-xs font-bold px-2 rounded-lg text-center">
+                ✓ Met Target (1.8% above target)
+              </div>
+            </div>
 
-<div className="col-span-12 lg:col-span-8 bg-white border border-outline-variant p-6 rounded-xl">
-<div className="flex justify-between items-start mb-6">
-<div>
-<h3 className="font-label-md text-label-md uppercase tracking-wider text-on-surface-variant mb-1">SLA Compliance</h3>
-<p className="font-body-md font-semibold">91.3% of TR leads called within 4 hours</p>
-</div>
-<div className="flex items-center gap-2 px-3 py-1 bg-orange-100 text-orange-800 rounded-full">
-<span className="material-symbols-outlined text-[18px]" style={{"fontVariationSettings": "\'FILL\' 1"}}>local_fire_department</span>
-<span className="font-label-md text-label-md">14 Day Streak</span>
-</div>
-</div>
+            {/* Calls Summary Block */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Calls Summary</span>
+              <div className="text-xl font-bold text-gray-800 mt-1">
+                38 <span className="text-xs text-gray-400 font-normal">calls made</span>
+              </div>
+              <div className="text-xs text-gray-500 mt-2 space-y-1">
+                <div className="flex justify-between">
+                  <span>Avg Duration:</span>
+                  <span className="font-semibold text-gray-800">8m 42s (consultative)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Connected Rate:</span>
+                  <span className="font-semibold text-gray-800">19 connected (50.0%)</span>
+                </div>
+              </div>
+            </div>
 
-<div className="grid grid-cols-7 gap-2">
+          </div>
 
-<div className="text-center font-label-md text-on-surface-variant">M</div>
-<div className="text-center font-label-md text-on-surface-variant">T</div>
-<div className="text-center font-label-md text-on-surface-variant">W</div>
-<div className="text-center font-label-md text-on-surface-variant">T</div>
-<div className="text-center font-label-md text-on-surface-variant">F</div>
-<div className="text-center font-label-md text-on-surface-variant">S</div>
-<div className="text-center font-label-md text-on-surface-variant">S</div>
+          {/* SLA Performance Widgets */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            {/* First-Call SLA Compliance Block */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm md:col-span-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">First-Call SLA Compliance</span>
+                  <div className="text-3xl font-extrabold text-orange-500 mt-1">91.3%</div>
+                  <p className="text-[11px] text-gray-500 mt-1">35 of 38 first calls made within 4 business hours</p>
+                </div>
+                
+                <button 
+                  onClick={() => setShowSlaMissDetails(!showSlaMissDetails)}
+                  className="px-2.5 py-1 text-xs border border-gray-200 hover:bg-gray-50 text-gray-600 rounded font-semibold select-none"
+                >
+                  {showSlaMissDetails ? 'Hide details' : 'View misses'}
+                </button>
+              </div>
 
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">1</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">2</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">3</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">4</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">5</div>
-<div className="h-10 flex items-center justify-center bg-surface-container rounded font-mono-data text-mono-data">6</div>
-<div className="h-10 flex items-center justify-center bg-surface-container rounded font-mono-data text-mono-data">7</div>
+              {showSlaMissDetails && (
+                <div className="mt-3 divide-y divide-gray-100 border border-gray-150 rounded-lg overflow-hidden animate-in fade-in duration-300 bg-gray-50/50">
+                  {slaMisses.map((m, idx) => (
+                    <div key={idx} className="p-2 flex justify-between text-xs">
+                      <span className="text-gray-700 font-medium">{m.company}</span>
+                      <span className="font-semibold text-red-500">{m.delay} ({m.date})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">8</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">9</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">10</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">11</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">12</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">13</div>
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border border-emerald-200">14</div>
+            {/* Missed SLA Callbacks */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Missed SLA Callbacks</span>
+                <div className="text-2xl font-bold text-red-600 mt-2">1</div>
+                <p className="text-[11px] text-red-500 font-semibold mt-1">
+                  ⚠️ 1 SLA-critical callback missed this month
+                </p>
+              </div>
+            </div>
 
-<div className="h-10 flex items-center justify-center bg-emerald-100 text-emerald-800 rounded font-mono-data text-mono-data border-2 border-accent-orange">15</div>
-<div className="h-10 flex items-center justify-center bg-surface-container-low rounded font-mono-data text-mono-data text-on-surface-variant opacity-50">16</div>
-<div className="h-10 flex items-center justify-center bg-surface-container-low rounded font-mono-data text-mono-data text-on-surface-variant opacity-50">17</div>
-<div className="h-10 flex items-center justify-center bg-surface-container-low rounded font-mono-data text-mono-data text-on-surface-variant opacity-50">18</div>
-<div className="h-10 flex items-center justify-center bg-surface-container-low rounded font-mono-data text-mono-data text-on-surface-variant opacity-50">19</div>
-<div className="h-10 flex items-center justify-center bg-surface-container-low rounded font-mono-data text-mono-data text-on-surface-variant opacity-50">20</div>
-<div className="h-10 flex items-center justify-center bg-surface-container-low rounded font-mono-data text-mono-data text-on-surface-variant opacity-50">21</div>
-</div>
-</div>
+          </div>
 
-<div className="col-span-12 lg:col-span-5 bg-white border border-outline-variant p-6 rounded-xl">
-<h3 className="font-label-md text-label-md uppercase tracking-wider text-on-surface-variant mb-6">Incentive Simulator</h3>
-<div className="space-y-8">
-<div>
-<div className="flex justify-between mb-2">
-<label className="font-body-md font-medium">Free Plan Credits</label>
-<span className="font-mono-data text-mono-data text-accent-orange" id="free-count">12</span>
-</div>
-<input className="w-full h-1.5 bg-surface-container rounded-lg appearance-none cursor-pointer accent-orange" id="free-slider" max="100" min="0" type="range" value="12"/>
-</div>
-<div>
-<div className="flex justify-between mb-2">
-<label className="font-body-md font-medium">Premium Conversions</label>
-<span className="font-mono-data text-mono-data text-accent-orange" id="premium-count">4</span>
-</div>
-<input className="w-full h-1.5 bg-surface-container rounded-lg appearance-none cursor-pointer accent-orange" id="premium-slider" max="50" min="0" type="range" value="4"/>
-</div>
-<div>
-<div className="flex justify-between mb-2">
-<label className="font-body-md font-medium">Super Premium Conversions</label>
-<span className="font-mono-data text-mono-data text-accent-orange" id="super-count">2</span>
-</div>
-<input className="w-full h-1.5 bg-surface-container rounded-lg appearance-none cursor-pointer accent-orange" id="super-slider" max="25" min="0" type="range" value="2"/>
-</div>
-<div className="pt-6 border-t border-outline-variant">
-<div className="flex justify-between items-center">
-<span className="font-headline-sm text-headline-sm">Projected Earnings</span>
-<span className="font-display-lg text-display-lg font-bold accent-orange" id="total-projected">₹1,040</span>
-</div>
-</div>
-</div>
-</div>
+          {/* Incentive and Salary Gate Panel */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            {/* Gate Status Card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Salary Incentive Gate</span>
+                
+                {isGateCrossed ? (
+                  <div className="bg-[#EAFAF1] text-[#27AE60] text-xs font-bold p-3 rounded-lg border border-[#27AE60]/20 mt-3 select-none flex items-center gap-1">
+                    ✓ Gate Crossed on 14 June — incentives active
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <div className="flex justify-between text-xs mb-1 font-semibold text-gray-700">
+                      <span>₹{monthlyRevenue.toLocaleString()} / ₹28,000 (Base Salary × 2)</span>
+                      <span>{gateProgressPercent}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-gray-400" style={{ width: `${gateProgressPercent}%` }}></div>
+                    </div>
+                    <p className="text-xs text-red-500 font-semibold mt-2">
+                      ⚠️ ₹{remainingToGate.toLocaleString()} to unlock incentives
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
 
-<div className="col-span-12 lg:col-span-7 bg-white border border-outline-variant rounded-xl overflow-hidden">
-<div className="p-6 border-b border-outline-variant bg-surface-container-low">
-<h3 className="font-label-md text-label-md uppercase tracking-wider text-on-surface-variant">Incentive Structure</h3>
-</div>
-<table className="w-full text-left font-body-md">
-<thead>
-<tr className="bg-surface-container-low/50 text-on-surface-variant">
-<th className="px-6 py-3 font-medium">Plan Type</th>
-<th className="px-6 py-3 font-medium">Payout Per Unit</th>
-<th className="px-6 py-3 font-medium text-right">Criteria</th>
-</tr>
-</thead>
-<tbody className="divide-y divide-outline-variant">
-<tr className="hover:bg-surface-container-low transition-colors">
-<td className="px-6 py-4">
-<div className="flex items-center gap-2">
-<span className="w-2 h-2 rounded-full bg-blue-400"></span>
-                                    Free Plan Credit
-                                </div>
-</td>
-<td className="px-6 py-4 font-mono-data">₹20</td>
-<td className="px-6 py-4 text-right text-on-surface-variant">First Call Success</td>
-</tr>
-<tr className="hover:bg-surface-container-low transition-colors">
-<td className="px-6 py-4">
-<div className="flex items-center gap-2">
-<span className="w-2 h-2 rounded-full bg-accent-orange"></span>
-                                    Premium Plan
-                                </div>
-</td>
-<td className="px-6 py-4 font-mono-data">₹100</td>
-<td className="px-6 py-4 text-right text-on-surface-variant">Annual Subscription</td>
-</tr>
-<tr className="hover:bg-surface-container-low transition-colors">
-<td className="px-6 py-4">
-<div className="flex items-center gap-2">
-<span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                    Super Premium
-                                </div>
-</td>
-<td className="px-6 py-4 font-mono-data">₹200</td>
-<td className="px-6 py-4 text-right text-on-surface-variant">Enterprise Onboard</td>
-</tr>
-</tbody>
-</table>
-<div className="p-6 bg-surface-container-low/30">
-<div className="flex items-start gap-4">
-<span className="material-symbols-outlined text-primary-container">info</span>
-<p className="font-body-sm text-on-surface-variant">Incentives are credited within 24 hours of successful conversion verification. Refer to the Script Library to improve your conversion rates for Super Premium plans.</p>
-</div>
-</div>
-</div>
-</div>
-</main>
+            {/* Incentive Itemization Table (Locked/Unlocked) */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden relative">
+              
+              {/* Locked Overlay */}
+              {!isGateCrossed && (
+                <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center text-center p-4">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shadow-sm">
+                    🔒
+                  </div>
+                  <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider mt-2">Incentives Locked</h4>
+                  <p className="text-[10px] text-gray-500 max-w-[240px] mt-1">Cross the 2x Base Salary Gate to unlock the itemized transporter payouts breakdown table.</p>
+                </div>
+              )}
+
+              <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider flex justify-between items-center">
+                <span>Incentive Itemization</span>
+                {isGateCrossed && <span className="text-[#27AE60]">✓ Gate Unlocked</span>}
+              </div>
+              
+              <table className="w-full text-xs text-left">
+                <thead className="bg-gray-100 text-gray-500 uppercase text-[9px]">
+                  <tr>
+                    <th className="p-3">Plan</th>
+                    <th className="p-3 text-center">Qty</th>
+                    <th className="p-3 text-center">Rate</th>
+                    <th className="p-3 text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700">
+                  <tr>
+                    <td className="p-3 font-semibold">Free Plan (pipeline credit)</td>
+                    <td className="p-3 text-center">4</td>
+                    <td className="p-3 text-center">₹20</td>
+                    <td className="p-3 text-right font-bold font-mono">₹80</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-semibold">Premium ₹1,999</td>
+                    <td className="p-3 text-center">3</td>
+                    <td className="p-3 text-center">₹100</td>
+                    <td className="p-3 text-right font-bold font-mono">₹300</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-semibold">Super Premium ₹2,999</td>
+                    <td className="p-3 text-center">1</td>
+                    <td className="p-3 text-center">₹200</td>
+                    <td className="p-3 text-right font-bold font-mono">₹200</td>
+                  </tr>
+                  <tr className="bg-gray-50 font-bold text-gray-900 border-t border-gray-200">
+                    <td className="p-3" colSpan={3}>Total Earned</td>
+                    <td className="p-3 text-right font-mono text-orange-500">₹580</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+
+          {/* Interactive Payout Simulator & Mini Chart */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            {/* "What If" Simulator */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">"What If" Incentive Simulator</h3>
+                <p className="text-[11px] text-gray-500 leading-normal">
+                  Estimate transporter upsell payouts. Adjust the slider to see earnings growth:
+                </p>
+              </div>
+
+              <div className="my-4">
+                <div className="flex justify-between items-center text-xs mb-1">
+                  <span className="text-gray-600 font-medium">If I convert <span className="font-bold text-[#FB641B] bg-orange-50 px-1.5 py-0.5 rounded">{simulatePremium}</span> more Premium plans:</span>
+                  <span className="font-bold text-gray-800">+{simulatedCount} conversions</span>
+                </div>
+                
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={simulatePremium}
+                  onChange={(e) => setSimulatePremium(Number(e.target.value))}
+                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#FB641B] focus:outline-none"
+                />
+              </div>
+
+              <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs font-bold text-gray-800 flex justify-between items-center">
+                <span>Projected Incentive Payout:</span>
+                <span className="text-orange-600 font-mono text-sm">₹{projectedIncentive} (+₹{additionalIncentive})</span>
+              </div>
+            </div>
+
+            {/* Mini Chart */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between min-h-[200px]">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Month-over-Month Revenue</span>
+                <span className="text-[10px] text-gray-400 border-b border-dashed border-gray-300 pb-0.5">Target: ₹67k</span>
+              </div>
+
+              {/* Simple Chart */}
+              <div className="flex justify-between items-end h-24 px-2 relative border-b border-gray-100">
+                <div className="absolute left-0 right-0 top-1/6 border-t border-dashed border-red-350 w-full z-0 pointer-events-none">
+                  <span className="absolute right-1 -top-2.5 text-[8px] bg-white text-red-500 font-bold px-1">Target</span>
+                </div>
+
+                {chartData.map((d, i) => {
+                  const maxVal = 80000;
+                  const pct = (d.revenue / maxVal) * 100;
+                  const isCurrent = d.month === 'Jun';
+                  return (
+                    <div key={i} className="flex flex-col items-center w-8 group relative z-10">
+                      <span className="absolute -top-6 text-[9px] bg-gray-800 text-white rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity font-mono">
+                        ₹{d.revenue.toLocaleString()}
+                      </span>
+                      <div 
+                        className={`w-full rounded-t transition-all duration-700 ${isCurrent ? 'bg-[#FB641B]' : 'bg-[#FB641B]/40'}`} 
+                        style={{ height: `${pct}%`, minHeight: '4px' }}
+                      ></div>
+                      <span className="text-[9px] text-gray-400 mt-1 font-bold">{d.month}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-4">6-Month Historic Earnings Data</h3>
+            
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50 text-gray-500 font-bold uppercase text-[9px]">
+                  <th className="p-3">Month</th>
+                  <th className="p-3 text-right">Revenue</th>
+                  <th className="p-3 text-right">Target</th>
+                  <th className="p-3 text-center">% Achieved</th>
+                  <th className="p-3 text-center">Conversions</th>
+                  <th className="p-3 text-right">Avg Conversion Rate</th>
+                  <th className="p-3 text-right">SLA Compliance %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-gray-700">
+                {[
+                  { month: 'May 2026', revenue: 62000, target: 67000, pct: '92.5%', convs: 18, rate: '12.8%', sla: '94.2%' },
+                  { month: 'Apr 2026', revenue: 54000, target: 67000, pct: '80.5%', convs: 15, rate: '11.5%', sla: '89.5%' },
+                  { month: 'Mar 2026', revenue: 71000, target: 67000, pct: '105.9%', convs: 21, rate: '14.1%', sla: '95.8%' },
+                  { month: 'Feb 2026', revenue: 58000, target: 67000, pct: '86.5%', convs: 16, rate: '12.1%', sla: '92.0%' },
+                  { month: 'Jan 2026', revenue: 42000, target: 67000, pct: '62.6%', convs: 11, rate: '10.2%', sla: '87.1%' }
+                ].map((row, i) => (
+                  <tr key={i} className="hover:bg-gray-50/50">
+                    <td className="p-3 font-semibold text-gray-800">{row.month}</td>
+                    <td className="p-3 text-right font-mono font-semibold">₹{row.revenue.toLocaleString()}</td>
+                    <td className="p-3 text-right font-mono text-gray-400">₹{row.target.toLocaleString()}</td>
+                    <td className="p-3 text-center font-bold text-gray-700">{row.pct}</td>
+                    <td className="p-3 text-center font-semibold text-gray-700">{row.convs}</td>
+                    <td className="p-3 text-right font-mono text-gray-500">{row.rate}</td>
+                    <td className="p-3 text-right font-mono font-bold text-[#FB641B]">{row.sla}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+    </div>
   );
 };
 

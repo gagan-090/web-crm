@@ -1,277 +1,284 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export const MmPlacementHistory: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'thisMonth' | 'lastMonth' | 'history'>('thisMonth');
+  const [extraPlacements, setExtraPlacements] = useState(0); // For What-If simulator
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Base metrics for This Month
+  const basePremium = 18;
+  const baseSuper = 6;
+  const totalBasePlacements = basePremium + baseSuper;
+  const premiumRate = 30;
+  const superRate = 50;
+
+  // Recalculated metrics with What-If slider
+  const simulatedSuper = baseSuper + extraPlacements;
+  const totalSimulatedPlacements = basePremium + simulatedSuper;
+  const simulatedSuperIncentive = simulatedSuper * superRate;
+  const totalIncentive = (basePremium * premiumRate) + simulatedSuperIncentive;
+
   return (
-    <main className=" mt-16 p-margin-desktop min-h-screen">
+    <main className="p-6 max-w-7xl mx-auto w-full overflow-y-auto max-h-[calc(100vh-60px)] space-y-6 text-xs relative">
+      
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
+          <span className="w-2 h-2 rounded-full bg-[#8E44AD]"></span>
+          {toastMessage}
+        </div>
+      )}
 
-<div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-lg gap-md">
-<div>
-<h2 className="font-display-lg text-display-lg text-on-surface">My Placements Dashboard</h2>
-<p className="text-on-surface-variant font-body-md">Real-time tracking of driver matchmaking and commission events.</p>
-</div>
-<div className="flex bg-surface-container rounded-lg p-1">
-<button className="px-md py-1.5 rounded-md font-bold text-primary bg-surface-container-lowest shadow-sm text-body-sm">This Month</button>
-<button className="px-md py-1.5 rounded-md text-on-surface-variant hover:bg-surface-variant transition-colors text-body-sm">Last Month</button>
-<button className="px-md py-1.5 rounded-md text-on-surface-variant hover:bg-surface-variant transition-colors text-body-sm">History</button>
-</div>
-</div>
+      {/* Header controls strip */}
+      <div className="p-4 bg-gray-50 border border-gray-250 rounded-xl flex justify-between items-center shrink-0">
+        <div>
+          <h1 className="text-sm font-extrabold text-gray-800 uppercase tracking-wide">My Placements Dashboard</h1>
+          <p className="text-[10px] text-gray-400 mt-0.5">Track your monthly placements, incentive achievements, and SLA compliance metrics</p>
+        </div>
 
-<div className="grid grid-cols-12 gap-lg">
+        {/* Tab Selection */}
+        <div className="flex bg-white border border-gray-200 rounded-lg p-0.5 font-bold text-gray-550 select-none">
+          {[
+            { id: 'thisMonth', label: 'This Month' },
+            { id: 'lastMonth', label: 'Last Month' },
+            { id: 'history', label: 'Placements History' }
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => {
+                setActiveTab(t.id as any);
+                triggerToast(`Switched to ${t.label}`);
+              }}
+              className={`px-3.5 py-1 rounded transition-colors ${
+                activeTab === t.id ? 'bg-[#8E44AD] text-white font-extrabold' : 'hover:text-gray-800'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-<div className="col-span-12 lg:col-span-4 flex flex-col gap-gutter">
+      {activeTab === 'thisMonth' && (
+        <>
+          {/* Top Row: Cards */}
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            {/* Placements Block */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Fulfillments</span>
+                <h2 className="text-xl font-extrabold text-[#8E44AD] mt-1.5">{totalBasePlacements} / 55 Target</h2>
+              </div>
+              <div className="mt-3">
+                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="bg-[#8E44AD] h-full" style={{ width: `${(totalBasePlacements/55)*100}%` }}></div>
+                </div>
+                <div className="flex gap-2 text-[9px] font-bold text-gray-400 mt-1.5 select-none">
+                  <span className="bg-purple-50 text-purple-700 px-1 py-0.2 rounded border border-purple-100">{basePremium} PREMIUM</span>
+                  <span className="bg-orange-50 text-orange-700 px-1 py-0.2 rounded border border-orange-100">{baseSuper} SUPER PREMIUM</span>
+                </div>
+              </div>
+            </div>
 
-<div className="bg-surface-container-lowest border border-outline-variant p-md rounded-xl">
-<div className="flex justify-between items-start mb-md">
-<p className="font-label-md text-on-surface-variant uppercase">Placements Rate</p>
-<span className="material-symbols-outlined text-primary" data-icon="rocket_launch">rocket_launch</span>
-</div>
-<div className="flex items-baseline gap-xs mb-sm">
-<span className="font-display-lg text-display-lg">24</span>
-<span className="font-headline-sm text-on-surface-variant">/ 55</span>
-</div>
-<div className="w-full bg-surface-variant h-2 rounded-full overflow-hidden">
-<div className="bg-primary h-full transition-all duration-1000" style={{"width": "43.6%"}}></div>
-</div>
-<p className="mt-sm font-body-sm text-on-surface-variant">43.6% of monthly target achieved</p>
-</div>
+            {/* SLA Compliance Block */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">SLA Compliance Rate</span>
+                <h2 className="text-xl font-extrabold text-green-600 mt-1.5">91.7%</h2>
+              </div>
+              <div className="space-y-1 mt-3 font-semibold text-gray-500">
+                <div className="flex justify-between">
+                  <span>Premium Fill SLA (10d):</span>
+                  <span className="font-bold text-gray-800">16 / 18 within SLA (88.9%)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Super Premium Fill SLA (7d):</span>
+                  <span className="font-bold text-purple-750">6 / 6 within SLA (100%)</span>
+                </div>
+              </div>
+            </div>
 
-<div className="bg-surface-container-lowest border border-outline-variant p-md rounded-xl">
-<div className="flex justify-between items-start mb-md">
-<p className="font-label-md text-on-surface-variant uppercase">SLA Compliance</p>
-<span className="material-symbols-outlined text-primary" data-icon="verified">verified</span>
-</div>
-<div className="font-display-lg text-display-lg mb-sm">91.7%</div>
-<div className="flex items-center gap-xs">
-<div className="w-full bg-surface-variant h-2 rounded-full overflow-hidden">
-<div className="bg-accent-purple h-full" style={{"width": "91.7%"}}></div>
-</div>
-</div>
-<p className="mt-sm font-body-sm text-accent-purple font-medium">Excellent Performance</p>
-</div>
-</div>
+            {/* Incentive Block */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Incentives Status</span>
+                <h2 className="text-xl font-extrabold text-gray-850 mt-1.5">₹{totalIncentive} Accrued</h2>
+              </div>
+              <div className="mt-3 flex justify-between items-center text-[9.5px] font-bold">
+                <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-250 uppercase flex items-center gap-0.5">
+                  <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                  Gate Crossed ({totalBasePlacements} placements)
+                </span>
+                <span className="text-gray-400 font-semibold">Min Gate: 4 placements</span>
+              </div>
+            </div>
 
-<div className="col-span-12 lg:col-span-4 bg-surface-container-lowest border border-outline-variant p-md rounded-xl flex flex-col">
-<p className="font-label-md text-on-surface-variant uppercase mb-lg">Placement Tier Mix</p>
-<div className="flex-1 flex flex-col justify-around">
-<div className="flex items-center justify-between">
-<div className="flex items-center gap-md">
-<div className="w-10 h-10 bg-primary-fixed rounded-full flex items-center justify-center text-primary">
-<span className="material-symbols-outlined" data-icon="workspace_premium" style={{"fontVariationSettings": "\'FILL\' 1"}}>workspace_premium</span>
-</div>
-<div>
-<p className="font-body-md font-bold text-on-surface">Premium</p>
-<p className="text-body-sm text-on-surface-variant">Tier 1 Placements</p>
-</div>
-</div>
-<span className="font-headline-sm">16</span>
-</div>
-<div className="h-[1px] bg-outline-variant my-md"></div>
-<div className="flex items-center justify-between">
-<div className="flex items-center gap-md">
-<div className="w-10 h-10 bg-accent-purple/10 rounded-full flex items-center justify-center text-accent-purple">
-<span className="material-symbols-outlined" data-icon="stars" style={{"fontVariationSettings": "\'FILL\' 1"}}>stars</span>
-</div>
-<div>
-<p className="font-body-md font-bold text-on-surface">Super Premium</p>
-<p className="text-body-sm text-on-surface-variant">Tier 2 Placements</p>
-</div>
-</div>
-<span className="font-headline-sm">8</span>
-</div>
-</div>
-</div>
+          </section>
 
-<div className="col-span-12 lg:col-span-4 bg-primary text-on-primary p-md rounded-xl relative overflow-hidden">
+          {/* Details Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* Left: Rejection Reasons & Efficiency stats */}
+            <div className="space-y-6">
+              
+              {/* Stacked Rejection reasons chart */}
+              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3 select-none">
+                <h4 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Rejection Reasons Distribution</h4>
+                
+                {/* Horizontal stacked bar */}
+                <div className="w-full h-5 rounded overflow-hidden flex font-bold text-white text-[9px] text-center font-mono">
+                  <div className="bg-purple-600 flex items-center justify-center" style={{ width: '38%' }} title="Route doesn't suit: 38%">38%</div>
+                  <div className="bg-amber-500 flex items-center justify-center" style={{ width: '24%' }} title="Pay unacceptable: 24%">24%</div>
+                  <div className="bg-blue-500 flex items-center justify-center" style={{ width: '19%' }} title="Truck Mismatch: 19%">19%</div>
+                  <div className="bg-red-500 flex items-center justify-center" style={{ width: '12%' }} title="Already Placed: 12%">12%</div>
+                  <div className="bg-gray-400 flex items-center justify-center" style={{ width: '7%' }} title="Other: 7%">7%</div>
+                </div>
 
-<div className="relative z-10 flex flex-col h-full">
-<p className="font-label-md uppercase opacity-80 mb-md">Current Incentive</p>
-<div className="font-display-lg text-display-lg mb-base">₹ 14,250</div>
-<p className="font-body-sm opacity-90 mb-xl">Estimated payout for current month</p>
-<div className="mt-auto space-y-md">
-<div className="flex justify-between items-center text-body-sm">
-<span>Base Match Commission</span>
-<span className="font-mono-data">₹ 8,400</span>
-</div>
-<div className="flex justify-between items-center text-body-sm">
-<span>Performance Bonus</span>
-<span className="font-mono-data">₹ 4,000</span>
-</div>
-<div className="flex justify-between items-center text-body-sm">
-<span>SLA Multiplier (1.1x)</span>
-<span className="font-mono-data">₹ 1,850</span>
-</div>
-</div>
-</div>
-</div>
+                <div className="grid grid-cols-3 gap-2 text-[9.5px] font-bold text-gray-500 pt-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-purple-600"></span> Route doesn't suit (38%)
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-amber-500"></span> Pay unacceptable (24%)
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-blue-500"></span> Truck Mismatch (19%)
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-red-500"></span> Already Placed (12%)
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-gray-400"></span> Other reasons (7%)
+                  </div>
+                </div>
+              </div>
 
-<div className="col-span-12 bg-accent-purple/5 border border-accent-purple/20 p-md rounded-xl purple-accent-glow">
-<div className="flex items-center gap-md mb-md">
-<span className="material-symbols-outlined text-accent-purple" data-icon="notifications_active">notifications_active</span>
-<h3 className="font-headline-sm text-accent-purple">Commission Triggers <span className="text-body-md font-normal text-on-surface-variant ml-sm">(4 events pending validation)</span></h3>
-</div>
-<div className="grid grid-cols-1 md:grid-cols-4 gap-md">
-<div className="bg-surface p-sm rounded-lg border border-outline-variant flex flex-col gap-xs">
-<span className="text-body-sm font-bold">Rajesh Kumar</span>
-<span className="text-[10px] text-on-surface-variant uppercase tracking-wider">FM Commission</span>
-<span className="text-accent-purple font-mono-data">₹ 1,200</span>
-</div>
-<div className="bg-surface p-sm rounded-lg border border-outline-variant flex flex-col gap-xs">
-<span className="text-body-sm font-bold">Arun V.</span>
-<span className="text-[10px] text-on-surface-variant uppercase tracking-wider">Assoc Commission</span>
-<span className="text-accent-purple font-mono-data">₹ 800</span>
-</div>
-<div className="bg-surface p-sm rounded-lg border border-outline-variant flex flex-col gap-xs">
-<span className="text-body-sm font-bold">Satnam Singh</span>
-<span className="text-[10px] text-on-surface-variant uppercase tracking-wider">FM Commission</span>
-<span className="text-accent-purple font-mono-data">₹ 1,200</span>
-</div>
-<div className="bg-surface p-sm rounded-lg border border-outline-variant flex flex-col gap-xs">
-<span className="text-body-sm font-bold">Vikram Aditya</span>
-<span className="text-[10px] text-on-surface-variant uppercase tracking-wider">Assoc Commission</span>
-<span className="text-accent-purple font-mono-data">₹ 800</span>
-</div>
-</div>
-</div>
+              {/* Sourcing efficiency card */}
+              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                  <h4 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-1">Sourcing Efficiency Metric</h4>
+                  <p className="font-semibold text-gray-600 leading-relaxed">
+                    You call an average of <span className="font-extrabold text-[#8E44AD] text-sm">4.2 drivers</span> to fill one active job posting.
+                  </p>
+                </div>
+                <span className="material-symbols-outlined text-[#8E44AD] text-3xl font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>insights</span>
+              </div>
 
-<div className="col-span-12 bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
-<div className="p-md border-b border-outline-variant flex justify-between items-center">
-<h3 className="font-headline-sm">Recent Placements</h3>
-<button className="text-primary font-bold text-body-sm flex items-center gap-xs">
-                        Export CSV
-                        <span className="material-symbols-outlined text-[18px]" data-icon="download">download</span>
-</button>
-</div>
-<div className="overflow-x-auto">
-<table className="w-full text-left border-collapse">
-<thead>
-<tr className="bg-surface-container-low">
-<th className="px-md py-sm font-label-md text-on-surface-variant uppercase">Date</th>
-<th className="px-md py-sm font-label-md text-on-surface-variant uppercase">Driver</th>
-<th className="px-md py-sm font-label-md text-on-surface-variant uppercase">Transporter</th>
-<th className="px-md py-sm font-label-md text-on-surface-variant uppercase">Job Type</th>
-<th className="px-md py-sm font-label-md text-on-surface-variant uppercase">SLA Met?</th>
-<th className="px-md py-sm font-label-md text-on-surface-variant uppercase">FM/Assoc Status</th>
-<th className="px-md py-sm font-label-md text-on-surface-variant uppercase">Actions</th>
-</tr>
-</thead>
-<tbody className="divide-y divide-outline-variant">
-<tr className="hover:bg-surface-variant transition-colors group">
-<td className="px-md py-md font-mono-data">24 Oct 2023</td>
-<td className="px-md py-md">
-<div className="flex items-center gap-sm">
-<div className="w-8 h-8 rounded-full bg-primary-fixed flex items-center justify-center font-bold text-primary text-[10px]">PK</div>
-<span className="font-bold">Pawan Kumar</span>
-</div>
-</td>
-<td className="px-md py-md text-on-surface-variant">BlueDart Logistics</td>
-<td className="px-md py-md">
-<span className="px-xs py-[2px] bg-secondary-container text-on-secondary-container text-[11px] font-bold rounded">Long Haul</span>
-</td>
-<td className="px-md py-md">
-<span className="flex items-center gap-xs text-primary">
-<span className="material-symbols-outlined text-[18px]" data-icon="check_circle" style={{"fontVariationSettings": "\'FILL\' 1"}}>check_circle</span>
-<span className="text-body-sm font-bold">Yes</span>
-</span>
-</td>
-<td className="px-md py-md">
-<span className="px-xs py-[2px] border border-accent-purple text-accent-purple text-[11px] font-bold rounded">FM Triggered</span>
-</td>
-<td className="px-md py-md">
-<button className="p-1 hover:bg-surface-container rounded transition-colors text-outline">
-<span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-</button>
-</td>
-</tr>
-<tr className="hover:bg-surface-variant transition-colors group">
-<td className="px-md py-md font-mono-data">23 Oct 2023</td>
-<td className="px-md py-md">
-<div className="flex items-center gap-sm">
-<div className="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center font-bold text-secondary text-[10px]">MS</div>
-<span className="font-bold">Manjit Singh</span>
-</div>
-</td>
-<td className="px-md py-md text-on-surface-variant">V-Trans Ltd.</td>
-<td className="px-md py-md">
-<span className="px-xs py-[2px] bg-secondary-container text-on-secondary-container text-[11px] font-bold rounded">Short Haul</span>
-</td>
-<td className="px-md py-md">
-<span className="flex items-center gap-xs text-primary">
-<span className="material-symbols-outlined text-[18px]" data-icon="check_circle" style={{"fontVariationSettings": "\'FILL\' 1"}}>check_circle</span>
-<span className="text-body-sm font-bold">Yes</span>
-</span>
-</td>
-<td className="px-md py-md">
-<span className="px-xs py-[2px] bg-surface-variant text-on-surface-variant text-[11px] font-bold rounded uppercase">Standard</span>
-</td>
-<td className="px-md py-md">
-<button className="p-1 hover:bg-surface-container rounded transition-colors text-outline">
-<span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-</button>
-</td>
-</tr>
-<tr className="hover:bg-surface-variant transition-colors group">
-<td className="px-md py-md font-mono-data">22 Oct 2023</td>
-<td className="px-md py-md">
-<div className="flex items-center gap-sm">
-<div className="w-8 h-8 rounded-full bg-accent-purple/20 flex items-center justify-center font-bold text-accent-purple text-[10px]">RA</div>
-<span className="font-bold">Rishi Agarwal</span>
-</div>
-</td>
-<td className="px-md py-md text-on-surface-variant">Mahindra Logistics</td>
-<td className="px-md py-md">
-<span className="px-xs py-[2px] bg-primary-fixed text-on-primary-fixed-variant text-[11px] font-bold rounded">Express</span>
-</td>
-<td className="px-md py-md">
-<span className="flex items-center gap-xs text-error">
-<span className="material-symbols-outlined text-[18px]" data-icon="cancel" style={{"fontVariationSettings": "\'FILL\' 1"}}>cancel</span>
-<span className="text-body-sm font-bold">No</span>
-</span>
-</td>
-<td className="px-md py-md">
-<span className="px-xs py-[2px] border border-accent-purple text-accent-purple text-[11px] font-bold rounded">Assoc Triggered</span>
-</td>
-<td className="px-md py-md">
-<button className="p-1 hover:bg-surface-container rounded transition-colors text-outline">
-<span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-</button>
-</td>
-</tr>
-<tr className="hover:bg-surface-variant transition-colors group">
-<td className="px-md py-md font-mono-data">21 Oct 2023</td>
-<td className="px-md py-md">
-<div className="flex items-center gap-sm">
-<div className="w-8 h-8 rounded-full bg-primary-fixed flex items-center justify-center font-bold text-primary text-[10px]">DS</div>
-<span className="font-bold">Deepak Sharma</span>
-</div>
-</td>
-<td className="px-md py-md text-on-surface-variant">SafeXpress</td>
-<td className="px-md py-md">
-<span className="px-xs py-[2px] bg-secondary-container text-on-secondary-container text-[11px] font-bold rounded">Long Haul</span>
-</td>
-<td className="px-md py-md">
-<span className="flex items-center gap-xs text-primary">
-<span className="material-symbols-outlined text-[18px]" data-icon="check_circle" style={{"fontVariationSettings": "\'FILL\' 1"}}>check_circle</span>
-<span className="text-body-sm font-bold">Yes</span>
-</span>
-</td>
-<td className="px-md py-md">
-<span className="px-xs py-[2px] bg-surface-variant text-on-surface-variant text-[11px] font-bold rounded uppercase">Standard</span>
-</td>
-<td className="px-md py-md">
-<button className="p-1 hover:bg-surface-container rounded transition-colors text-outline">
-<span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-</button>
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div className="p-md border-t border-outline-variant flex justify-center">
-<button className="font-bold text-primary hover:underline text-body-md">View All Placements</button>
-</div>
-</div>
-</div>
-</main>
+            </div>
+
+            {/* Right: What If Simulator & MoM Chart */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4">
+              <h4 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">Incentive Handover Calculator</h4>
+              
+              <div className="bg-gray-55 border border-gray-150 p-3.5 rounded-xl space-y-3">
+                <span className="text-[10px] font-bold text-gray-400 uppercase block">What-If Projected Placements Simulator</span>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center font-bold text-gray-700">
+                    <span>Add Super Premium placements:</span>
+                    <span className="text-[#8E44AD] font-extrabold text-sm">+{extraPlacements} jobs</span>
+                  </div>
+                  <input 
+                    type="range"
+                    min={0}
+                    max={30}
+                    value={extraPlacements}
+                    onChange={(e) => setExtraPlacements(Number(e.target.value))}
+                    className="w-full accent-[#8E44AD] cursor-pointer"
+                  />
+                  <div className="text-[10px] text-gray-400 font-semibold leading-relaxed">
+                    Slide to simulate adding placement events. Gate requires Count &gt; 4 placements.
+                  </div>
+                </div>
+              </div>
+
+              {/* Itemized table details */}
+              <table className="w-full text-left text-[11px] font-semibold text-gray-600">
+                <thead>
+                  <tr className="border-b border-gray-150 text-gray-400 font-bold uppercase text-[9px]">
+                    <th className="pb-1.5">Event details</th>
+                    <th className="pb-1.5 text-center">Fulfillments</th>
+                    <th className="pb-1.5 text-center">Rate</th>
+                    <th className="pb-1.5 text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700">
+                  <tr>
+                    <td className="py-2 font-bold text-gray-800">Premium Placements</td>
+                    <td className="py-2 text-center font-mono">{basePremium}</td>
+                    <td className="py-2 text-center font-mono">₹{premiumRate}</td>
+                    <td className="py-2 text-right font-mono font-bold">₹{basePremium * premiumRate}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 font-bold text-gray-800">Super Premium Placements (Simulated)</td>
+                    <td className="py-2 text-center font-mono">{simulatedSuper}</td>
+                    <td className="py-2 text-center font-mono">₹{superRate}</td>
+                    <td className="py-2 text-right font-mono font-bold text-[#8E44AD]">₹{simulatedSuperIncentive}</td>
+                  </tr>
+                  <tr className="border-t border-gray-250 font-extrabold">
+                    <td className="py-2 text-gray-800 text-xs">Total Simulated Payout</td>
+                    <td className="py-2 text-center font-mono text-xs">{totalSimulatedPlacements}</td>
+                    <td className="py-2"></td>
+                    <td className="py-2 text-right font-mono text-xs text-green-600">₹{totalIncentive}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </>
+      )}
+
+      {activeTab === 'lastMonth' && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm text-center py-12">
+          <span className="material-symbols-outlined text-[#8E44AD] text-4xl mb-2">history</span>
+          <p className="font-bold text-gray-800">Last Month placements Handover</p>
+          <p className="text-gray-400 mt-1">Placements: 48 jobs · SLA Compliance: 93.4% · Incentives Earned: ₹1,840</p>
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden text-xs">
+          <div className="p-3 bg-gray-50 border-b border-gray-200 font-bold text-gray-700 uppercase tracking-wider">
+            Historic PlacementsHandover ledger
+          </div>
+
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-50 text-gray-400 font-bold uppercase text-[9px] border-b border-gray-150">
+                <th className="p-3 pl-4">Month</th>
+                <th className="p-3 text-center">Placements</th>
+                <th className="p-3 text-center">Monthly Target</th>
+                <th className="p-3 text-center">SLA Compliance %</th>
+                <th className="p-3 text-right pr-4">Incentive Paid</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+              {[
+                { m: 'May 2026', qty: 58, tgt: 55, sla: '92.4%', pay: 2020 },
+                { m: 'Apr 2026', qty: 52, tgt: 55, sla: '89.1%', pay: 1720 },
+                { m: 'Mar 2026', qty: 61, tgt: 55, sla: '94.5%', pay: 2150 }
+              ].map((row, i) => (
+                <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="p-3 pl-4 font-bold text-gray-850">{row.m}</td>
+                  <td className="p-3 text-center font-mono">{row.qty} jobs</td>
+                  <td className="p-3 text-center font-mono">{row.tgt} jobs</td>
+                  <td className="p-3 text-center font-mono">{row.sla}</td>
+                  <td className="p-3 text-right pr-4 font-mono font-bold text-green-600">₹{row.pay}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+    </main>
   );
 };
 

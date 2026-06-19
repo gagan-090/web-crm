@@ -75,6 +75,7 @@ import TlRealTimeMonitor from '../pages/team-lead/TlRealTimeMonitor';
 import TlLeadQueueManager from '../pages/team-lead/TlLeadQueueManager';
 import TlDailyWrapUpPanel from '../pages/team-lead/TlDailyWrapUpPanel';
 import TlCallerProfileDetail from '../pages/team-lead/TlCallerProfileDetail';
+import TlOverviewDashboard from '../pages/team-lead/TlOverviewDashboard';
 import DwHomeDashboard from '../pages/driver-welcome/DwHomeDashboard';
 import TlOverviewDriverWelcome from '../pages/driver-welcome/TlOverviewDriverWelcome';
 import DwTrainingHub from '../pages/driver-welcome/DwTrainingHub';
@@ -105,8 +106,10 @@ import TlMatchmakingJobBoard from '../pages/matchmaking/TlMatchmakingJobBoard';
 import MmPlacementConfirmation from '../pages/matchmaking/MmPlacementConfirmation';
 import MmDriverSearch from '../pages/matchmaking/MmDriverSearch';
 import MmScriptLibrary from '../pages/matchmaking/MmScriptLibrary';
-import MmPlacementHistory from '../pages/matchmaking/MmPlacementHistory';
 import MmJobBoard from '../pages/matchmaking/MmJobBoard';
+import MmTrainingHub from '../pages/matchmaking/MmTrainingHub';
+import MmPlacementHistory from '../pages/matchmaking/MmPlacementHistory';
+import GlobalOverlaysContainer from '../shared/components/business/GlobalOverlaysContainer';
 import ScoreTrends from '../pages/special-categories/ScoreTrends';
 import ScriptEditorConsole from '../pages/special-categories/ScriptEditorConsole';
 import ScoringInterface from '../pages/special-categories/ScoringInterface';
@@ -125,7 +128,7 @@ const RoleHomeRedirect: React.FC = () => {
 
   const roleHomepages: Record<string, string> = {
     [Role.TH]: '/th/overview-live',
-    [Role.TL]: '/tl/tl-real-time-monitor',
+    [Role.TL]: '/tl/tl-overview-dashboard',
     [Role.QC]: '/qc/qc-console-live',
     [Role.HR]: '/hr/hiring-dashboard-live',
     [Role.ADMIN]: '/admin/system-health-dashboard',
@@ -219,6 +222,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="th/backlog-campaign-manager" element={<RoleGuard permission="leads:view"><BacklogCampaignManager /></RoleGuard>} />
           <Route path="th/page07-settings" element={<RoleGuard permission="leads:view"><Page07Settings /></RoleGuard>} />
           <Route path="th/page03-team-monitor" element={<RoleGuard permission="leads:view"><Page03TeamMonitor /></RoleGuard>} />
+          <Route path="tl/tl-overview-dashboard" element={<RoleGuard permission="leads:view"><TlOverviewDashboard /></RoleGuard>} />
           <Route path="tl/tl-team-callback-calendar" element={<RoleGuard permission="leads:view"><TlTeamCallbackCalendar /></RoleGuard>} />
           <Route path="tl/tl-real-time-monitor" element={<RoleGuard permission="leads:view"><TlRealTimeMonitor /></RoleGuard>} />
           <Route path="tl/tl-lead-queue-manager" element={<RoleGuard permission="leads:view"><TlLeadQueueManager /></RoleGuard>} />
@@ -255,6 +259,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="mm/mm-script-library" element={<RoleGuard permission="calls:dial"><MmScriptLibrary /></RoleGuard>} />
           <Route path="mm/mm-placement-history" element={<RoleGuard permission="calls:dial"><MmPlacementHistory /></RoleGuard>} />
           <Route path="mm/mm-job-board" element={<RoleGuard permission="calls:dial"><MmJobBoard /></RoleGuard>} />
+          <Route path="mm/mm-training-hub" element={<RoleGuard permission="calls:dial"><MmTrainingHub /></RoleGuard>} />
           <Route path="sc/score-trends" element={<RoleGuard permission="calls:dial"><ScoreTrends /></RoleGuard>} />
           <Route path="sc/script-editor-console" element={<RoleGuard permission="calls:dial"><ScriptEditorConsole /></RoleGuard>} />
           <Route path="sc/scoring-interface" element={<RoleGuard permission="calls:dial"><ScoringInterface /></RoleGuard>} />
@@ -286,6 +291,7 @@ export const AppRoutes: React.FC = () => {
         {/* Fallback route */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <GlobalOverlaysContainer />
     </BrowserRouter>
   );
 };

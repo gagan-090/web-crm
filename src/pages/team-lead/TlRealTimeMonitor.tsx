@@ -1,461 +1,642 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+interface RosterMember {
+  name: string;
+  roleLabel: string;
+  roleType: 'primary' | 'backup' | 'special' | 'matchmaker';
+  status: 'On Call' | 'Idle' | 'Break' | 'Offline';
+  currentLead: string;
+  queueDepth: number;
+  calls: number;
+  revenue: number;
+  lastCallAt: string;
+  avatarColor: string;
+}
+
+interface CallLogItem {
+  time: string;
+  caller: string;
+  leadName: string;
+  tmid: string;
+  duration: string;
+  outcome: 'Connected' | 'Converted' | 'NR' | 'Busy';
+}
+
+interface EscalationLead {
+  id: string;
+  name: string;
+  tmid: string;
+  daysInQueue: number;
+  nrCount: number;
+}
 
 export const TlRealTimeMonitor: React.FC = () => {
+  const navigate = useNavigate();
+  
+  // Role Toggle
+  const [tlMode, setTlMode] = useState<'dw' | 'tr-mm'>('dw');
+  
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // State for Team Roster
+  const [dwRoster, setDwRoster] = useState<RosterMember[]>([
+    { name: 'Rahul S.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'On Call', currentLead: 'DR-48291', queueDepth: 28, calls: 32, revenue: 2400, lastCallAt: '12:39 PM', avatarColor: 'bg-teal-500' },
+    { name: 'Sonia R.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'On Call', currentLead: 'DR-48292', queueDepth: 36, calls: 28, revenue: 1900, lastCallAt: '12:37 PM', avatarColor: 'bg-indigo-500' },
+    { name: 'Aman K.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'Idle', currentLead: '--', queueDepth: 14, calls: 24, revenue: 1500, lastCallAt: '12:20 PM', avatarColor: 'bg-emerald-500' },
+    { name: 'Priya P.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'Break', currentLead: '--', queueDepth: 22, calls: 18, revenue: 1200, lastCallAt: '12:05 PM', avatarColor: 'bg-pink-500' },
+    { name: 'Vikram A.', roleLabel: 'Backup Caller', roleType: 'backup', status: 'Offline', currentLead: '--', queueDepth: 0, calls: 0, revenue: 0, lastCallAt: 'Yesterday', avatarColor: 'bg-amber-500' },
+    { name: 'Kunal S.', roleLabel: 'Backup Caller', roleType: 'backup', status: 'Offline', currentLead: '--', queueDepth: 0, calls: 0, revenue: 0, lastCallAt: 'Yesterday', avatarColor: 'bg-gray-400' },
+    { name: 'Aditi S.', roleLabel: 'Special Categories', roleType: 'special', status: 'On Call', currentLead: 'DR-88220', queueDepth: 5, calls: 8, revenue: 3100, lastCallAt: '12:25 PM', avatarColor: 'bg-purple-500' }
+  ]);
+
+  const [trMmRoster, setTrMmRoster] = useState<RosterMember[]>([
+    { name: 'Alex R.', roleLabel: 'Primary TR Caller', roleType: 'primary', status: 'On Call', currentLead: 'TR-12094', queueDepth: 18, calls: 14, revenue: 4000, lastCallAt: '12:39 PM', avatarColor: 'bg-teal-500' },
+    { name: 'Sarah C.', roleLabel: 'Primary TR Caller', roleType: 'primary', status: 'On Call', currentLead: 'TR-12095', queueDepth: 28, calls: 12, revenue: 1999, lastCallAt: '12:35 PM', avatarColor: 'bg-indigo-500' },
+    { name: 'Marcus T.', roleLabel: 'Primary TR Caller', roleType: 'primary', status: 'Break', currentLead: '--', queueDepth: 36, calls: 8, revenue: 0, lastCallAt: '12:01 PM', avatarColor: 'bg-rose-500' },
+    { name: 'Elena R.', roleLabel: 'Backup TR Caller', roleType: 'backup', status: 'Offline', currentLead: '--', queueDepth: 0, calls: 0, revenue: 0, lastCallAt: 'Yesterday', avatarColor: 'bg-gray-400' },
+    { name: 'Rohit K.', roleLabel: 'Matchmaking Agent', roleType: 'matchmaker', status: 'On Call', currentLead: 'JD-12034', queueDepth: 6, calls: 22, revenue: 8000, lastCallAt: '12:38 PM', avatarColor: 'bg-purple-500' },
+    { name: 'Sneha M.', roleLabel: 'Matchmaking Agent', roleType: 'matchmaker', status: 'Idle', currentLead: '--', queueDepth: 4, calls: 18, revenue: 6000, lastCallAt: '12:25 PM', avatarColor: 'bg-pink-500' },
+    { name: 'Javed K.', roleLabel: 'Matchmaking Agent', roleType: 'matchmaker', status: 'On Call', currentLead: 'JD-12035', queueDepth: 5, calls: 15, revenue: 3000, lastCallAt: '12:30 PM', avatarColor: 'bg-emerald-500' },
+    { name: 'Deepak G.', roleLabel: 'Matchmaking Agent', roleType: 'matchmaker', status: 'Idle', currentLead: '--', queueDepth: 3, calls: 12, revenue: 0, lastCallAt: '11:45 AM', avatarColor: 'bg-amber-500' }
+  ]);
+
+  const currentRoster = tlMode === 'dw' ? dwRoster : trMmRoster;
+  const setRoster = tlMode === 'dw' ? setDwRoster : setTrMmRoster;
+
+  // Rebalance modal states
+  const [showRebalanceModal, setShowRebalanceModal] = useState(false);
+  const [rebalanceFrom, setRebalanceFrom] = useState('');
+  const [rebalanceTo, setRebalanceTo] = useState('');
+  const [rebalanceCount, setRebalanceCount] = useState(5);
+  const [rebalanceReason, setRebalanceReason] = useState('');
+
+  // Backup activation reason popup
+  const [backupActiveTarget, setBackupActiveTarget] = useState<string | null>(null);
+  const [backupActiveReason, setBackupActiveReason] = useState('Queue overflow');
+
+  // Escalation leads list
+  const [dwEscalations, setDwEscalations] = useState<EscalationLead[]>([
+    { id: 'e1', name: 'Ramesh Yadav', tmid: 'DR-77890', daysInQueue: 3, nrCount: 3 },
+    { id: 'e2', name: 'Jagdish Singh', tmid: 'DR-77981', daysInQueue: 4, nrCount: 2 }
+  ]);
+
+  const [trEscalations, setTrEscalations] = useState<EscalationLead[]>([
+    { id: 'e3', name: 'Agrawal Global', tmid: 'TR-12094', daysInQueue: 1, nrCount: 3 },
+    { id: 'e4', name: 'Kunal Logistics', tmid: 'TR-12099', daysInQueue: 3, nrCount: 1 }
+  ]);
+
+  const escalations = tlMode === 'dw' ? dwEscalations : trEscalations;
+  const setEscalations = tlMode === 'dw' ? setDwEscalations : setTrEscalations;
+
+  // Quick select dynamic assign state
+  const [assignTargetLead, setAssignTargetLead] = useState<string | null>(null);
+  const [assignTargetCaller, setAssignTargetCaller] = useState('');
+
+  // Sample Recent call logs
+  const callLogs: CallLogItem[] = [
+    { time: '12:39 PM', caller: 'Rahul S.', leadName: 'Suresh Yadav', tmid: 'DR-48291', duration: '03:16', outcome: 'Connected' },
+    { time: '12:37 PM', caller: 'Sonia R.', leadName: 'Gati Agent', tmid: 'TR-48294', duration: '04:54', outcome: 'Converted' },
+    { time: '12:35 PM', caller: 'Alex R.', leadName: 'Agrawal Global', tmid: 'TR-12094', duration: '01:05', outcome: 'NR' },
+    { time: '12:30 PM', caller: 'Javed K.', leadName: 'Sharma Logistics', tmid: 'TR-12095', duration: '02:40', outcome: 'Connected' },
+    { time: '12:25 PM', caller: 'Aditi S.', leadName: 'Puncture Shop Agra', tmid: 'DR-88220', duration: '05:12', outcome: 'Connected' }
+  ];
+
+  // Execute queue rebalancing
+  const handleConfirmRebalance = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rebalanceFrom || !rebalanceTo) {
+      triggerToast('Please select both From and To callers');
+      return;
+    }
+    if (rebalanceFrom === rebalanceTo) {
+      triggerToast('Source and destination callers cannot be the same');
+      return;
+    }
+    if (!rebalanceReason) {
+      triggerToast('A reason is required to log the manual queue override');
+      return;
+    }
+
+    const fromCaller = currentRoster.find(c => c.name === rebalanceFrom);
+    if (!fromCaller || fromCaller.queueDepth < rebalanceCount) {
+      triggerToast(`Source caller does not have ${rebalanceCount} leads to reassign`);
+      return;
+    }
+
+    setRoster(prev => prev.map(c => {
+      if (c.name === rebalanceFrom) {
+        return { ...c, queueDepth: c.queueDepth - rebalanceCount };
+      }
+      if (c.name === rebalanceTo) {
+        return { ...c, queueDepth: c.queueDepth + rebalanceCount };
+      }
+      return c;
+    }));
+
+    setShowRebalanceModal(false);
+    triggerToast(`Moved ${rebalanceCount} leads from ${rebalanceFrom} to ${rebalanceTo} successfully ✓`);
+    setRebalanceReason('');
+  };
+
+  // Toggle backup state
+  const handleToggleBackup = (callerName: string, currentlyActive: boolean) => {
+    if (!currentlyActive) {
+      // Prompt for activation reason
+      setBackupActiveTarget(callerName);
+    } else {
+      // Simply deactivate
+      setRoster(prev => prev.map(c => 
+        c.name === callerName ? { ...c, status: 'Offline', queueDepth: 0 } : c
+      ));
+      triggerToast(`Backup Caller ${callerName} Deactivated (Shift ends)`);
+    }
+  };
+
+  const handleConfirmBackupActivation = () => {
+    if (!backupActiveTarget) return;
+    setRoster(prev => prev.map(c => 
+      c.name === backupActiveTarget ? { ...c, status: 'Idle', queueDepth: 10 } : c
+    ));
+    triggerToast(`Backup Caller ${backupActiveTarget} Activated (Reason: ${backupActiveReason}) ✓`);
+    setBackupActiveTarget(null);
+  };
+
+  // Handle manual escalation assignment
+  const handleAssignEscalation = (leadId: string, leadTmid: string) => {
+    if (!assignTargetCaller) {
+      triggerToast('Please select a caller to assign this lead');
+      return;
+    }
+    
+    // Add lead to caller's queue depth
+    setRoster(prev => prev.map(c => 
+      c.name === assignTargetCaller ? { ...c, queueDepth: c.queueDepth + 1 } : c
+    ));
+
+    // Remove from escalation list
+    setEscalations(prev => prev.filter(l => l.id !== leadId));
+    setAssignTargetLead(null);
+    setAssignTargetCaller('');
+    triggerToast(`Escalated Lead ${leadTmid} assigned manually to ${assignTargetCaller} ✓`);
+  };
+
   return (
-    <main className=" custom-scrollbar p-lg flex flex-col gap-lg bg-white">
+    <main className="h-[calc(100vh-80px)] flex bg-white overflow-hidden border border-gray-200 rounded-xl relative">
+      
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
+          <span className="w-2 h-2 rounded-full bg-[#F39C12]"></span>
+          {toastMessage}
+        </div>
+      )}
 
-<div className="flex justify-between items-end">
-<div>
-<div className="flex items-center gap-sm">
-<h1 className="font-display-lg text-display-lg text-on-surface">Team Monitor</h1>
-<div className="flex items-center gap-xs px-sm py-[2px] rounded-full border border-primary/20 bg-primary/5 text-primary">
-<span className="w-2 h-2 rounded-full bg-primary live-indicator-pulse" style={{"opacity": 1}}></span>
-<span className="text-label-md font-bold">LIVE</span>
-</div>
-</div>
-<p className="text-body-md text-on-surface-variant">Real-time oversight of current active shifts and call distribution.</p>
-</div>
-<div className="flex gap-sm">
-<div className="p-sm bg-surface-container-low border border-outline-variant rounded flex flex-col">
-<span className="text-label-md text-on-surface-variant">Active Callers</span>
-<span className="text-headline-sm font-headline-sm text-primary">24 / 30</span>
-</div>
-<div className="p-sm bg-surface-container-low border border-outline-variant rounded flex flex-col">
-<span className="text-label-md text-on-surface-variant">Avg. Queue Wait</span>
-<span className="text-headline-sm font-headline-sm text-primary">02:14</span>
-</div>
-</div>
-</div>
-<div className="flex gap-lg flex-1 min-h-0">
+      {/* Main Left Activity Pane */}
+      <section className="flex-1 flex flex-col min-w-0 border-r border-gray-200">
+        
+        {/* Top Controls bar with Mode Switcher */}
+        <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wide">Live Control Room</h2>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-green-200 bg-green-50 text-green-700 text-[10px] font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping"></span>
+              <span>REFRESHING LIVE</span>
+            </div>
+          </div>
 
-<div className="flex-1 flex flex-col gap-lg min-w-0 overflow-y-auto custom-scrollbar pr-2">
+          {/* Toggle Badge */}
+          <button
+            onClick={() => {
+              const nextMode = tlMode === 'dw' ? 'tr-mm' : 'dw';
+              setTlMode(nextMode);
+              triggerToast(`Switched control room simulation to ${nextMode === 'dw' ? 'Driver Welcome' : 'Transporter + Matchmaking'}`);
+            }}
+            className="bg-[#F39C12] text-white px-2.5 py-1 rounded text-[10px] font-bold shadow hover:bg-[#e08e0b]"
+          >
+            Switch Team: {tlMode === 'dw' ? 'DW' : 'TR+MM'}
+          </button>
+        </div>
 
-<section className="bg-surface border border-outline-variant rounded-lg overflow-hidden shrink-0">
-<div className="px-md py-sm bg-surface-container border-b border-outline-variant flex justify-between items-center">
-<h3 className="font-headline-sm text-[16px]">Active Team Roster</h3>
-<span className="material-symbols-outlined text-on-surface-variant text-[18px]">filter_list</span>
-</div>
-<div className="overflow-x-auto">
-<table className="w-full border-collapse">
-<thead className="bg-surface-container-low text-label-md text-on-surface-variant uppercase tracking-wider">
-<tr>
-<th className="px-md py-sm text-left font-semibold">Caller</th>
-<th className="px-md py-sm text-left font-semibold">Role</th>
-<th className="px-md py-sm text-left font-semibold">Status</th>
-<th className="px-md py-sm text-left font-semibold">Lead TMID</th>
-<th className="px-md py-sm text-left font-semibold">Queue Depth</th>
-<th className="px-md py-sm text-right font-semibold">Calls Today</th>
-<th className="px-md py-sm text-right font-semibold">Revenue Today</th>
-</tr>
-</thead>
-<tbody className="divide-y divide-outline-variant text-body-md">
-<tr className="hover:bg-surface-container-low transition-colors">
-<td className="px-md py-sm font-medium">Alex Rivera</td>
-<td className="px-md py-sm text-on-surface-variant">Senior Agent</td>
-<td className="px-md py-sm"><span className="px-sm py-[2px] rounded-sm bg-green-100 text-green-700 text-[10px] font-bold uppercase">Active</span></td>
-<td className="px-md py-sm font-mono-data">TM-8821</td>
-<td className="px-md py-sm w-32">
-<div className="h-2 w-full bg-outline-variant rounded-full overflow-hidden">
-<div className="h-full bg-primary-container" style={{"width": "75%"}}></div>
-</div>
-</td>
-<td className="px-md py-sm text-right font-mono-data">42</td>
-<td className="px-md py-sm text-right font-mono-data">₹1,240.00</td>
-</tr>
-<tr className="hover:bg-surface-container-low transition-colors">
-<td className="px-md py-sm font-medium">Sarah Chen</td>
-<td className="px-md py-sm text-on-surface-variant">Specialist</td>
-<td className="px-md py-sm"><span className="px-sm py-[2px] rounded-sm bg-green-100 text-green-700 text-[10px] font-bold uppercase">Active</span></td>
-<td className="px-md py-sm font-mono-data">TM-8822</td>
-<td className="px-md py-sm w-32">
-<div className="h-2 w-full bg-outline-variant rounded-full overflow-hidden">
-<div className="h-full bg-primary-container" style={{"width": "30%"}}></div>
-</div>
-</td>
-<td className="px-md py-sm text-right font-mono-data">28</td>
-<td className="px-md py-sm text-right font-mono-data">₹980.50</td>
-</tr>
-<tr className="hover:bg-surface-container-low transition-colors">
-<td className="px-md py-sm font-medium">Marcus Thorne</td>
-<td className="px-md py-sm text-on-surface-variant">Lead Tier 2</td>
-<td className="px-md py-sm"><span className="px-sm py-[2px] rounded-sm bg-error-container text-on-error-container text-[10px] font-bold uppercase">On Break</span></td>
-<td className="px-md py-sm font-mono-data">TM-9004</td>
-<td className="px-md py-sm w-32">
-<div className="h-2 w-full bg-outline-variant rounded-full overflow-hidden">
-<div className="h-full bg-error" style={{"width": "95%"}}></div>
-</div>
-</td>
-<td className="px-md py-sm text-right font-mono-data">56</td>
-<td className="px-md py-sm text-right font-mono-data">₹3,100.20</td>
-</tr>
-<tr className="hover:bg-surface-container-low transition-colors">
-<td className="px-md py-sm font-medium">Elena Rodriguez</td>
-<td className="px-md py-sm text-on-surface-variant">Agent</td>
-<td className="px-md py-sm"><span className="px-sm py-[2px] rounded-sm bg-green-100 text-green-700 text-[10px] font-bold uppercase">Active</span></td>
-<td className="px-md py-sm font-mono-data">TM-8850</td>
-<td className="px-md py-sm w-32">
-<div className="h-2 w-full bg-outline-variant rounded-full overflow-hidden">
-<div className="h-full bg-primary-container" style={{"width": "45%"}}></div>
-</div>
-</td>
-<td className="px-md py-sm text-right font-mono-data">19</td>
-<td className="px-md py-sm text-right font-mono-data">₹415.00</td>
-</tr>
-</tbody>
-</table>
-</div>
-</section>
+        {/* Active Team Roster Table */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider">
+              Active Callers Status
+            </div>
 
-<section className="bg-surface border border-outline-variant rounded-lg overflow-hidden">
-<div className="px-md py-sm bg-surface-container border-b border-outline-variant">
-<h3 className="font-headline-sm text-[16px]">Recent Activity Log (Live)</h3>
-</div>
-<div className="overflow-x-auto h-[400px] custom-scrollbar">
-<table className="w-full border-collapse">
-<thead className="sticky top-0 bg-surface-container-low text-label-md text-on-surface-variant uppercase z-10">
-<tr>
-<th className="px-md py-sm text-left">Timestamp</th>
-<th className="px-md py-sm text-left">Caller ID</th>
-<th className="px-md py-sm text-left">Customer Origin</th>
-<th className="px-md py-sm text-left">Duration</th>
-<th className="px-md py-sm text-left">Outcome</th>
-</tr>
-</thead>
-<tbody className="divide-y divide-outline-variant text-body-sm">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-100/50 border-b border-gray-200 text-gray-400 font-bold uppercase text-[9px]">
+                  <th className="p-3">Caller</th>
+                  <th className="p-3">Role</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Current Lead</th>
+                  <th className="p-3">Queue Depth (Cap 40)</th>
+                  <th className="p-3 text-center">Calls</th>
+                  <th className="p-3 text-right">Revenue Today</th>
+                  <th className="p-3 text-right">Last Call</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+                {currentRoster.map((member, i) => {
+                  const isOverloaded = member.queueDepth > 35;
+                  return (
+                    <tr 
+                      key={i}
+                      onClick={() => navigate('/tl/tl-caller-profile-detail', { state: { callerName: member.name, roleLabel: member.roleLabel, tlMode: tlMode } })}
+                      className="hover:bg-gray-50/50 transition-colors cursor-pointer"
+                    >
+                      <td className="p-3 font-bold text-gray-800 flex items-center gap-1.5">
+                        <div className={`w-6 h-6 rounded-full ${member.avatarColor} text-white flex items-center justify-center font-bold text-[10px]`}>
+                          {member.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        {member.name}
+                      </td>
+                      <td className="p-3 text-gray-500 font-semibold">{member.roleLabel}</td>
+                      <td className="p-3">
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          member.status === 'On Call' ? 'bg-green-50 text-green-700 border border-green-200' :
+                          member.status === 'Break' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                          member.status === 'Offline' ? 'bg-red-50 text-red-700 border border-red-200' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {member.status}
+                        </span>
+                      </td>
+                      <td className="p-3 font-mono text-gray-600">{member.currentLead}</td>
+                      <td className="p-3 w-40">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-bold min-w-[14px] ${isOverloaded ? 'text-red-600' : 'text-gray-700'}`}>{member.queueDepth}</span>
+                          {member.roleType !== 'matchmaker' ? (
+                            <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full ${isOverloaded ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} 
+                                style={{ width: `${Math.min(100, (member.queueDepth / 40) * 100)}%` }}
+                              ></div>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-purple-700 bg-purple-50 px-1 py-0.2 rounded font-bold uppercase">MATCHMAKING</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3 text-center font-bold">{member.calls}</td>
+                      <td className="p-3 text-right font-mono font-bold">₹{member.revenue}</td>
+                      <td className="p-3 text-right text-gray-400 font-semibold">{member.lastCallAt}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
+          {/* Recent Call Logs list */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider">
+              Recent Call Attempts (Team-Wide)
+            </div>
 
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:39:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77100</td>
-                                                    <td className="px-md py-sm">Chicago, IL</td>
-                                                    <td className="px-md py-sm">03:16</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-green-100 text-green-700">Connected</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:37:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77101</td>
-                                                    <td className="px-md py-sm">Memphis, TN</td>
-                                                    <td className="px-md py-sm">04:54</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-primary-container/20 text-on-primary-container border border-primary-container">Converted</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:35:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77102</td>
-                                                    <td className="px-md py-sm">Phoenix, AZ</td>
-                                                    <td className="px-md py-sm">04:01</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-surface-variant text-on-surface-variant">NR</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:33:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77103</td>
-                                                    <td className="px-md py-sm">Dallas, TX</td>
-                                                    <td className="px-md py-sm">03:01</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-green-100 text-green-700">Connected</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:31:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77104</td>
-                                                    <td className="px-md py-sm">Seattle, WA</td>
-                                                    <td className="px-md py-sm">00:32</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-green-100 text-green-700">Connected</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:29:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77105</td>
-                                                    <td className="px-md py-sm">Chicago, IL</td>
-                                                    <td className="px-md py-sm">03:46</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-primary-container/20 text-on-primary-container border border-primary-container">Converted</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:27:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77106</td>
-                                                    <td className="px-md py-sm">Memphis, TN</td>
-                                                    <td className="px-md py-sm">01:11</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-surface-variant text-on-surface-variant">NR</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:25:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77107</td>
-                                                    <td className="px-md py-sm">Phoenix, AZ</td>
-                                                    <td className="px-md py-sm">01:21</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-green-100 text-green-700">Connected</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:23:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77108</td>
-                                                    <td className="px-md py-sm">Dallas, TX</td>
-                                                    <td className="px-md py-sm">01:08</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-surface-variant text-on-surface-variant">NR</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:21:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77109</td>
-                                                    <td className="px-md py-sm">Seattle, WA</td>
-                                                    <td className="px-md py-sm">01:08</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-green-100 text-green-700">Connected</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:19:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77110</td>
-                                                    <td className="px-md py-sm">Chicago, IL</td>
-                                                    <td className="px-md py-sm">04:24</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-surface-variant text-on-surface-variant">NR</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:17:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77111</td>
-                                                    <td className="px-md py-sm">Memphis, TN</td>
-                                                    <td className="px-md py-sm">00:22</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-green-100 text-green-700">Connected</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:15:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77112</td>
-                                                    <td className="px-md py-sm">Phoenix, AZ</td>
-                                                    <td className="px-md py-sm">02:06</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-primary-container/20 text-on-primary-container border border-primary-container">Converted</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:13:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77113</td>
-                                                    <td className="px-md py-sm">Dallas, TX</td>
-                                                    <td className="px-md py-sm">02:04</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-primary-container/20 text-on-primary-container border border-primary-container">Converted</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:11:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77114</td>
-                                                    <td className="px-md py-sm">Seattle, WA</td>
-                                                    <td className="px-md py-sm">03:14</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-green-100 text-green-700">Connected</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:09:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77115</td>
-                                                    <td className="px-md py-sm">Chicago, IL</td>
-                                                    <td className="px-md py-sm">03:18</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-green-100 text-green-700">Connected</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:07:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77116</td>
-                                                    <td className="px-md py-sm">Memphis, TN</td>
-                                                    <td className="px-md py-sm">04:10</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-surface-variant text-on-surface-variant">NR</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:05:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77117</td>
-                                                    <td className="px-md py-sm">Phoenix, AZ</td>
-                                                    <td className="px-md py-sm">00:02</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-primary-container/20 text-on-primary-container border border-primary-container">Converted</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:03:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77118</td>
-                                                    <td className="px-md py-sm">Dallas, TX</td>
-                                                    <td className="px-md py-sm">01:19</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-primary-container/20 text-on-primary-container border border-primary-container">Converted</span>
-                                                    </td>
-                                                </tr>
-                                            
-                                                <tr className="hover:bg-surface-container-low cursor-pointer">
-                                                    <td className="px-md py-sm text-on-surface-variant font-mono-data">12:01:39</td>
-                                                    <td className="px-md py-sm font-medium">CID-77119</td>
-                                                    <td className="px-md py-sm">Seattle, WA</td>
-                                                    <td className="px-md py-sm">03:21</td>
-                                                    <td className="px-md py-sm">
-                                                        <span className="px-sm py-xs rounded-sm text-[10px] font-bold uppercase bg-surface-variant text-on-surface-variant">NR</span>
-                                                    </td>
-                                                </tr>
-                                            
-</tbody>
-</table>
-</div>
-</section>
-</div>
+            <div className="max-h-[220px] overflow-y-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="bg-gray-50 text-gray-400 font-bold uppercase text-[9px] border-b border-gray-100">
+                    <th className="p-2.5">Time</th>
+                    <th className="p-2.5">Caller</th>
+                    <th className="p-2.5">Customer Name</th>
+                    <th className="p-2.5">TMID</th>
+                    <th className="p-2.5 text-center">Duration</th>
+                    <th className="p-2.5 text-right">Outcome</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 text-gray-700 font-medium">
+                  {callLogs.map((log, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="p-2.5 font-mono text-gray-400">{log.time}</td>
+                      <td className="p-2.5 font-bold">{log.caller}</td>
+                      <td className="p-2.5">{log.leadName}</td>
+                      <td className="p-2.5 font-mono text-gray-500">{log.tmid}</td>
+                      <td className="p-2.5 text-center font-mono">{log.duration}</td>
+                      <td className="p-2.5 text-right">
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          log.outcome === 'Converted' ? 'bg-green-100 text-green-800' :
+                          log.outcome === 'Connected' ? 'bg-blue-100 text-blue-800' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {log.outcome}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
 
-<aside className="w-[280px] shrink-0 flex flex-col gap-lg bg-white">
+        {/* BOTTOM PANEL: Backup Activation & Funnel Escalation */}
+        <footer className="border-t border-gray-200 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 shrink-0 select-none">
+          {/* Backup Activation Panel */}
+          <div className="bg-white border border-gray-200 p-3 rounded-xl flex flex-col justify-between">
+            <div>
+              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[16px] text-[#F39C12]">emergency_home</span>
+                Backup Roster Activation
+              </h4>
+              <p className="text-[10px] text-gray-400 mb-2 leading-relaxed">
+                Activate secondary backup callers to route queue overflows and prevent SLA breaches.
+              </p>
+            </div>
 
-<div className="border border-outline-variant rounded-lg p-md flex flex-col gap-md bg-white">
-<h4 className="font-headline-sm text-[16px] text-on-surface">Queue Rebalance</h4>
-<div className="flex flex-col gap-sm">
-<div className="flex justify-between text-label-md text-on-surface-variant">
-<span className="">Wait Time Variance</span>
-<span className="text-error">+18.4%</span>
-</div>
+            <div className="space-y-2">
+              {currentRoster.filter(c => c.roleType === 'backup').map((caller, idx) => {
+                const isActive = caller.status !== 'Offline';
+                return (
+                  <div key={idx} className="flex justify-between items-center p-2 bg-gray-50 border border-gray-150 rounded text-xs">
+                    <div>
+                      <span className="font-bold block text-gray-700">{caller.name}</span>
+                      <span className="text-[9px] text-gray-400 font-semibold uppercase">{caller.roleLabel}</span>
+                    </div>
 
-<div className="flex items-end gap-[4px] h-32 bg-white/50 p-sm rounded border border-outline-variant/30">
-<div className="w-full bg-primary/20 h-[40%] rounded-t-sm"></div>
-<div className="w-full bg-primary/40 h-[60%] rounded-t-sm"></div>
-<div className="w-full bg-primary/60 h-[85%] rounded-t-sm"></div>
-<div className="w-full bg-primary h-[55%] rounded-t-sm"></div>
-<div className="w-full bg-primary-container h-[95%] rounded-t-sm"></div>
-<div className="w-full bg-primary/40 h-[45%] rounded-t-sm"></div>
-</div>
-<div className="flex justify-between text-[10px] text-on-surface-variant font-mono-data uppercase">
-<span className="">Zone A</span>
-<span className="">Zone B</span>
-<span className="">Zone C</span>
-</div>
-</div>
-<p className="text-body-sm text-on-surface-variant">Queue depth in Zone C exceeds threshold. Manual intervention recommended to maintain SLA.</p>
-<button className="w-full bg-primary text-white font-bold py-sm rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-sm">
-<span className="material-symbols-outlined text-[18px]">balance</span>
-                            Rebalance Queue
+                    <button 
+                      onClick={() => handleToggleBackup(caller.name, isActive)}
+                      className={`px-3 py-1 rounded text-[10px] font-bold transition-all shadow-sm ${
+                        isActive 
+                          ? 'bg-green-600 text-white hover:bg-green-700' 
+                          : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                      }`}
+                    >
+                      {isActive ? 'Active' : 'Offline'}
+                    </button>
+                  </div>
+                );
+              })}
+              {currentRoster.filter(c => c.roleType === 'backup').length === 0 && (
+                <p className="text-[10px] text-gray-400 italic">No backup tier exists for Matchmaking callers.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Funnel/Backlog Escalation Queue */}
+          <div className="bg-white border border-gray-200 p-3 rounded-xl flex flex-col justify-between">
+            <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[16px] text-purple-600">priority_high</span>
+              Funnel Escalation Assignment
+            </h4>
+
+            <div className="flex-1 overflow-y-auto space-y-1.5 max-h-[110px] pr-1">
+              {escalations.map((lead, idx) => {
+                const isAssigning = assignTargetLead === lead.id;
+                return (
+                  <div key={idx} className="p-2 border-l-4 border-purple-500 bg-purple-50/30 rounded-r flex justify-between items-center text-xs">
+                    <div>
+                      <span className="font-bold text-gray-800 text-[11px]">{lead.name} ({lead.tmid})</span>
+                      <span className="text-[9px] text-gray-500 block font-semibold">
+                        {lead.daysInQueue} days in queue · {lead.nrCount} NR attempts
+                      </span>
+                    </div>
+
+                    {isAssigning ? (
+                      <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                        <select 
+                          value={assignTargetCaller}
+                          onChange={(e) => setAssignTargetCaller(e.target.value)}
+                          className="border border-gray-200 rounded px-1 py-0.5 text-[10px] font-bold text-gray-700 outline-none"
+                        >
+                          <option value="">Select Caller</option>
+                          {currentRoster.filter(c => c.status !== 'Offline' && c.roleType !== 'matchmaker').map((c, i) => (
+                            <option key={i} value={c.name}>{c.name}</option>
+                          ))}
+                        </select>
+                        <button 
+                          onClick={() => handleAssignEscalation(lead.id, lead.tmid)}
+                          className="bg-purple-600 text-white px-2 py-0.5 rounded text-[10px] font-bold hover:bg-purple-700"
+                        >
+                          Go
                         </button>
-</div>
+                        <button 
+                          onClick={() => setAssignTargetLead(null)}
+                          className="text-gray-400 font-bold px-1 hover:text-gray-600"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => setAssignTargetLead(lead.id)}
+                        className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded text-[10px] font-bold"
+                      >
+                        Assign Lead
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              {escalations.length === 0 && (
+                <div className="text-[10px] text-gray-400 italic py-4 text-center">No pending escalations in queue.</div>
+              )}
+            </div>
+          </div>
+        </footer>
 
-<div className="bg-surface border border-outline-variant rounded-lg p-md">
-<div className="flex justify-between items-center mb-sm">
-<span className="text-label-md uppercase font-bold text-on-surface-variant">SLA Integrity</span>
-<span className="text-label-md text-primary font-mono-data">92%</span>
-</div>
-<div className="h-3 w-full bg-surface-container-high rounded-full overflow-hidden mb-md">
+      </section>
 
-<div className="h-full bg-gradient-to-r from-green-500 via-primary-container to-error" style={{"width": "92%"}}></div>
-</div>
-<div className="grid grid-cols-2 gap-sm">
-<div className="text-center p-sm bg-surface-container-low rounded">
-<div className="text-display-lg text-[20px] leading-tight text-on-surface">14</div>
-<div className="text-[10px] text-on-surface-variant uppercase">Critical</div>
-</div>
-<div className="text-center p-sm bg-surface-container-low rounded">
-<div className="text-display-lg text-[20px] leading-tight text-primary">82</div>
-<div className="text-[10px] text-on-surface-variant uppercase">On-Track</div>
-</div>
-</div>
-</div>
+      {/* Right Column: Queue Rebalance Sidebar (280px) */}
+      <aside className="w-[280px] p-4 bg-gray-50/50 flex flex-col justify-between shrink-0 overflow-y-auto select-none">
+        <div className="space-y-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-2">
+            <h3 className="font-bold text-gray-800 text-xs uppercase tracking-wide">Queue Rebalance</h3>
+            
+            {/* Visual Queue Depths Bar chart */}
+            <div className="space-y-2 mt-2">
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Current Caller Load:</div>
+              <div className="space-y-2">
+                {currentRoster.filter(c => c.roleType !== 'matchmaker' && c.status !== 'Offline').map((caller, idx) => {
+                  const percent = Math.min(100, (caller.queueDepth / 40) * 100);
+                  const isRed = caller.queueDepth > 35;
+                  return (
+                    <div key={idx} className="space-y-0.5 text-[10px]">
+                      <div className="flex justify-between font-semibold">
+                        <span className="text-gray-600">{caller.name}</span>
+                        <span className={isRed ? 'text-red-600 font-bold' : 'text-gray-700'}>{caller.queueDepth} leads</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-gray-150 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full ${isRed ? 'bg-red-500' : 'bg-[#F39C12]'}`} 
+                          style={{ width: `${percent}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
-<div className="bg-surface border border-outline-variant rounded-lg overflow-hidden">
-<div className="p-sm bg-surface-container-low border-b border-outline-variant">
-<span className="text-label-md font-bold text-on-surface-variant">Fleet Density Map</span>
-</div>
-<div className="h-40 relative group cursor-pointer">
-<div className="w-full h-full bg-cover bg-center transition-transform duration-500 group-hover:scale-105" data-alt="A stylized minimalist digital map showing a high-tech logistics grid of a major metropolitan area. Glowing amber and white nodes represent delivery hubs and active transport units. The map features a clean, high-contrast UI with thin lines and subtle topographic details in a light-mode corporate aesthetic." style={{"backgroundImage": "url(\'https://lh3.googleusercontent.com/aida-public/AB6AXuCf8Qhx8qLfwPl-30VbFJMcsOiswnqxg6oDmuEIwWFZU7WCselmGZHPFL2AvPOgaEjpQFQryaYoPhCT1-9Gy1PPKZtyh2q2sX505sjdLIRb5Dsd8VOzmViepu2T3iBDYBb3grC91uTUYFFVzqbeZETWITbQikFjz1R0RLdIsA0pFTvIMpXQRKlX1_Sog6imV9n_KqMAENP8-x4vTpVPHoTHJrvzhKRVVImicCJQJAQOgASKrnTNi5yazgKrjx-0BZtBVnnDVxtksrE\')"}}></div>
-<div className="absolute inset-0 bg-primary/5 pointer-events-none"></div>
-</div>
-</div>
-</aside>
-</div>
+            <p className="text-[10.5px] text-gray-500 leading-normal mt-2">
+              Manual rebalancing triggers a bulk transfer of lead records from overloaded queues to under-capacity callers.
+            </p>
 
-<footer className="border border-outline-variant rounded-lg p-lg grid grid-cols-1 lg:grid-cols-3 gap-lg shrink-0 bg-white">
+            <button 
+              onClick={() => setShowRebalanceModal(true)}
+              className="w-full bg-[#F39C12] hover:bg-[#e08e0b] text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow"
+            >
+              <span className="material-symbols-outlined text-[16px]">balance</span> Rebalance Queue
+            </button>
+          </div>
 
-<div className="lg:col-span-1 border-r border-outline-variant pr-lg">
-<h4 className="font-headline-sm text-[16px] mb-md flex items-center gap-sm">
-<span className="material-symbols-outlined text-primary">emergency_home</span>
-                        Backup Activation
-                    </h4>
-<div className="space-y-sm">
-<div className="flex items-center justify-between p-sm bg-surface border border-outline-variant rounded">
-<div className="flex flex-col">
-<span className="text-label-md font-bold">External Vendor Pool</span>
-<span className="text-body-sm text-on-surface-variant">Relay overflow to partner center</span>
-</div>
-<label className="relative inline-flex items-center cursor-pointer">
-<input className="sr-only peer" type="checkbox" />
-<div className="w-11 h-6 bg-outline-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container"></div>
-</label>
-</div>
-<div className="flex items-center justify-between p-sm bg-surface border border-outline-variant rounded">
-<div className="flex flex-col">
-<span className="text-label-md font-bold">Internal Float Team</span>
-<span className="text-body-sm text-on-surface-variant">Activate off-duty roster (1.5x)</span>
-</div>
-<label className="relative inline-flex items-center cursor-pointer">
-<input checked className="sr-only peer" type="checkbox" />
-<div className="w-11 h-6 bg-outline-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container"></div>
-</label>
-</div>
-</div>
-</div>
+          {/* SLA Performance metrics */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+              <span className="text-[10px] text-gray-400 font-bold uppercase">SLA INTEGRITY</span>
+              <span className="text-xs font-mono font-bold text-[#F39C12]">92.8%</span>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2 text-center text-xs">
+              <div className="bg-red-50 border border-red-100 p-2 rounded">
+                <div className="text-base font-extrabold text-red-600">3</div>
+                <div className="text-[9px] text-red-500 font-bold uppercase tracking-wider">Critical</div>
+              </div>
+              <div className="bg-green-50 border border-green-100 p-2 rounded">
+                <div className="text-base font-extrabold text-green-600">18</div>
+                <div className="text-[9px] text-green-500 font-bold uppercase tracking-wider">On-Track</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
 
-<div className="lg:col-span-2">
-<h4 className="font-headline-sm text-[16px] mb-md flex items-center gap-sm">
-<span className="material-symbols-outlined text-primary">priority_high</span>
-                        Funnel Escalation Queue
-                    </h4>
-<div className="flex gap-md overflow-x-auto pb-sm custom-scrollbar">
+      {/* QUEUE REBALANCE MODAL */}
+      {showRebalanceModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl border border-gray-100">
+            <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center gap-1">
+              <span className="material-symbols-outlined text-orange-600">balance</span> Manual Queue Override
+            </h3>
 
-<div className="min-w-[200px] bg-error-container/10 border-l-4 border-error p-sm flex flex-col gap-xs rounded-r">
-<span className="text-[10px] font-bold text-error uppercase">Level 3 Critical</span>
-<span className="text-label-md font-bold">Load #AF-9921</span>
-<span className="text-body-sm text-on-surface-variant">Carrier ghosted pick-up. 2h overdue.</span>
-</div>
-<div className="min-w-[200px] bg-primary-container/10 border-l-4 border-primary-container p-sm flex flex-col gap-xs rounded-r">
-<span className="text-[10px] font-bold text-on-primary-container uppercase">Level 2 Warning</span>
-<span className="text-label-md font-bold">Route Blockage - NY</span>
-<span className="text-body-sm text-on-surface-variant">Snow advisory impacting 14 units.</span>
-</div>
-<div className="min-w-[200px] bg-primary-container/10 border-l-4 border-primary-container p-sm flex flex-col gap-xs rounded-r">
-<span className="text-[10px] font-bold text-on-primary-container uppercase">Level 2 Warning</span>
-<span className="text-label-md font-bold">Customs Delay - LAX</span>
-<span className="text-body-sm text-on-surface-variant">Documentation mismatch for pallet-4.</span>
-</div>
-<div className="min-w-[200px] bg-surface-container-highest border-l-4 border-outline p-sm flex flex-col gap-xs rounded-r">
-<span className="text-[10px] font-bold text-on-surface-variant uppercase">Level 1 Info</span>
-<span className="text-label-md font-bold">Shift Handover</span>
-<span className="text-body-sm text-on-surface-variant">Team Beta arriving in 45 mins.</span>
-</div>
-</div>
-</div>
-</footer>
-</main>
+            <form onSubmit={handleConfirmRebalance} className="space-y-4 text-xs">
+              <div>
+                <label className="text-gray-500 block mb-1 font-semibold">From Caller (Source)</label>
+                <select 
+                  value={rebalanceFrom}
+                  onChange={(e) => setRebalanceFrom(e.target.value)}
+                  required
+                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800 bg-white"
+                >
+                  <option value="">Select Caller</option>
+                  {currentRoster.filter(c => c.roleType !== 'matchmaker' && c.queueDepth > 0 && c.status !== 'Offline').map((c, i) => (
+                    <option key={i} value={c.name}>{c.name} ({c.queueDepth} leads)</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-gray-500 block mb-1 font-semibold">To Caller (Destination)</label>
+                <select 
+                  value={rebalanceTo}
+                  onChange={(e) => setRebalanceTo(e.target.value)}
+                  required
+                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800 bg-white"
+                >
+                  <option value="">Select Caller</option>
+                  {currentRoster.filter(c => c.roleType !== 'matchmaker' && c.name !== rebalanceFrom && c.status !== 'Offline').map((c, i) => (
+                    <option key={i} value={c.name}>{c.name} ({c.queueDepth} leads)</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-gray-500 block mb-1 font-semibold">Number of Leads to Move</label>
+                <input 
+                  type="number"
+                  min={1}
+                  max={40}
+                  value={rebalanceCount}
+                  onChange={(e) => setRebalanceCount(Number(e.target.value))}
+                  required
+                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-gray-500 block mb-1 font-semibold">Manual Reassignment Reason</label>
+                <textarea 
+                  value={rebalanceReason}
+                  onChange={(e) => setRebalanceReason(e.target.value)}
+                  required
+                  placeholder="Explain why this queue override is necessary..."
+                  rows={3}
+                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none resize-none font-medium"
+                />
+                <span className="text-[10px] text-gray-400 block mt-1">This override will be logged in the Telecalling audit log.</span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button 
+                  type="button" 
+                  onClick={() => { setShowRebalanceModal(false); setRebalanceReason(''); }}
+                  className="px-4 py-2 border border-gray-200 text-gray-500 rounded font-bold hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="px-4 py-2 bg-[#F39C12] hover:bg-[#e08e0b] text-white rounded font-bold transition-all shadow-sm"
+                >
+                  Confirm Rebalance
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* BACKUP ACTIVATION REASON MODAL */}
+      {backupActiveTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl border border-gray-100 text-xs">
+            <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-3">Activate Backup Caller</h3>
+            <p className="text-gray-500 mb-4 leading-normal">
+              You are activating **{backupActiveTarget}** as an active caller. Select the operational reason:
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-gray-500 block mb-1 font-semibold">Activation Reason</label>
+                <select 
+                  value={backupActiveReason}
+                  onChange={(e) => setBackupActiveReason(e.target.value)}
+                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800 bg-white"
+                >
+                  <option value="Queue overflow">Queue overflow (&gt;35 leads average)</option>
+                  <option value="Primary absent">Primary Caller absent / delayed</option>
+                  <option value="TL override">TL override / High demand campaign</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3">
+                <button 
+                  onClick={() => setBackupActiveTarget(null)}
+                  className="px-4 py-2 border border-gray-200 text-gray-500 rounded font-bold hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleConfirmBackupActivation}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-bold transition-all shadow-sm"
+                >
+                  Activate Caller
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </main>
   );
 };
 

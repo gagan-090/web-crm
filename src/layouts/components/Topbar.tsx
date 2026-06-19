@@ -19,7 +19,7 @@ export const Topbar: React.FC = () => {
   };
 
   return (
-    <header className="fixed top-0 left-[240px] w-[calc(100%-240px)] h-[56px] bg-surface border-b border-outline-variant flex items-center justify-between px-md z-40">
+    <header className="fixed top-0 left-[240px] w-[calc(100%-240px)] h-[56px] bg-white border-b border-outline-variant flex items-center justify-between px-md z-40">
       {/* Search & Badges */}
       <div className="flex items-center gap-md">
         <div className="relative w-64">

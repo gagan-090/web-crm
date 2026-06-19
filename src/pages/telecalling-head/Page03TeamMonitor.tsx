@@ -2,12 +2,12 @@ import React from 'react';
 
 export const Page03TeamMonitor: React.FC = () => {
   return (
-    <main className=" flex flex-col min-h-screen">
+    <main className=" flex flex-col min-h-screen bg-white">
 
 
-<div className="p-md space-y-md">
+<div className="p-md space-y-xl">
 
-<section className="bg-surface rounded-sm border border-outline-variant p-sm flex items-center gap-sm overflow-x-auto no-scrollbar shadow-sm">
+<section className="bg-white rounded-sm border border-outline-variant p-sm flex items-center gap-sm overflow-x-auto no-scrollbar shadow-sm">
 <span className="text-[10px] font-bold uppercase text-outline px-sm border-r border-outline-variant mr-sm">Attendance</span>
 
 <div className="flex items-center gap-xs flex-nowrap">
@@ -46,9 +46,9 @@ export const Page03TeamMonitor: React.FC = () => {
 </div>
 </section>
 
-<div className="grid grid-cols-12 gap-md">
+<div className="grid grid-cols-12 gap-xl">
 
-<div className="col-span-8 bg-surface rounded-sm border border-outline-variant p-md shadow-sm">
+<div className="col-span-8 bg-white rounded-sm border border-outline-variant p-md shadow-sm">
 <div className="flex justify-between items-center mb-md">
 <h3 className="font-headline-md text-[14px] uppercase tracking-tight font-extrabold">Live Queue Depth</h3>
 <button className="bg-primary text-white px-md py-1 text-[12px] font-bold rounded-sm hover:opacity-90 transition-opacity">Rebalance Queue</button>
@@ -89,7 +89,7 @@ export const Page03TeamMonitor: React.FC = () => {
 </div>
 </div>
 
-<div className="col-span-4 bg-surface rounded-sm border border-outline-variant p-md shadow-sm">
+<div className="col-span-4 bg-white rounded-sm border border-outline-variant p-md shadow-sm">
 <h3 className="font-headline-md text-[14px] uppercase tracking-tight font-extrabold mb-md">Backup Activation</h3>
 <div className="grid grid-cols-2 gap-sm">
 
@@ -128,7 +128,7 @@ export const Page03TeamMonitor: React.FC = () => {
 </div>
 </div>
 
-<section className="bg-surface rounded-sm border border-outline-variant shadow-sm overflow-hidden">
+<section className="bg-white rounded-sm border border-outline-variant shadow-sm overflow-hidden">
 <div className="px-md py-sm bg-surface-container-low border-b border-outline-variant flex justify-between items-center">
 <h3 className="text-label-caps font-bold uppercase tracking-wider text-on-surface-variant">Caller Activity Table</h3>
 <div className="flex gap-md">
@@ -196,7 +196,7 @@ export const Page03TeamMonitor: React.FC = () => {
 </div>
 </section>
 
-<section className="bg-surface rounded-sm border border-outline-variant shadow-sm">
+<section className="bg-white rounded-sm border border-outline-variant shadow-sm">
 <div className="px-md py-sm bg-error-container/20 border-b border-outline-variant flex justify-between items-center">
 <div className="flex items-center gap-sm">
 <span className="material-symbols-outlined text-error" data-icon="report_problem">report_problem</span>

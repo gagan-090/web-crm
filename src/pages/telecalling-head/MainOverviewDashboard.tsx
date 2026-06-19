@@ -26,9 +26,9 @@ export const MainOverviewDashboard: React.FC = () => {
   ];
 
   return (
-    <main className=" bg-background p-md space-y-xl">
+    <main className=" bg-white p-md space-y-xl">
 
-<section className="bg-surface p-md rounded-sm border border-outline-variant flipkart-shadow">
+<section className="bg-white p-md rounded-sm border border-outline-variant flipkart-shadow">
 <div className="flex justify-between items-end mb-sm">
 <div>
 <h2 className="font-label-caps text-label-caps text-outline uppercase tracking-wider">This Month's Revenue Target</h2>
@@ -74,7 +74,7 @@ export const MainOverviewDashboard: React.FC = () => {
 
 <div className="grid grid-cols-4 gap-xl">
 
-<div className="bg-surface p-md border border-outline-variant flipkart-shadow hover:border-primary transition-colors cursor-pointer group">
+<div className="bg-white p-md border border-outline-variant flipkart-shadow hover:border-primary transition-colors cursor-pointer group">
 <div className="flex justify-between items-start mb-sm">
 <span className="font-label-caps text-label-caps text-outline">Driver Welcome</span>
 <div className="w-2 h-2 rounded-full bg-green-500" title="SLA Optimal"></div>
@@ -92,7 +92,7 @@ export const MainOverviewDashboard: React.FC = () => {
 </div>
 </div>
 
-<div className="bg-surface p-md border border-outline-variant flipkart-shadow hover:border-primary transition-colors cursor-pointer group">
+<div className="bg-white p-md border border-outline-variant flipkart-shadow hover:border-primary transition-colors cursor-pointer group">
 <div className="flex justify-between items-start mb-sm">
 <span className="font-label-caps text-label-caps text-outline">Transporter</span>
 <div className="w-2 h-2 rounded-full bg-green-500"></div>
@@ -110,7 +110,7 @@ export const MainOverviewDashboard: React.FC = () => {
 </div>
 </div>
 
-<div className="bg-surface p-md border border-outline-variant flipkart-shadow hover:border-primary transition-colors cursor-pointer group">
+<div className="bg-white p-md border border-outline-variant flipkart-shadow hover:border-primary transition-colors cursor-pointer group">
 <div className="flex justify-between items-start mb-sm">
 <span className="font-label-caps text-label-caps text-outline">Spec. Cat.</span>
 <div className="w-2 h-2 rounded-full bg-amber-500" title="SLA Warning"></div>
@@ -128,7 +128,7 @@ export const MainOverviewDashboard: React.FC = () => {
 </div>
 </div>
 
-<div className="bg-surface p-md border border-outline-variant flipkart-shadow hover:border-primary transition-colors cursor-pointer group">
+<div className="bg-white p-md border border-outline-variant flipkart-shadow hover:border-primary transition-colors cursor-pointer group">
 <div className="flex justify-between items-start mb-sm">
 <span className="font-label-caps text-label-caps text-outline">Matchmaking</span>
 <div className="w-2 h-2 rounded-full bg-green-500"></div>
@@ -151,7 +151,7 @@ export const MainOverviewDashboard: React.FC = () => {
 
 <div className="col-span-8 space-y-xl">
 
-<div className="bg-surface p-md border border-outline-variant flipkart-shadow">
+<div className="bg-white p-md border border-outline-variant flipkart-shadow">
 <div className="flex justify-between items-center mb-md">
 <h3 className="font-label-caps text-label-caps text-outline uppercase font-bold">Daily Revenue Trend</h3>
 <div className="flex items-center gap-md text-[10px] text-outline font-bold">
@@ -200,7 +200,7 @@ export const MainOverviewDashboard: React.FC = () => {
 </div>
 </div>
 
-<div className="bg-surface border border-outline-variant flipkart-shadow flex flex-col">
+<div className="bg-white border border-outline-variant flipkart-shadow flex flex-col">
 <div className="px-md py-sm border-b border-outline-variant flex justify-between items-center">
 <h3 className="font-label-caps text-label-caps text-outline uppercase font-bold">Live Conversion Feed</h3>
 <span className="material-symbols-outlined text-green-500 text-sm animate-pulse" data-icon="sensors">sensors</span>
@@ -236,7 +236,7 @@ export const MainOverviewDashboard: React.FC = () => {
 
 <div className="col-span-4 space-y-xl">
 
-<div className="bg-surface border border-outline-variant flipkart-shadow overflow-hidden flex flex-col h-[400px]">
+<div className="bg-white border border-outline-variant flipkart-shadow overflow-hidden flex flex-col h-[400px]">
 <div className="bg-error px-md py-sm flex justify-between items-center">
 <div className="flex items-center gap-sm text-white">
 <span className="material-symbols-outlined text-sm" data-icon="warning">warning</span>
@@ -300,7 +300,7 @@ export const MainOverviewDashboard: React.FC = () => {
 </div>
 </div>
 
-<div className="bg-surface p-md border border-outline-variant flipkart-shadow">
+<div className="bg-white p-md border border-outline-variant flipkart-shadow">
 <div className="flex justify-between items-center mb-md">
 <h3 className="font-label-caps text-label-caps text-outline uppercase font-bold">Team Pulse</h3>
 <div className="flex gap-sm text-[9px] font-bold">

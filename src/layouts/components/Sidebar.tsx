@@ -20,7 +20,7 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <aside className="w-[240px] h-screen fixed left-0 top-0 border-r border-outline-variant bg-surface flex flex-col py-md px-sm z-50">
+    <aside className="w-[240px] h-screen fixed left-0 top-0 border-r border-outline-variant bg-white flex flex-col py-md px-sm z-50">
       {/* Brand Header */}
       <div className="mb-lg px-sm">
         <h1 className="font-headline-md text-headline-md font-extrabold text-primary">TruckMitr</h1>

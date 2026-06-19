@@ -60,7 +60,7 @@ export const DashboardLayout: React.FC = () => {
   }, [triggerCall, openWhatsApp]);
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-background relative">
+    <div className="h-screen w-screen overflow-hidden bg-white relative">
       {/* Sidebar Navigation */}
       <Sidebar />
 
@@ -68,7 +68,7 @@ export const DashboardLayout: React.FC = () => {
       <Topbar />
 
       {/* Main View Area Wrapper */}
-      <div className="absolute top-[56px] left-[240px] right-0 bottom-0 overflow-y-auto overflow-x-hidden p-md bg-background">
+      <div className="absolute top-[56px] left-[240px] right-0 bottom-0 overflow-y-auto overflow-x-hidden p-md bg-white">
         <Outlet />
       </div>
 

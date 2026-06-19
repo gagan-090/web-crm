@@ -22,7 +22,7 @@ export const OverviewPage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-md">
+    <div className="space-y-xl">
       {/* Target Progress Section */}
       <section className="bg-white p-md rounded-sm border border-outline-variant flipkart-shadow">
         <div className="flex justify-between items-end mb-sm">
@@ -71,7 +71,7 @@ export const OverviewPage: React.FC = () => {
       </section>
 
       {/* Main Process Summaries Grid */}
-      <div className="grid grid-cols-4 gap-md">
+      <div className="grid grid-cols-4 gap-xl">
         <KPIWidget
           title="Driver Welcome"
           value="₹1,92,000"
@@ -104,9 +104,9 @@ export const OverviewPage: React.FC = () => {
       </div>
 
       {/* Double Column split details */}
-      <div className="grid grid-cols-12 gap-md">
+      <div className="grid grid-cols-12 gap-xl">
         {/* Left Column: Charts and Call logs */}
-        <div className="col-span-8 space-y-md">
+        <div className="col-span-8 space-y-xl">
           {/* Chart Section */}
           <div className="bg-white p-md border border-outline-variant rounded-sm flipkart-shadow">
             <h3 className="font-headline-md text-xs font-extrabold uppercase text-on-surface mb-md">
@@ -171,7 +171,7 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* Right Column: Mini Widgets */}
-        <div className="col-span-4 space-y-md">
+        <div className="col-span-4 space-y-xl">
           {/* Quick Metrics */}
           <div className="bg-white p-md border border-outline-variant rounded-sm flipkart-shadow">
             <h3 className="font-headline-md text-xs font-extrabold uppercase text-on-surface mb-md">

@@ -26,7 +26,7 @@ export const Page01Dashboard: React.FC = () => {
   ];
 
   return (
-    <main className=" bg-background p-md space-y-md">
+    <main className=" bg-background p-md space-y-xl">
 
 <section className="bg-surface p-md rounded-sm border border-outline-variant flipkart-shadow">
 <div className="flex justify-between items-end mb-sm">
@@ -72,7 +72,7 @@ export const Page01Dashboard: React.FC = () => {
 </div>
 </section>
 
-<div className="grid grid-cols-4 gap-md">
+<div className="grid grid-cols-4 gap-xl">
 
 <div className="bg-surface p-md border border-outline-variant flipkart-shadow hover:border-primary transition-colors cursor-pointer group">
 <div className="flex justify-between items-start mb-sm">
@@ -147,8 +147,8 @@ export const Page01Dashboard: React.FC = () => {
 </div>
 </div>
 
-<div className="grid grid-cols-12 gap-md">
-<div className="col-span-8 space-y-md">
+<div className="grid grid-cols-12 gap-xl">
+<div className="col-span-8 space-y-xl">
 
 <div className="bg-surface p-md border border-outline-variant flipkart-shadow">
 <div className="flex justify-between items-center mb-md">
@@ -199,13 +199,13 @@ export const Page01Dashboard: React.FC = () => {
 </div>
 </div>
 
-<div className="bg-surface border border-outline-variant flipkart-shadow flex flex-col h-[230px]">
+<div className="bg-surface border border-outline-variant flipkart-shadow flex flex-col">
 <div className="px-md py-sm border-b border-outline-variant flex justify-between items-center">
 <h3 className="font-label-caps text-label-caps text-outline uppercase font-bold">Live Conversion Feed</h3>
 <span className="material-symbols-outlined text-green-500 text-sm animate-pulse" data-icon="sensors">sensors</span>
 </div>
-<div className="flex-1 overflow-hidden relative">
-<div className="ticker-row p-md space-y-sm">
+<div className="flex-1 overflow-y-auto custom-scrollbar">
+<div className="p-md space-y-sm">
 
 <div className="flex items-center gap-sm bg-surface-container-low p-2 rounded-sm border-l-2 border-primary">
 <span className="material-symbols-outlined text-primary text-sm" data-icon="check_circle">check_circle</span>
@@ -233,7 +233,7 @@ export const Page01Dashboard: React.FC = () => {
 </div>
 </div>
 
-<div className="col-span-4 space-y-md">
+<div className="col-span-4 space-y-xl">
 
 <div className="bg-surface border border-outline-variant flipkart-shadow overflow-hidden flex flex-col h-[400px]">
 <div className="bg-error px-md py-sm flex justify-between items-center">

@@ -187,25 +187,25 @@ export const TlRealTimeMonitor: React.FC = () => {
   };
 
   return (
-    <main className="h-[calc(100vh-80px)] flex bg-white overflow-hidden border border-gray-200 rounded-xl relative">
+    <main className="min-h-[calc(100vh-100px)] flex flex-col lg:flex-row bg-white border border-slate-200 rounded-2xl relative">
       
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
-          <span className="w-2 h-2 rounded-full bg-[#F39C12]"></span>
-          {toastMessage}
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs md:text-sm px-5 py-2.5 rounded-xl z-50 flex items-center gap-2 border border-slate-800 animate-bounce">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+          <span className="font-semibold">{toastMessage}</span>
         </div>
       )}
 
       {/* Main Left Activity Pane */}
-      <section className="flex-1 flex flex-col min-w-0 border-r border-gray-200">
+      <section className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-slate-200">
         
         {/* Top Controls bar with Mode Switcher */}
-        <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wide">Live Control Room</h2>
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-green-200 bg-green-50 text-green-700 text-[10px] font-bold">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping"></span>
+        <div className="p-5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base md:text-lg font-black text-slate-800 uppercase tracking-wider">Live Control Room</h2>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-green-200 bg-green-50 text-green-700 text-xs font-bold">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
               <span>REFRESHING LIVE</span>
             </div>
           </div>
@@ -217,115 +217,117 @@ export const TlRealTimeMonitor: React.FC = () => {
               setTlMode(nextMode);
               triggerToast(`Switched control room simulation to ${nextMode === 'dw' ? 'Driver Welcome' : 'Transporter + Matchmaking'}`);
             }}
-            className="bg-[#F39C12] text-white px-2.5 py-1 rounded text-[10px] font-bold shadow hover:bg-[#e08e0b]"
+            className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all active:scale-95 flex items-center gap-1"
           >
-            Switch Team: {tlMode === 'dw' ? 'DW' : 'TR+MM'}
+            <span>Switch Team: {tlMode === 'dw' ? 'DW' : 'TR+MM'}</span>
           </button>
         </div>
 
-        {/* Active Team Roster Table */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider">
+        {/* Active Team Roster Table & Call Logs */}
+        <div className="flex-1 p-5 space-y-6 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wider">
               Active Callers Status
             </div>
 
-            <table className="w-full text-xs text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-100/50 border-b border-gray-200 text-gray-400 font-bold uppercase text-[9px]">
-                  <th className="p-3">Caller</th>
-                  <th className="p-3">Role</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Current Lead</th>
-                  <th className="p-3">Queue Depth (Cap 40)</th>
-                  <th className="p-3 text-center">Calls</th>
-                  <th className="p-3 text-right">Revenue Today</th>
-                  <th className="p-3 text-right">Last Call</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
-                {currentRoster.map((member, i) => {
-                  const isOverloaded = member.queueDepth > 35;
-                  return (
-                    <tr 
-                      key={i}
-                      onClick={() => navigate('/tl/tl-caller-profile-detail', { state: { callerName: member.name, roleLabel: member.roleLabel, tlMode: tlMode } })}
-                      className="hover:bg-gray-50/50 transition-colors cursor-pointer"
-                    >
-                      <td className="p-3 font-bold text-gray-800 flex items-center gap-1.5">
-                        <div className={`w-6 h-6 rounded-full ${member.avatarColor} text-white flex items-center justify-center font-bold text-[10px]`}>
-                          {member.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        {member.name}
-                      </td>
-                      <td className="p-3 text-gray-500 font-semibold">{member.roleLabel}</td>
-                      <td className="p-3">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                          member.status === 'On Call' ? 'bg-green-50 text-green-700 border border-green-200' :
-                          member.status === 'Break' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
-                          member.status === 'Offline' ? 'bg-red-50 text-red-700 border border-red-200' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>
-                          {member.status}
-                        </span>
-                      </td>
-                      <td className="p-3 font-mono text-gray-600">{member.currentLead}</td>
-                      <td className="p-3 w-40">
-                        <div className="flex items-center gap-2">
-                          <span className={`font-bold min-w-[14px] ${isOverloaded ? 'text-red-600' : 'text-gray-700'}`}>{member.queueDepth}</span>
-                          {member.roleType !== 'matchmaker' ? (
-                            <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full ${isOverloaded ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} 
-                                style={{ width: `${Math.min(100, (member.queueDepth / 40) * 100)}%` }}
-                              ></div>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-purple-700 bg-purple-50 px-1 py-0.2 rounded font-bold uppercase">MATCHMAKING</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3 text-center font-bold">{member.calls}</td>
-                      <td className="p-3 text-right font-mono font-bold">₹{member.revenue}</td>
-                      <td className="p-3 text-right text-gray-400 font-semibold">{member.lastCallAt}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs md:text-sm text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-200 text-slate-400 font-bold uppercase text-xs">
+                    <th className="p-4">Caller</th>
+                    <th className="p-4">Role</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4">Current Lead</th>
+                    <th className="p-4">Queue Depth (Cap 40)</th>
+                    <th className="p-4 text-center">Calls</th>
+                    <th className="p-4 text-right">Revenue Today</th>
+                    <th className="p-4 text-right">Last Call</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700 font-semibold">
+                  {currentRoster.map((member, i) => {
+                    const isOverloaded = member.queueDepth > 35;
+                    return (
+                      <tr 
+                        key={i}
+                        onClick={() => navigate('/tl/tl-caller-profile-detail', { state: { callerName: member.name, roleLabel: member.roleLabel, tlMode: tlMode } })}
+                        className="hover:bg-slate-50/50 transition-colors cursor-pointer"
+                      >
+                        <td className="p-4 font-bold text-slate-800 flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-full ${member.avatarColor} text-white flex items-center justify-center font-black text-xs`}>
+                            {member.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span>{member.name}</span>
+                        </td>
+                        <td className="p-4 text-slate-500 font-bold">{member.roleLabel}</td>
+                        <td className="p-4">
+                          <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                            member.status === 'On Call' ? 'bg-green-50 text-green-700 border border-green-200' :
+                            member.status === 'Break' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                            member.status === 'Offline' ? 'bg-red-50 text-red-700 border border-red-200' :
+                            'bg-slate-100 text-slate-600'
+                          }`}>
+                            {member.status}
+                          </span>
+                        </td>
+                        <td className="p-4 font-mono text-slate-600">{member.currentLead}</td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2.5">
+                            <span className={`font-black min-w-[18px] ${isOverloaded ? 'text-red-600' : 'text-slate-700'}`}>{member.queueDepth}</span>
+                            {member.roleType !== 'matchmaker' ? (
+                              <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full ${isOverloaded ? 'bg-red-500 animate-pulse' : 'bg-slate-400'}`} 
+                                  style={{ width: `${Math.min(100, (member.queueDepth / 40) * 100)}%` }}
+                                ></div>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-100 px-2 py-0.5 rounded font-black uppercase">MATCHMAKING</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4 text-center font-bold">{member.calls}</td>
+                        <td className="p-4 text-right font-mono font-bold">₹{member.revenue}</td>
+                        <td className="p-4 text-right text-slate-400 font-bold">{member.lastCallAt}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Recent Call Logs list */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider">
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wider">
               Recent Call Attempts (Team-Wide)
             </div>
 
-            <div className="max-h-[220px] overflow-y-auto">
-              <table className="w-full text-xs text-left">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs md:text-sm text-left">
                 <thead>
-                  <tr className="bg-gray-50 text-gray-400 font-bold uppercase text-[9px] border-b border-gray-100">
-                    <th className="p-2.5">Time</th>
-                    <th className="p-2.5">Caller</th>
-                    <th className="p-2.5">Customer Name</th>
-                    <th className="p-2.5">TMID</th>
-                    <th className="p-2.5 text-center">Duration</th>
-                    <th className="p-2.5 text-right">Outcome</th>
+                  <tr className="bg-slate-50/50 text-slate-400 font-bold uppercase text-xs border-b border-slate-200">
+                    <th className="p-3.5">Time</th>
+                    <th className="p-3.5">Caller</th>
+                    <th className="p-3.5">Customer Name</th>
+                    <th className="p-3.5">TMID</th>
+                    <th className="p-3.5 text-center">Duration</th>
+                    <th className="p-3.5 text-right">Outcome</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-gray-700 font-medium">
+                <tbody className="divide-y divide-slate-50 text-slate-700 font-semibold">
                   {callLogs.map((log, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="p-2.5 font-mono text-gray-400">{log.time}</td>
-                      <td className="p-2.5 font-bold">{log.caller}</td>
-                      <td className="p-2.5">{log.leadName}</td>
-                      <td className="p-2.5 font-mono text-gray-500">{log.tmid}</td>
-                      <td className="p-2.5 text-center font-mono">{log.duration}</td>
-                      <td className="p-2.5 text-right">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                          log.outcome === 'Converted' ? 'bg-green-100 text-green-800' :
-                          log.outcome === 'Connected' ? 'bg-blue-100 text-blue-800' :
-                          'bg-gray-100 text-gray-600'
+                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-3.5 font-mono text-slate-400">{log.time}</td>
+                      <td className="p-3.5 font-bold">{log.caller}</td>
+                      <td className="p-3.5">{log.leadName}</td>
+                      <td className="p-3.5 font-mono text-slate-500">{log.tmid}</td>
+                      <td className="p-3.5 text-center font-mono">{log.duration}</td>
+                      <td className="p-3.5 text-right">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                          log.outcome === 'Converted' ? 'bg-green-50 text-green-800 border-green-200' :
+                          log.outcome === 'Connected' ? 'bg-blue-50 text-blue-800 border-blue-200' :
+                          'bg-slate-100 text-slate-600 border-slate-200'
                         }`}>
                           {log.outcome}
                         </span>
@@ -339,15 +341,15 @@ export const TlRealTimeMonitor: React.FC = () => {
         </div>
 
         {/* BOTTOM PANEL: Backup Activation & Funnel Escalation */}
-        <footer className="border-t border-gray-200 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 shrink-0 select-none">
+        <footer className="border-t border-slate-200 p-5 grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50/50 shrink-0 select-none">
           {/* Backup Activation Panel */}
-          <div className="bg-white border border-gray-200 p-3 rounded-xl flex flex-col justify-between">
+          <div className="bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between gap-4">
             <div>
-              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1">
-                <span className="material-symbols-outlined text-[16px] text-[#F39C12]">emergency_home</span>
+              <h4 className="text-xs md:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[18px] text-amber-500">emergency_home</span>
                 Backup Roster Activation
               </h4>
-              <p className="text-[10px] text-gray-400 mb-2 leading-relaxed">
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                 Activate secondary backup callers to route queue overflows and prevent SLA breaches.
               </p>
             </div>
@@ -356,18 +358,18 @@ export const TlRealTimeMonitor: React.FC = () => {
               {currentRoster.filter(c => c.roleType === 'backup').map((caller, idx) => {
                 const isActive = caller.status !== 'Offline';
                 return (
-                  <div key={idx} className="flex justify-between items-center p-2 bg-gray-50 border border-gray-150 rounded text-xs">
+                  <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs md:text-sm">
                     <div>
-                      <span className="font-bold block text-gray-700">{caller.name}</span>
-                      <span className="text-[9px] text-gray-400 font-semibold uppercase">{caller.roleLabel}</span>
+                      <span className="font-bold block text-slate-700">{caller.name}</span>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{caller.roleLabel}</span>
                     </div>
 
                     <button 
                       onClick={() => handleToggleBackup(caller.name, isActive)}
-                      className={`px-3 py-1 rounded text-[10px] font-bold transition-all shadow-sm ${
+                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
                         isActive 
                           ? 'bg-green-600 text-white hover:bg-green-700' 
-                          : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                          : 'bg-slate-200 text-slate-600 hover:bg-slate-350'
                       }`}
                     >
                       {isActive ? 'Active' : 'Offline'}
@@ -376,36 +378,36 @@ export const TlRealTimeMonitor: React.FC = () => {
                 );
               })}
               {currentRoster.filter(c => c.roleType === 'backup').length === 0 && (
-                <p className="text-[10px] text-gray-400 italic">No backup tier exists for Matchmaking callers.</p>
+                <p className="text-xs text-slate-400 italic">No backup tier exists for Matchmaking callers.</p>
               )}
             </div>
           </div>
 
           {/* Funnel/Backlog Escalation Queue */}
-          <div className="bg-white border border-gray-200 p-3 rounded-xl flex flex-col justify-between">
-            <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1">
-              <span className="material-symbols-outlined text-[16px] text-purple-600">priority_high</span>
+          <div className="bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between gap-4">
+            <h4 className="text-xs md:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[18px] text-purple-600">priority_high</span>
               Funnel Escalation Assignment
             </h4>
 
-            <div className="flex-1 overflow-y-auto space-y-1.5 max-h-[110px] pr-1">
+            <div className="flex-1 overflow-y-auto space-y-2 max-h-[140px] pr-1">
               {escalations.map((lead, idx) => {
                 const isAssigning = assignTargetLead === lead.id;
                 return (
-                  <div key={idx} className="p-2 border-l-4 border-purple-500 bg-purple-50/30 rounded-r flex justify-between items-center text-xs">
+                  <div key={idx} className="p-3 border-l-4 border-purple-500 bg-purple-50/20 rounded-r-xl flex justify-between items-center text-xs md:text-sm gap-2">
                     <div>
-                      <span className="font-bold text-gray-800 text-[11px]">{lead.name} ({lead.tmid})</span>
-                      <span className="text-[9px] text-gray-500 block font-semibold">
+                      <span className="font-bold text-slate-800 block">{lead.name} ({lead.tmid})</span>
+                      <span className="text-xs text-slate-500 mt-0.5 block font-semibold">
                         {lead.daysInQueue} days in queue · {lead.nrCount} NR attempts
                       </span>
                     </div>
 
                     {isAssigning ? (
-                      <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                      <div className="flex items-center gap-1.5 animate-in fade-in duration-200">
                         <select 
                           value={assignTargetCaller}
                           onChange={(e) => setAssignTargetCaller(e.target.value)}
-                          className="border border-gray-200 rounded px-1 py-0.5 text-[10px] font-bold text-gray-700 outline-none"
+                          className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none bg-white"
                         >
                           <option value="">Select Caller</option>
                           {currentRoster.filter(c => c.status !== 'Offline' && c.roleType !== 'matchmaker').map((c, i) => (
@@ -414,13 +416,13 @@ export const TlRealTimeMonitor: React.FC = () => {
                         </select>
                         <button 
                           onClick={() => handleAssignEscalation(lead.id, lead.tmid)}
-                          className="bg-purple-600 text-white px-2 py-0.5 rounded text-[10px] font-bold hover:bg-purple-700"
+                          className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg text-xs font-bold"
                         >
                           Go
                         </button>
                         <button 
                           onClick={() => setAssignTargetLead(null)}
-                          className="text-gray-400 font-bold px-1 hover:text-gray-600"
+                          className="text-slate-400 font-bold px-1.5 hover:text-slate-600 text-lg"
                         >
                           ×
                         </button>
@@ -428,7 +430,7 @@ export const TlRealTimeMonitor: React.FC = () => {
                     ) : (
                       <button 
                         onClick={() => setAssignTargetLead(lead.id)}
-                        className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded text-[10px] font-bold"
+                        className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1.5 rounded-lg text-xs font-bold"
                       >
                         Assign Lead
                       </button>
@@ -437,7 +439,7 @@ export const TlRealTimeMonitor: React.FC = () => {
                 );
               })}
               {escalations.length === 0 && (
-                <div className="text-[10px] text-gray-400 italic py-4 text-center">No pending escalations in queue.</div>
+                <div className="text-xs text-slate-400 italic py-4 text-center">No pending escalations in queue.</div>
               )}
             </div>
           </div>
@@ -445,28 +447,28 @@ export const TlRealTimeMonitor: React.FC = () => {
 
       </section>
 
-      {/* Right Column: Queue Rebalance Sidebar (280px) */}
-      <aside className="w-[280px] p-4 bg-gray-50/50 flex flex-col justify-between shrink-0 overflow-y-auto select-none">
-        <div className="space-y-4">
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col gap-2">
-            <h3 className="font-bold text-gray-800 text-xs uppercase tracking-wide">Queue Rebalance</h3>
+      {/* Right Column: Queue Rebalance Sidebar (300px) */}
+      <aside className="w-full lg:w-[300px] p-5 bg-slate-50/50 flex flex-col justify-between shrink-0 overflow-y-auto select-none gap-5">
+        <div className="space-y-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-3">
+            <h3 className="font-bold text-slate-800 text-xs md:text-sm uppercase tracking-wide">Queue Rebalance</h3>
             
             {/* Visual Queue Depths Bar chart */}
-            <div className="space-y-2 mt-2">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase">Current Caller Load:</div>
-              <div className="space-y-2">
+            <div className="space-y-3 mt-2">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Current Caller Load:</div>
+              <div className="space-y-3">
                 {currentRoster.filter(c => c.roleType !== 'matchmaker' && c.status !== 'Offline').map((caller, idx) => {
                   const percent = Math.min(100, (caller.queueDepth / 40) * 100);
                   const isRed = caller.queueDepth > 35;
                   return (
-                    <div key={idx} className="space-y-0.5 text-[10px]">
-                      <div className="flex justify-between font-semibold">
-                        <span className="text-gray-600">{caller.name}</span>
-                        <span className={isRed ? 'text-red-600 font-bold' : 'text-gray-700'}>{caller.queueDepth} leads</span>
+                    <div key={idx} className="space-y-1 text-xs md:text-sm">
+                      <div className="flex justify-between font-bold">
+                        <span className="text-slate-600">{caller.name}</span>
+                        <span className={isRed ? 'text-red-600 font-extrabold' : 'text-slate-700'}>{caller.queueDepth} leads</span>
                       </div>
-                      <div className="w-full h-1.5 bg-gray-150 rounded-full overflow-hidden">
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                         <div 
-                          className={`h-full ${isRed ? 'bg-red-500' : 'bg-[#F39C12]'}`} 
+                          className={`h-full ${isRed ? 'bg-red-500' : 'bg-amber-500'}`} 
                           style={{ width: `${percent}%` }}
                         ></div>
                       </div>
@@ -476,33 +478,34 @@ export const TlRealTimeMonitor: React.FC = () => {
               </div>
             </div>
 
-            <p className="text-[10.5px] text-gray-500 leading-normal mt-2">
+            <p className="text-xs text-slate-500 leading-relaxed mt-2">
               Manual rebalancing triggers a bulk transfer of lead records from overloaded queues to under-capacity callers.
             </p>
 
             <button 
               onClick={() => setShowRebalanceModal(true)}
-              className="w-full bg-[#F39C12] hover:bg-[#e08e0b] text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow"
+              className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-2 transition-all active:scale-95"
             >
-              <span className="material-symbols-outlined text-[16px]">balance</span> Rebalance Queue
+              <span className="material-symbols-outlined text-[18px]">balance</span>
+              <span>Rebalance Queue</span>
             </button>
           </div>
 
           {/* SLA Performance metrics */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-              <span className="text-[10px] text-gray-400 font-bold uppercase">SLA INTEGRITY</span>
-              <span className="text-xs font-mono font-bold text-[#F39C12]">92.8%</span>
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">SLA INTEGRITY</span>
+              <span className="text-sm md:text-base font-mono font-bold text-amber-600">92.8%</span>
             </div>
             
-            <div className="grid grid-cols-2 gap-2 text-center text-xs">
-              <div className="bg-red-50 border border-red-100 p-2 rounded">
-                <div className="text-base font-extrabold text-red-600">3</div>
-                <div className="text-[9px] text-red-500 font-bold uppercase tracking-wider">Critical</div>
+            <div className="grid grid-cols-2 gap-3 text-center text-xs md:text-sm">
+              <div className="bg-red-50 border border-red-200 p-3 rounded-xl">
+                <div className="text-xl font-black text-red-600">3</div>
+                <div className="text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1">Critical</div>
               </div>
-              <div className="bg-green-50 border border-green-100 p-2 rounded">
-                <div className="text-base font-extrabold text-green-600">18</div>
-                <div className="text-[9px] text-green-500 font-bold uppercase tracking-wider">On-Track</div>
+              <div className="bg-green-50 border border-green-200 p-3 rounded-xl">
+                <div className="text-xl font-black text-green-600">18</div>
+                <div className="text-[10px] text-green-500 font-bold uppercase tracking-widest mt-1">On-Track</div>
               </div>
             </div>
           </div>
@@ -511,20 +514,20 @@ export const TlRealTimeMonitor: React.FC = () => {
 
       {/* QUEUE REBALANCE MODAL */}
       {showRebalanceModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl border border-gray-100">
-            <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center gap-1">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 border border-slate-200 text-xs md:text-sm">
+            <h3 className="text-sm md:text-base font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-1.5">
               <span className="material-symbols-outlined text-orange-600">balance</span> Manual Queue Override
             </h3>
 
-            <form onSubmit={handleConfirmRebalance} className="space-y-4 text-xs">
+            <form onSubmit={handleConfirmRebalance} className="space-y-4">
               <div>
-                <label className="text-gray-500 block mb-1 font-semibold">From Caller (Source)</label>
+                <label className="text-slate-500 block mb-1 font-bold">From Caller (Source)</label>
                 <select 
                   value={rebalanceFrom}
                   onChange={(e) => setRebalanceFrom(e.target.value)}
                   required
-                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800 bg-white"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 outline-none font-bold text-slate-800 bg-white"
                 >
                   <option value="">Select Caller</option>
                   {currentRoster.filter(c => c.roleType !== 'matchmaker' && c.queueDepth > 0 && c.status !== 'Offline').map((c, i) => (
@@ -534,12 +537,12 @@ export const TlRealTimeMonitor: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-gray-500 block mb-1 font-semibold">To Caller (Destination)</label>
+                <label className="text-slate-500 block mb-1 font-bold">To Caller (Destination)</label>
                 <select 
                   value={rebalanceTo}
                   onChange={(e) => setRebalanceTo(e.target.value)}
                   required
-                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800 bg-white"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 outline-none font-bold text-slate-800 bg-white"
                 >
                   <option value="">Select Caller</option>
                   {currentRoster.filter(c => c.roleType !== 'matchmaker' && c.name !== rebalanceFrom && c.status !== 'Offline').map((c, i) => (
@@ -549,7 +552,7 @@ export const TlRealTimeMonitor: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-gray-500 block mb-1 font-semibold">Number of Leads to Move</label>
+                <label className="text-slate-500 block mb-1 font-bold">Number of Leads to Move</label>
                 <input 
                   type="number"
                   min={1}
@@ -557,34 +560,34 @@ export const TlRealTimeMonitor: React.FC = () => {
                   value={rebalanceCount}
                   onChange={(e) => setRebalanceCount(Number(e.target.value))}
                   required
-                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 outline-none font-bold"
                 />
               </div>
 
               <div>
-                <label className="text-gray-500 block mb-1 font-semibold">Manual Reassignment Reason</label>
+                <label className="text-slate-500 block mb-1 font-bold">Manual Reassignment Reason</label>
                 <textarea 
                   value={rebalanceReason}
                   onChange={(e) => setRebalanceReason(e.target.value)}
                   required
                   placeholder="Explain why this queue override is necessary..."
                   rows={3}
-                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none resize-none font-medium"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 outline-none resize-none font-semibold"
                 />
-                <span className="text-[10px] text-gray-400 block mt-1">This override will be logged in the Telecalling audit log.</span>
+                <span className="text-[10px] text-slate-400 block mt-1">This override will be logged in the Telecalling audit log.</span>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-3 pt-2">
                 <button 
                   type="button" 
                   onClick={() => { setShowRebalanceModal(false); setRebalanceReason(''); }}
-                  className="px-4 py-2 border border-gray-200 text-gray-500 rounded font-bold hover:bg-gray-100 transition-colors"
+                  className="px-4 py-2 border border-slate-200 text-slate-500 rounded-lg font-bold hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  className="px-4 py-2 bg-[#F39C12] hover:bg-[#e08e0b] text-white rounded font-bold transition-all shadow-sm"
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold transition-all"
                 >
                   Confirm Rebalance
                 </button>
@@ -596,20 +599,20 @@ export const TlRealTimeMonitor: React.FC = () => {
 
       {/* BACKUP ACTIVATION REASON MODAL */}
       {backupActiveTarget && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl border border-gray-100 text-xs">
-            <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-3">Activate Backup Caller</h3>
-            <p className="text-gray-500 mb-4 leading-normal">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 border border-slate-200 text-xs md:text-sm">
+            <h3 className="text-sm md:text-base font-bold text-slate-800 uppercase tracking-wider mb-3">Activate Backup Caller</h3>
+            <p className="text-slate-500 mb-4 leading-normal">
               You are activating **{backupActiveTarget}** as an active caller. Select the operational reason:
             </p>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <label className="text-gray-500 block mb-1 font-semibold">Activation Reason</label>
+                <label className="text-slate-500 block mb-1 font-bold">Activation Reason</label>
                 <select 
                   value={backupActiveReason}
                   onChange={(e) => setBackupActiveReason(e.target.value)}
-                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800 bg-white"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 outline-none font-bold text-slate-800 bg-white"
                 >
                   <option value="Queue overflow">Queue overflow (&gt;35 leads average)</option>
                   <option value="Primary absent">Primary Caller absent / delayed</option>
@@ -617,16 +620,16 @@ export const TlRealTimeMonitor: React.FC = () => {
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex justify-end gap-3 pt-2">
                 <button 
                   onClick={() => setBackupActiveTarget(null)}
-                  className="px-4 py-2 border border-gray-200 text-gray-500 rounded font-bold hover:bg-gray-100 transition-colors"
+                  className="px-4 py-2 border border-slate-200 text-slate-500 rounded-lg font-bold hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={handleConfirmBackupActivation}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-bold transition-all shadow-sm"
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition-all"
                 >
                   Activate Caller
                 </button>

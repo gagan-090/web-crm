@@ -1,246 +1,313 @@
-import React from 'react';
+import React, { useState } from 'react';
+
+interface FeedbackRecord {
+  id: string;
+  caller: string;
+  process: string;
+  score: number;
+  severity: 'CRITICAL' | 'NEEDS IMPROVEMENT' | 'GOOD';
+  auditDate: string;
+  feedbackSent: string;
+  acknowledged: 'warning' | 'check' | 'pending';
+  acknowledgedText: string;
+  remediation: string;
+}
 
 export const FeedbackManager: React.FC = () => {
+  // Filter States
+  const [selectedProcess, setSelectedProcess] = useState('All Processes');
+  const [selectedCaller, setSelectedCaller] = useState('All Callers');
+  const [minScore, setMinScore] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Mock data state
+  const [records, setRecords] = useState<FeedbackRecord[]>([
+    { id: '1', caller: 'Rohan Sharma', process: 'Outbound Logistics', score: 42, severity: 'CRITICAL', auditDate: 'Oct 24, 09:12 AM', feedbackSent: 'Oct 24, 11:30 AM', acknowledged: 'warning', acknowledgedText: 'Pending > 48h', remediation: 'Pending Supervisor Review' },
+    { id: '2', caller: 'Sana Khan', process: 'Vendor Verification', score: 96, severity: 'GOOD', auditDate: 'Oct 26, 02:45 PM', feedbackSent: 'Oct 26, 03:00 PM', acknowledged: 'check', acknowledgedText: 'Acknowledged', remediation: 'Routine Appreciation' },
+    { id: '3', caller: 'Vikram Singh', process: 'Inbound Dispatch', score: 74, severity: 'NEEDS IMPROVEMENT', auditDate: 'Oct 25, 11:20 AM', feedbackSent: 'Oct 25, 01:15 PM', acknowledged: 'pending', acknowledgedText: 'Pending', remediation: 'Script adherence training' },
+    { id: '4', caller: 'Ananya Roy', process: 'Outbound Logistics', score: 58, severity: 'CRITICAL', auditDate: 'Oct 26, 10:00 AM', feedbackSent: 'Oct 26, 10:45 AM', acknowledged: 'pending', acknowledgedText: 'Pending', remediation: 'Fatal Error Rectification' },
+    { id: '5', caller: 'Amit Patel', process: 'Vendor Verification', score: 88, severity: 'GOOD', auditDate: 'Oct 23, 04:20 PM', feedbackSent: 'Oct 23, 04:30 PM', acknowledged: 'check', acknowledgedText: 'Acknowledged', remediation: 'N/A' },
+    { id: '6', caller: 'Neha Gupta', process: 'Outbound Logistics', score: 91, severity: 'GOOD', auditDate: 'Oct 22, 11:00 AM', feedbackSent: 'Oct 22, 11:30 AM', acknowledged: 'check', acknowledgedText: 'Acknowledged', remediation: 'N/A' },
+    { id: '7', caller: 'Rajesh Kumar', process: 'Inbound Dispatch', score: 65, severity: 'NEEDS IMPROVEMENT', auditDate: 'Oct 21, 03:15 PM', feedbackSent: 'Oct 21, 04:00 PM', acknowledged: 'pending', acknowledgedText: 'Pending', remediation: 'Re-training on compliance' },
+    { id: '8', caller: 'Priya Sharma', process: 'Vendor Verification', score: 38, severity: 'CRITICAL', auditDate: 'Oct 20, 09:00 AM', feedbackSent: 'Oct 20, 09:45 AM', acknowledged: 'warning', acknowledgedText: 'Pending > 48h', remediation: 'Escalated to Manager' },
+    { id: '9', caller: 'Kunal Sen', process: 'Outbound Logistics', score: 82, severity: 'GOOD', auditDate: 'Oct 19, 02:00 PM', feedbackSent: 'Oct 19, 02:30 PM', acknowledged: 'check', acknowledgedText: 'Acknowledged', remediation: 'N/A' },
+    { id: '10', caller: 'Pooja Patel', process: 'Inbound Dispatch', score: 55, severity: 'CRITICAL', auditDate: 'Oct 18, 04:00 PM', feedbackSent: 'Oct 18, 04:30 PM', acknowledged: 'warning', acknowledgedText: 'Pending > 48h', remediation: 'Under Review' },
+    { id: '11', caller: 'Devendra B.', process: 'Outbound Logistics', score: 78, severity: 'NEEDS IMPROVEMENT', auditDate: 'Oct 17, 10:15 AM', feedbackSent: 'Oct 17, 11:00 AM', acknowledged: 'check', acknowledgedText: 'Acknowledged', remediation: 'Coaching completed' },
+    { id: '12', caller: 'Ishita K.', process: 'Vendor Verification', score: 94, severity: 'GOOD', auditDate: 'Oct 16, 01:00 PM', feedbackSent: 'Oct 16, 01:20 PM', acknowledged: 'check', acknowledgedText: 'Acknowledged', remediation: 'N/A' },
+    { id: '13', caller: 'Sameer D.', process: 'Inbound Dispatch', score: 49, severity: 'CRITICAL', auditDate: 'Oct 15, 03:30 PM', feedbackSent: 'Oct 15, 04:15 PM', acknowledged: 'warning', acknowledgedText: 'Pending > 48h', remediation: 'Awaiting response' },
+    { id: '14', caller: 'Tanvi R.', process: 'Outbound Logistics', score: 87, severity: 'GOOD', auditDate: 'Oct 14, 11:10 AM', feedbackSent: 'Oct 14, 11:45 AM', acknowledged: 'check', acknowledgedText: 'Acknowledged', remediation: 'N/A' },
+    { id: '15', caller: 'Rohit Verma', process: 'Vendor Verification', score: 72, severity: 'NEEDS IMPROVEMENT', auditDate: 'Oct 13, 02:20 PM', feedbackSent: 'Oct 13, 02:50 PM', acknowledged: 'check', acknowledgedText: 'Acknowledged', remediation: 'N/A' }
+  ]);
+
+  // Dynamic Statistics
+  const pendingAcksCount = records.filter(r => r.acknowledged !== 'check').length;
+  const criticalFlawsCount = records.filter(r => r.severity === 'CRITICAL').length;
+
+  // Filtering
+  const filteredRecords = records.filter(rec => {
+    const matchesProcess = selectedProcess === 'All Processes' || rec.process === selectedProcess;
+    const matchesCaller = selectedCaller === 'All Callers' || rec.caller === selectedCaller;
+    const matchesScore = rec.score >= minScore;
+    return matchesProcess && matchesCaller && matchesScore;
+  });
+
+  // Reset Filters
+  const handleReset = () => {
+    setSelectedProcess('All Processes');
+    setSelectedCaller('All Callers');
+    setMinScore(0);
+    setCurrentPage(1);
+    triggerToast('Filters reset successfully');
+  };
+
+  const handleAction = (rec: FeedbackRecord) => {
+    triggerToast(`Sent reminder notification to ${rec.caller}`);
+  };
+
   return (
-    <main className="ml-[200px] flex flex-col h-full ">
+    <main className="w-full max-w-7xl mx-auto p-6 space-y-6 relative">
+      
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs md:text-sm px-5 py-2.5 rounded-xl z-50 flex items-center gap-2 border border-slate-800 animate-bounce">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+          <span className="font-semibold">{toastMessage}</span>
+        </div>
+      )}
 
+      {/* Header section */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 border border-slate-200 rounded-xl">
+        <div>
+          <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">Feedback Manager</h1>
+          <p className="text-xs md:text-sm text-slate-400 mt-1">Monitor, review, and track agent acknowledgements and remediation actions.</p>
+        </div>
+      </div>
 
+      {/* Filter and Stats row */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        
+        {/* Filters */}
+        <div className="lg:col-span-8 bg-white p-5 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-center">
+          <div className="flex flex-col gap-1 min-w-[150px]">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">PROCESS</label>
+            <select 
+              value={selectedProcess}
+              onChange={(e) => { setSelectedProcess(e.target.value); setCurrentPage(1); }}
+              className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs md:text-sm font-bold text-slate-700 outline-none w-full"
+            >
+              <option>All Processes</option>
+              <option>Outbound Logistics</option>
+              <option>Inbound Dispatch</option>
+              <option>Vendor Verification</option>
+            </select>
+          </div>
 
-<div className="flex-1 p-margin-desktop overflow-hidden flex flex-col gap-gutter">
+          <div className="flex flex-col gap-1 min-w-[150px]">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">CALLER</label>
+            <select 
+              value={selectedCaller}
+              onChange={(e) => { setSelectedCaller(e.target.value); setCurrentPage(1); }}
+              className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs md:text-sm font-bold text-slate-700 outline-none w-full"
+            >
+              <option>All Callers</option>
+              {Array.from(new Set(records.map(r => r.caller))).map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
 
-<div className="grid grid-cols-12 gap-gutter shrink-0">
-<div className="col-span-8 bg-surface-container-lowest border border-outline-variant rounded-lg p-stack-md flex items-center gap-gutter">
-<div className="flex flex-col gap-stack-xs min-w-[140px]">
-<label className="font-label-caps text-label-caps text-on-surface-variant">PROCESS</label>
-<select className="bg-surface border-outline-variant text-table-data rounded px-2 py-1 focus:border-primary outline-none">
-<option>All Processes</option>
-<option>Outbound Logistics</option>
-<option>Inbound Dispatch</option>
-<option>Vendor Verification</option>
-</select>
-</div>
-<div className="flex flex-col gap-stack-xs min-w-[140px]">
-<label className="font-label-caps text-label-caps text-on-surface-variant">CALLER</label>
-<select className="bg-surface border-outline-variant text-table-data rounded px-2 py-1 focus:border-primary outline-none">
-<option>All Callers</option>
-<option>Rohan Sharma</option>
-<option>Sana Khan</option>
-<option>Vikram Singh</option>
-</select>
-</div>
-<div className="flex flex-col gap-stack-xs flex-1">
-<label className="font-label-caps text-label-caps text-on-surface-variant">SCORE RANGE (0 - 100)</label>
-<div className="flex items-center gap-stack-sm">
-<input className="flex-1 accent-primary h-1 bg-outline-variant rounded-lg appearance-none cursor-pointer" type="range"/>
-<span className="text-table-data font-bold text-primary">40-100%</span>
-</div>
-</div>
-<button className="bg-surface border border-outline text-on-surface-variant flex items-center gap-stack-sm px-4 py-1.5 rounded-lg font-label-md text-label-md hover:bg-surface-variant transition-colors">
-<span className="material-symbols-outlined text-sm">filter_list</span>
-                        Reset Filters
-                    </button>
-</div>
-<div className="col-span-4 bg-primary text-on-primary rounded-lg p-stack-md flex justify-around items-center">
-<div className="text-center border-r border-on-primary/20 px-4">
-<p className="text-label-caps opacity-80">PENDING ACKS</p>
-<p className="font-display text-display">12</p>
-</div>
-<div className="text-center border-r border-on-primary/20 px-4">
-<p className="text-label-caps opacity-80">CRITICAL FLAWS</p>
-<p className="font-display text-display">04</p>
-</div>
-<div className="text-center px-4">
-<p className="text-label-caps opacity-80">AVG. RESPONSE</p>
-<p className="font-display text-display">3.2h</p>
-</div>
-</div>
-</div>
+          <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">SCORE RANGE (0 - 100)</label>
+            <div className="flex items-center gap-3">
+              <input 
+                type="range"
+                min="0"
+                max="100"
+                value={minScore}
+                onChange={(e) => { setMinScore(Number(e.target.value)); setCurrentPage(1); }}
+                className="flex-1 accent-amber-500 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+              />
+              <span className="text-xs md:text-sm font-bold text-amber-500 whitespace-nowrap">{minScore}%-100%</span>
+            </div>
+          </div>
 
-<div className="flex-1 bg-surface-container-lowest border border-outline-variant rounded-lg overflow-hidden flex flex-col shadow-sm">
-<div className="overflow-auto flex-1">
-<table className="w-full text-left border-collapse min-w-[1200px]">
-<thead className="sticky top-0 bg-surface-container-high z-10 border-b border-outline-variant">
-<tr className="text-label-caps text-on-surface-variant">
-<th className="p-inset-table whitespace-nowrap font-bold">CALLER</th>
-<th className="p-inset-table whitespace-nowrap font-bold">PROCESS</th>
-<th className="p-inset-table whitespace-nowrap font-bold">SCORE</th>
-<th className="p-inset-table whitespace-nowrap font-bold">SEVERITY</th>
-<th className="p-inset-table whitespace-nowrap font-bold">AUDIT DATE</th>
-<th className="p-inset-table whitespace-nowrap font-bold">FEEDBACK SENT</th>
-<th className="p-inset-table whitespace-nowrap font-bold text-center">ACKNOWLEDGED</th>
-<th className="p-inset-table whitespace-nowrap font-bold">REMEDIATION</th>
-<th className="p-inset-table whitespace-nowrap font-bold text-right">ACTIONS</th>
-</tr>
-</thead>
-<tbody className="divide-y divide-outline-variant">
+          <button 
+            onClick={handleReset}
+            className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-650 flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all self-end"
+          >
+            <span className="material-symbols-outlined text-sm md:text-base">refresh</span>
+            Reset Filters
+          </button>
+        </div>
 
-<tr className="pending-row transition-colors group">
-<td className="p-inset-table text-table-data font-bold">Rohan Sharma</td>
-<td className="p-inset-table text-table-data">Outbound Logistics</td>
-<td className="p-inset-table">
-<div className="flex items-center gap-2">
-<div className="w-12 h-1.5 bg-outline-variant rounded-full overflow-hidden">
-<div className="h-full bg-error" style={{"width": "42%"}}></div>
-</div>
-<span className="text-table-data font-bold text-error">42%</span>
-</div>
-</td>
-<td className="p-inset-table">
-<span className="severity-pill-critical px-2 py-0.5 rounded text-label-caps">CRITICAL</span>
-</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 24, 09:12 AM</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 24, 11:30 AM</td>
-<td className="p-inset-table text-center">
-<span className="material-symbols-outlined text-error" title="Pending &gt; 48h">warning</span>
-</td>
-<td className="p-inset-table">
-<span className="text-table-data italic opacity-60">Pending Supervisor Review</span>
-</td>
-<td className="p-inset-table text-right">
-<button className="bg-primary-container text-on-primary-container font-label-md text-label-md px-3 py-1 rounded active:scale-95 transition-transform flex items-center gap-1 ml-auto">
-<span className="material-symbols-outlined text-sm">forward_to_inbox</span>
-                                        Resend
-                                    </button>
-</td>
-</tr>
+        {/* Stats */}
+        <div className="lg:col-span-4 bg-slate-900 text-white rounded-xl p-5 flex justify-around items-center border border-slate-800">
+          <div className="text-center border-r border-slate-800/60 px-4 w-full">
+            <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">PENDING ACKS</p>
+            <p className="text-xl md:text-2xl font-black mt-1 text-amber-400">{pendingAcksCount}</p>
+          </div>
+          <div className="text-center border-r border-slate-800/60 px-4 w-full">
+            <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">CRITICAL FLAWS</p>
+            <p className="text-xl md:text-2xl font-black mt-1 text-red-400">{criticalFlawsCount}</p>
+          </div>
+          <div className="text-center px-4 w-full">
+            <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">AVG. RESPONSE</p>
+            <p className="text-xl md:text-2xl font-black mt-1 text-sky-400">3.2h</p>
+          </div>
+        </div>
+      </div>
 
-<tr className="hover:bg-surface-container-low transition-colors group">
-<td className="p-inset-table text-table-data font-bold">Sana Khan</td>
-<td className="p-inset-table text-table-data">Vendor Verification</td>
-<td className="p-inset-table">
-<div className="flex items-center gap-2">
-<div className="w-12 h-1.5 bg-outline-variant rounded-full overflow-hidden">
-<div className="h-full bg-primary" style={{"width": "96%"}}></div>
-</div>
-<span className="text-table-data font-bold text-primary">96%</span>
-</div>
-</td>
-<td className="p-inset-table">
-<span className="severity-pill-good px-2 py-0.5 rounded text-label-caps">GOOD</span>
-</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 26, 02:45 PM</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 26, 03:00 PM</td>
-<td className="p-inset-table text-center">
-<span className="material-symbols-outlined text-primary font-bold" data-weight="fill">check_circle</span>
-</td>
-<td className="p-inset-table">
-<span className="text-table-data">Routine Appreciation</span>
-</td>
-<td className="p-inset-table text-right">
-<button className="p-1 hover:bg-surface-variant rounded text-on-surface-variant">
-<span className="material-symbols-outlined text-lg">more_vert</span>
-</button>
-</td>
-</tr>
+      {/* Main Table Card */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs md:text-sm border-collapse min-w-[1000px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr className="text-slate-400 font-bold uppercase text-xs">
+                <th className="p-4 pl-5">Caller</th>
+                <th className="p-4">Process</th>
+                <th className="p-4">Score</th>
+                <th className="p-4">Severity</th>
+                <th className="p-4">Audit Date</th>
+                <th className="p-4">Feedback Sent</th>
+                <th className="p-4 text-center">Acknowledged</th>
+                <th className="p-4">Remediation</th>
+                <th className="p-4 text-right pr-5">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-700 font-semibold">
+              {(() => {
+                const ITEMS_PER_PAGE = 5;
+                const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE) || 1;
+                const activePage = Math.min(currentPage, totalPages);
+                const paginated = filteredRecords.slice(
+                  (activePage - 1) * ITEMS_PER_PAGE,
+                  activePage * ITEMS_PER_PAGE
+                );
 
-<tr className="hover:bg-surface-container-low transition-colors group">
-<td className="p-inset-table text-table-data font-bold">Vikram Singh</td>
-<td className="p-inset-table text-table-data">Inbound Dispatch</td>
-<td className="p-inset-table">
-<div className="flex items-center gap-2">
-<div className="w-12 h-1.5 bg-outline-variant rounded-full overflow-hidden">
-<div className="h-full bg-tertiary" style={{"width": "74%"}}></div>
-</div>
-<span className="text-table-data font-bold text-tertiary">74%</span>
-</div>
-</td>
-<td className="p-inset-table">
-<span className="severity-pill-warning px-2 py-0.5 rounded text-label-caps">NEEDS IMPROVEMENT</span>
-</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 25, 11:20 AM</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 25, 01:15 PM</td>
-<td className="p-inset-table text-center">
-<span className="material-symbols-outlined text-on-surface-variant opacity-30">pending</span>
-</td>
-<td className="p-inset-table">
-<span className="text-table-data">Script adherence training</span>
-</td>
-<td className="p-inset-table text-right">
-<button className="bg-surface-container-highest text-on-surface-variant font-label-md text-label-md px-3 py-1 rounded hover:bg-surface-variant flex items-center gap-1 ml-auto">
-<span className="material-symbols-outlined text-sm">forward_to_inbox</span>
-                                        Remind
-                                    </button>
-</td>
-</tr>
+                return (
+                  <>
+                    {paginated.map((rec) => (
+                      <tr key={rec.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="p-4 pl-5 font-extrabold text-slate-800">{rec.caller}</td>
+                        <td className="p-4 text-slate-550">{rec.process}</td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-1.5 bg-slate-100 border border-slate-200/50 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full ${
+                                  rec.severity === 'GOOD' ? 'bg-green-500' :
+                                  rec.severity === 'NEEDS IMPROVEMENT' ? 'bg-amber-500' : 'bg-red-500'
+                                }`} 
+                                style={{ width: `${rec.score}%` }}
+                              ></div>
+                            </div>
+                            <span className={`font-mono text-xs font-black ${
+                              rec.severity === 'GOOD' ? 'text-green-600' :
+                              rec.severity === 'NEEDS IMPROVEMENT' ? 'text-amber-600' : 'text-red-600'
+                            }`}>{rec.score}%</span>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <span className={`text-[10px] md:text-xs font-black px-2.5 py-0.5 rounded-full border uppercase ${
+                            rec.severity === 'GOOD' ? 'bg-green-50 text-green-700 border-green-200' :
+                            rec.severity === 'NEEDS IMPROVEMENT' ? 'bg-yellow-50 text-yellow-700 border-yellow-250' :
+                            'bg-red-50 text-red-700 border-red-200'
+                          }`}>
+                            {rec.severity}
+                          </span>
+                        </td>
+                        <td className="p-4 text-slate-400">{rec.auditDate}</td>
+                        <td className="p-4 text-slate-450">{rec.feedbackSent}</td>
+                        <td className="p-4 text-center">
+                          {rec.acknowledged === 'warning' && (
+                            <span className="material-symbols-outlined text-red-500 text-sm md:text-base font-bold" title={rec.acknowledgedText}>warning</span>
+                          )}
+                          {rec.acknowledged === 'check' && (
+                            <span className="material-symbols-outlined text-green-500 text-sm md:text-base font-bold" title={rec.acknowledgedText}>check_circle</span>
+                          )}
+                          {rec.acknowledged === 'pending' && (
+                            <span className="material-symbols-outlined text-slate-350 text-sm md:text-base font-bold animate-pulse" title={rec.acknowledgedText}>pending</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-slate-500 italic max-w-[200px] truncate" title={rec.remediation}>
+                          {rec.remediation}
+                        </td>
+                        <td className="p-4 text-right pr-5">
+                          <button 
+                            onClick={() => handleAction(rec)}
+                            className="bg-white border border-slate-200 hover:border-amber-500 hover:bg-amber-500 hover:text-white text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 ml-auto"
+                          >
+                            <span className="material-symbols-outlined text-xs md:text-sm">forward_to_inbox</span>
+                            {rec.acknowledged === 'check' ? 'Notify' : 'Remind'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredRecords.length === 0 && (
+                      <tr>
+                        <td colSpan={9} className="p-8 text-center text-slate-400 italic">No feedback entries found matching your filters.</td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })()}
+            </tbody>
+          </table>
+        </div>
 
-<tr className="hover:bg-surface-container-low transition-colors group">
-<td className="p-inset-table text-table-data font-bold">Ananya Roy</td>
-<td className="p-inset-table text-table-data">Outbound Logistics</td>
-<td className="p-inset-table">
-<div className="flex items-center gap-2">
-<div className="w-12 h-1.5 bg-outline-variant rounded-full overflow-hidden">
-<div className="h-full bg-error" style={{"width": "58%"}}></div>
-</div>
-<span className="text-table-data font-bold text-error">58%</span>
-</div>
-</td>
-<td className="p-inset-table">
-<span className="severity-pill-critical px-2 py-0.5 rounded text-label-caps">CRITICAL</span>
-</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 26, 10:00 AM</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 26, 10:45 AM</td>
-<td className="p-inset-table text-center">
-<span className="material-symbols-outlined text-on-surface-variant opacity-30">pending</span>
-</td>
-<td className="p-inset-table">
-<span className="text-table-data">Fatal Error Rectification</span>
-</td>
-<td className="p-inset-table text-right">
-<button className="p-1 hover:bg-surface-variant rounded text-on-surface-variant">
-<span className="material-symbols-outlined text-lg">more_vert</span>
-</button>
-</td>
-</tr>
+        {/* Table Pagination / Footer */}
+        {(() => {
+          const ITEMS_PER_PAGE = 5;
+          const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE) || 1;
+          const activePage = Math.min(currentPage, totalPages);
 
-<tr className="hover:bg-surface-container-low transition-colors">
-<td className="p-inset-table text-table-data font-bold">Amit Patel</td>
-<td className="p-inset-table text-table-data">Vendor Verification</td>
-<td className="p-inset-table">
-<div className="flex items-center gap-2">
-<div className="w-12 h-1.5 bg-outline-variant rounded-full overflow-hidden">
-<div className="h-full bg-primary" style={{"width": "88%"}}></div>
-</div>
-<span className="text-table-data font-bold text-primary">88%</span>
-</div>
-</td>
-<td className="p-inset-table">
-<span className="severity-pill-good px-2 py-0.5 rounded text-label-caps">GOOD</span>
-</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 23, 04:20 PM</td>
-<td className="p-inset-table text-table-data text-on-surface-variant">Oct 23, 04:30 PM</td>
-<td className="p-inset-table text-center">
-<span className="material-symbols-outlined text-primary font-bold" data-weight="fill">check_circle</span>
-</td>
-<td className="p-inset-table">
-<span className="text-table-data">N/A</span>
-</td>
-<td className="p-inset-table text-right">
-<button className="p-1 hover:bg-surface-variant rounded text-on-surface-variant">
-<span className="material-symbols-outlined text-lg">more_vert</span>
-</button>
-</td>
-</tr>
-</tbody>
-</table>
-</div>
+          return (
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
+              <p className="text-xs text-slate-400 font-bold">
+                Showing {Math.min(filteredRecords.length, (activePage - 1) * ITEMS_PER_PAGE + 1)} to {Math.min(filteredRecords.length, activePage * ITEMS_PER_PAGE)} of {filteredRecords.length} entries
+              </p>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  className={`p-1.5 rounded-lg hover:bg-slate-100 text-slate-650 border border-slate-200 transition-colors flex items-center justify-center ${activePage === 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  disabled={activePage === 1}
+                >
+                  <span className="material-symbols-outlined text-sm md:text-base">chevron_left</span>
+                </button>
+                <div className="flex items-center gap-1.5 text-xs font-bold">
+                  {Array.from({ length: totalPages }).map((_, pageIdx) => {
+                    const pageNum = pageIdx + 1;
+                    return (
+                      <button 
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 rounded-lg transition-colors ${activePage === pageNum ? 'bg-amber-500 text-white font-extrabold' : 'hover:bg-slate-100 text-slate-600'}`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  className={`p-1.5 rounded-lg hover:bg-slate-100 text-slate-650 border border-slate-200 transition-colors flex items-center justify-center ${activePage === totalPages ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  disabled={activePage === totalPages}
+                >
+                  <span className="material-symbols-outlined text-sm md:text-base">chevron_right</span>
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
 
-<div className="border-t border-outline-variant p-inset-table flex justify-between items-center bg-surface-container-low">
-<p className="text-table-data text-on-surface-variant">Showing 1 to 5 of 148 entries</p>
-<div className="flex gap-stack-sm">
-<button className="w-8 h-8 flex items-center justify-center rounded border border-outline-variant hover:bg-surface-variant disabled:opacity-30" disabled>
-<span className="material-symbols-outlined text-base">chevron_left</span>
-</button>
-<button className="w-8 h-8 flex items-center justify-center rounded bg-primary text-on-primary text-table-data font-bold">1</button>
-<button className="w-8 h-8 flex items-center justify-center rounded border border-outline-variant hover:bg-surface-variant text-table-data">2</button>
-<button className="w-8 h-8 flex items-center justify-center rounded border border-outline-variant hover:bg-surface-variant text-table-data">3</button>
-<button className="w-8 h-8 flex items-center justify-center rounded border border-outline-variant hover:bg-surface-variant">
-<span className="material-symbols-outlined text-base">chevron_right</span>
-</button>
-</div>
-</div>
-</div>
-</div>
-</main>
+    </main>
   );
 };
 

@@ -129,7 +129,7 @@ const RoleHomeRedirect: React.FC = () => {
   const roleHomepages: Record<string, string> = {
     [Role.TH]: '/th/overview-live',
     [Role.TL]: '/tl/tl-overview-dashboard',
-    [Role.QC]: '/qc/qc-console-live',
+    [Role.QC]: '/qc/qc-overview',
     [Role.HR]: '/hr/hiring-dashboard-live',
     [Role.ADMIN]: '/admin/system-health-dashboard',
     [Role.DW]: '/dw/dw-home-dashboard',
@@ -170,6 +170,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="th/settings-live" element={<RoleGuard permission="admin:view"><SettingsPage /></RoleGuard>} />
           <Route path="th/notifications-live" element={<RoleGuard><NotificationsPage /></RoleGuard>} />
           <Route path="qc/qc-console-live" element={<RoleGuard permission="qc:audit"><QcConsolePage /></RoleGuard>} />
+          <Route path="qc/qc-overview" element={<RoleGuard permission="qc:view"><QcConsolePage /></RoleGuard>} />
           <Route path="hr/hiring-dashboard-live" element={<RoleGuard permission="hr:view"><HiringDashboardPage /></RoleGuard>} />
           
           {/* Dynamic Dashboard Layout Routes */}

@@ -363,6 +363,15 @@ export const dynamicRoutes: RouteItem[] = [
 
   // ==================== QC ANALYST (qc) ====================
   {
+    path: '/qc/qc-overview',
+    name: 'Overview',
+    role: 'qc',
+    permission: 'qc:view',
+    layout: 'dashboard',
+    icon: 'dashboard',
+    showInMenu: true
+  },
+  {
     path: '/qc/qc-console-refined',
     name: 'QC Console',
     role: 'qc',

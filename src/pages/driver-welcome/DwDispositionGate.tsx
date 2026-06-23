@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 export const DwDispositionGate: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const stateLead = location.state || {};
+  const isCampaign = stateLead.isCampaign || false;
+  const campaignContext = stateLead.campaignContext || null;
 
   // Form States
   const [outcome, setOutcome] = useState<'connected' | 'nr' | 'busy' | 'wrong' | 'off' | ''>('');
@@ -16,6 +21,16 @@ export const DwDispositionGate: React.FC = () => {
   const [callbackTime, setCallbackTime] = useState('11:30');
   const [finalNotes, setFinalNotes] = useState('');
   const [escalateChoice, setEscalateChoice] = useState<'yes' | 'no' | ''>('');
+
+  // Campaign specific feedback states
+  const [tempUpdate, setTempUpdate] = useState<'HOT' | 'WARM' | 'COLD' | ''>('');
+  const [starRating, setStarRating] = useState<number>(0);
+
+  React.useEffect(() => {
+    if (campaignContext?.temperature) {
+      setTempUpdate(campaignContext.temperature);
+    }
+  }, [campaignContext]);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -39,9 +54,9 @@ export const DwDispositionGate: React.FC = () => {
       triggerToast('Disposition logged successfully');
     }
     
-    // Frictionless loop: reload queue
+    // Frictionless loop: reload queue or campaign queue
     setTimeout(() => {
-      navigate('/dw/dw-call-queue');
+      navigate(isCampaign ? '/dw/dw-campaign-leads' : '/dw/dw-call-queue');
     }, 800);
   };
 
@@ -229,6 +244,63 @@ export const DwDispositionGate: React.FC = () => {
           </section>
         )}
 
+        {/* Campaign Specific — Temperature & Rating */}
+        {isCampaign && outcome && (
+          <section className="space-y-4 bg-red-50/30 p-4 rounded-xl border border-red-100 text-xs animate-in fade-in duration-300">
+            <div className="font-bold text-red-800 uppercase tracking-wider flex items-center gap-1">
+              <span className="material-symbols-outlined text-[16px]">campaign</span>
+              Campaign Disposition Details
+            </div>
+            
+            <div className="space-y-2">
+              <label className="font-bold text-gray-700 block">Temperature Update *</label>
+              <div className="flex gap-2">
+                {[
+                  { id: 'HOT', label: '🔥 Keep HOT' },
+                  { id: 'WARM', label: '~ Downgrade WARM' },
+                  { id: 'COLD', label: '❄ Downgrade COLD' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTempUpdate(t.id as any)}
+                    className={`flex-1 py-2 border rounded-lg font-bold text-center transition-all ${
+                      tempUpdate === t.id 
+                        ? 'bg-red-500 text-white border-red-500' 
+                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="font-bold text-gray-700 block">Lead Quality Rating (Optional)</label>
+              <div className="flex items-center gap-1.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setStarRating(star)}
+                    className="text-lg transition-transform active:scale-125 focus:outline-none"
+                  >
+                    <span className={`material-symbols-outlined text-[24px] ${
+                      star <= starRating ? 'text-yellow-500 fill-current' : 'text-gray-300'
+                    }`}>
+                      star
+                    </span>
+                  </button>
+                ))}
+                {starRating > 0 && (
+                  <span className="text-[11px] font-bold text-gray-500 ml-2">({starRating} Star{starRating > 1 ? 's' : ''})</span>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Step 4: Remarks (Optional, All Paths) */}
         {outcome && (
           <section className="space-y-2 text-xs">
@@ -291,14 +363,16 @@ export const DwDispositionGate: React.FC = () => {
               (outcome === 'connected' && !disposition) ||
               (outcome === 'connected' && disposition === 'interested' && !selectedPlan) ||
               (outcome === 'connected' && disposition === 'not_interested' && !rejectionReason) ||
-              (outcome === 'nr' && !escalateChoice)
+              (outcome === 'nr' && !escalateChoice) ||
+              (isCampaign && !tempUpdate)
             }
             className={`flex-grow h-12 font-bold text-xs rounded-lg flex items-center justify-center gap-1 shadow-md uppercase transition-all ${
               (!outcome || 
                (outcome === 'connected' && !disposition) ||
                (outcome === 'connected' && disposition === 'interested' && !selectedPlan) ||
                (outcome === 'connected' && disposition === 'not_interested' && !rejectionReason) ||
-               (outcome === 'nr' && !escalateChoice))
+               (outcome === 'nr' && !escalateChoice) ||
+               (isCampaign && !tempUpdate))
                 ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
                 : 'bg-[#27AE60] hover:bg-[#219653] text-white'
             }`}

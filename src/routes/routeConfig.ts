@@ -16,7 +16,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/overview-live',
     name: 'Overview',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'grid_view',
@@ -25,16 +25,25 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/main-overview-dashboard',
     name: 'Dashboard',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'dashboard',
+    showInMenu: false
+  },
+  {
+    path: '/th/global-call-chat-log',
+    name: 'Call & Chat Log',
+    role: 'Telecalling Head',
+    permission: 'leads:view',
+    layout: 'dashboard',
+    icon: 'chat',
     showInMenu: true
   },
   {
     path: '/th/team-monitor',
     name: 'Team Monitor',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'groups',
@@ -43,7 +52,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/lead-management-console',
     name: 'Lead Management Console',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'leaderboard',
@@ -52,7 +61,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/sla-dashboard',
     name: 'SLA Dashboard',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'timer',
@@ -61,7 +70,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/reports-hub',
     name: 'Reports Hub',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'analytics',
@@ -70,7 +79,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/qc-console-refined',
     name: 'QC Console',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'fact_check',
@@ -79,7 +88,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/backlog-sprint-manager',
     name: 'Backlog Sprint Manager',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'view_week',
@@ -88,7 +97,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/notifications-alerts-center',
     name: 'Notifications & Alerts',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'notifications',
@@ -97,89 +106,26 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/settings',
     name: 'Settings',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'settings',
     showInMenu: true
   },
+  {
+    path: '/th/global-campaign-console',
+    name: 'Global Campaign Console',
+    role: 'Telecalling Head',
+    permission: 'leads:view',
+    layout: 'dashboard',
+    icon: 'campaign',
+    showInMenu: true
+  },
   // Hidden/other TH pages
-  {
-    path: '/th/page01-dashboard',
-    name: 'Page01 Dashboard',
-    role: 'th',
-    permission: 'leads:view',
-    layout: 'dashboard',
-    icon: 'dashboard',
-    showInMenu: false
-  },
-  {
-    path: '/th/page02-login',
-    name: 'Page02 Login',
-    role: 'th',
-    permission: 'leads:view',
-    layout: 'dashboard',
-    icon: 'article',
-    showInMenu: false
-  },
-  {
-    path: '/th/page03-team-monitor',
-    name: 'Page03 Team Monitor',
-    role: 'th',
-    permission: 'leads:view',
-    layout: 'dashboard',
-    icon: 'groups',
-    showInMenu: false
-  },
-  {
-    path: '/th/page04-lead-management',
-    name: 'Page04 Lead Management',
-    role: 'th',
-    permission: 'leads:view',
-    layout: 'dashboard',
-    icon: 'leaderboard',
-    showInMenu: false
-  },
-  {
-    path: '/th/page05-sla-dashboard',
-    name: 'Page05 Sla Dashboard',
-    role: 'th',
-    permission: 'leads:view',
-    layout: 'dashboard',
-    icon: 'dashboard',
-    showInMenu: false
-  },
-  {
-    path: '/th/page07-settings',
-    name: 'Page07 Settings',
-    role: 'th',
-    permission: 'leads:view',
-    layout: 'dashboard',
-    icon: 'settings',
-    showInMenu: false
-  },
-  {
-    path: '/th/page08-backlog-sprint',
-    name: 'Page08 Backlog Sprint',
-    role: 'th',
-    permission: 'leads:view',
-    layout: 'dashboard',
-    icon: 'view_week',
-    showInMenu: false
-  },
-  {
-    path: '/th/page10-notifications',
-    name: 'Page10 Notifications',
-    role: 'th',
-    permission: 'leads:view',
-    layout: 'dashboard',
-    icon: 'notifications',
-    showInMenu: false
-  },
   {
     path: '/th/post-call-disposition-gate',
     name: 'Post Call Disposition Gate',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'phone',
@@ -188,7 +134,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/re-activation-manager',
     name: 'Re Activation Manager',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'article',
@@ -197,7 +143,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/backlog-campaign-manager',
     name: 'Backlog Campaign Manager',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'campaign',
@@ -208,7 +154,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/admin/user-management-console',
     name: 'User Management Console',
-    role: 'admin',
+    role: 'System Admin',
     permission: 'admin:view',
     layout: 'dashboard',
     icon: 'manage_accounts',
@@ -217,7 +163,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/admin/plan-price-manager',
     name: 'Plan Price Manager',
-    role: 'admin',
+    role: 'System Admin',
     permission: 'admin:view',
     layout: 'dashboard',
     icon: 'payments',
@@ -226,7 +172,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/admin/webhook-logs-troubleshooting',
     name: 'Webhook Logs Troubleshooting',
-    role: 'admin',
+    role: 'System Admin',
     permission: 'admin:view',
     layout: 'dashboard',
     icon: 'api',
@@ -235,7 +181,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/admin/integrations-routing-config',
     name: 'Integrations Routing Config',
-    role: 'admin',
+    role: 'System Admin',
     permission: 'admin:view',
     layout: 'dashboard',
     icon: 'device_hub',
@@ -244,7 +190,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/admin/system-health-dashboard',
     name: 'System Health Dashboard',
-    role: 'admin',
+    role: 'System Admin',
     permission: 'admin:view',
     layout: 'dashboard',
     icon: 'dashboard',
@@ -253,10 +199,19 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/admin/process-queue-config',
     name: 'Process Queue Config',
-    role: 'admin',
+    role: 'System Admin',
     permission: 'admin:view',
     layout: 'dashboard',
     icon: 'queue',
+    showInMenu: true
+  },
+  {
+    path: '/admin/target-allocation',
+    name: 'Target Allocation',
+    role: 'System Admin',
+    permission: 'admin:view',
+    layout: 'dashboard',
+    icon: 'track_changes',
     showInMenu: true
   },
 
@@ -264,7 +219,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/hiring-dashboard',
     name: 'Hiring Dashboard',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'dashboard',
@@ -273,7 +228,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/hiring-pipeline',
     name: 'Hiring Pipeline',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'badge',
@@ -282,7 +237,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/onboarding-tracker',
     name: 'Onboarding Tracker',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'assignment_ind',
@@ -291,7 +246,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/headcount-overview',
     name: 'Headcount Overview',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'person',
@@ -300,7 +255,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/attendance-management',
     name: 'Attendance Management',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'how_to_reg',
@@ -309,7 +264,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/payroll-processing',
     name: 'Payroll Processing',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'receipt_long',
@@ -318,7 +273,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/incentive-verification',
     name: 'Incentive Verification',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'monetization_on',
@@ -327,7 +282,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/policy-reference-panel',
     name: 'Policy Reference',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'policy',
@@ -336,7 +291,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/document-vault',
     name: 'Document Vault',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'folder_open',
@@ -345,7 +300,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/exit-management',
     name: 'Exit Management',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'logout',
@@ -354,7 +309,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/page09-hiring',
     name: 'Page09 Hiring',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'badge',
@@ -374,7 +329,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/qc-console-refined',
     name: 'QC Console',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'fact_check',
@@ -383,7 +338,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/audit-queue',
     name: 'Audit Queue',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'queue',
@@ -392,7 +347,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/feedback-manager',
     name: 'Feedback Manager',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'feedback',
@@ -401,7 +356,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/tl-qc-feedback-inbox',
     name: 'TL Feedback Inbox',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'inbox',
@@ -410,7 +365,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/calibration-session-manager',
     name: 'Calibration Session Manager',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'model_training',
@@ -419,7 +374,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/fatal-error-log',
     name: 'Fatal Error Log',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'error',
@@ -428,7 +383,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/revenue-attribution-audit',
     name: 'Revenue Attribution Audit',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'account_balance',
@@ -437,7 +392,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/crm-data-integrity',
     name: 'CRM Data Integrity',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'database',
@@ -446,7 +401,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/system-audit-logs',
     name: 'System Audit Logs',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'manage_search',
@@ -455,7 +410,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/weekly-qc-report-generator',
     name: 'Weekly QC Report',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'summarize',
@@ -464,7 +419,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/feedback-composer',
     name: 'Feedback Composer',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'feedback',
@@ -473,7 +428,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/qc-console-home',
     name: 'QC Console Home',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'fact_check',
@@ -482,7 +437,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/page06-qc-console',
     name: 'Page06 QC Console',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'fact_check',
@@ -493,7 +448,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/tl/tl-overview-dashboard',
     name: 'Overview Dashboard',
-    role: 'tl',
+    role: 'Team Leader',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'dashboard',
@@ -502,7 +457,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/tl/tl-real-time-monitor',
     name: 'Real-Time Monitor',
-    role: 'tl',
+    role: 'Team Leader',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'monitoring',
@@ -511,7 +466,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/tl/tl-lead-queue-manager',
     name: 'Lead Queue Manager',
-    role: 'tl',
+    role: 'Team Leader',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'queue',
@@ -520,7 +475,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/tl/tl-team-callback-calendar',
     name: 'Team Callback Calendar',
-    role: 'tl',
+    role: 'Team Leader',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'calendar_month',
@@ -529,7 +484,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/tl/tl-daily-wrap-up-panel',
     name: 'Daily Wrap Up Panel',
-    role: 'tl',
+    role: 'Team Leader',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'description',
@@ -538,7 +493,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/tl/tl-caller-profile-detail',
     name: 'Caller Profile Detail',
-    role: 'tl',
+    role: 'Team Leader',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'person',
@@ -549,7 +504,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dw/dw-home-dashboard',
     name: 'Home Dashboard',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'dashboard',
@@ -558,16 +513,25 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dw/dw-call-queue',
     name: 'Call Queue',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'queue',
     showInMenu: true
   },
   {
+    path: '/dw/dw-campaign-leads',
+    name: 'Campaign Leads',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'campaign',
+    showInMenu: true
+  },
+  {
     path: '/dw/dw-active-call-focus',
     name: 'Active Call Focus',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'phone',
@@ -576,7 +540,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dw/dw-disposition-gate',
     name: 'Disposition Gate',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'fact_check',
@@ -585,7 +549,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dw/dw-callback-calendar',
     name: 'Callback Calendar',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'calendar_month',
@@ -594,7 +558,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dw/dw-whatsapp-panel',
     name: 'WhatsApp Panel',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'chat',
@@ -603,7 +567,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dw/dw-performance-stats',
     name: 'Performance Stats',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'equalizer',
@@ -612,7 +576,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dw/dw-training-hub',
     name: 'Training Hub',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'school',
@@ -621,7 +585,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dw/dw-script-library',
     name: 'Script Library',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'menu_book',
@@ -630,7 +594,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dw/tl-overview-driver-welcome',
     name: 'Driver Welcome Overview',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'preview',
@@ -639,7 +603,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dialer/live-console',
     name: 'Active Call Console (Live)',
-    role: 'dw',
+    role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'caller',
     icon: 'phone',
@@ -651,7 +615,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/wct/wct-home-dashboard',
     name: 'Home Dashboard',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'dashboard',
@@ -660,16 +624,25 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/wct/wct-call-queue',
     name: 'Call Queue',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'queue',
     showInMenu: true
   },
   {
+    path: '/wct/wct-campaign-leads',
+    name: 'Campaign Leads',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'campaign',
+    showInMenu: true
+  },
+  {
     path: '/wct/wct-active-call-focus',
     name: 'Active Call Focus',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'phone',
@@ -678,7 +651,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/wct/wct-callback-calendar',
     name: 'Callback Calendar',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'calendar_month',
@@ -687,7 +660,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/wct/wct-d7-upsell-queue',
     name: 'D7 Upsell Queue',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'stars',
@@ -696,7 +669,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/wct/wct-disposition-gate',
     name: 'Disposition Gate',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'fact_check',
@@ -705,7 +678,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/wct/wct-performance-stats',
     name: 'Performance Stats',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'equalizer',
@@ -714,7 +687,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/wct/wct-training-hub',
     name: 'Training Hub',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'school',
@@ -723,7 +696,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/wct/wct-script-library',
     name: 'Script Library',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'menu_book',
@@ -732,7 +705,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dialer/live-console',
     name: 'Active Call Console (Live)',
-    role: 'wct',
+    role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'caller',
     icon: 'phone',
@@ -744,7 +717,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-home-dashboard',
     name: 'Home Dashboard',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'dashboard',
@@ -753,7 +726,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dialer/live-console',
     name: 'Active Call Console (Live)',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'caller',
     icon: 'phone',
@@ -762,7 +735,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-driver-search',
     name: 'Driver Search',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'search',
@@ -771,7 +744,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-job-board',
     name: 'Job Board',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'view_list',
@@ -780,7 +753,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-driver-bank',
     name: 'Driver Bank',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'group',
@@ -789,7 +762,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-placement-confirmation',
     name: 'Placement Confirmation',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'check_circle',
@@ -798,7 +771,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-placement-history',
     name: 'My Placements Dashboard',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'history',
@@ -807,7 +780,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-script-library',
     name: 'Script Library',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'menu_book',
@@ -816,7 +789,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/tl-matchmaking-job-board',
     name: 'Matchmaking Job Board',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'dashboard_customize',
@@ -825,7 +798,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/tl-overview-tr-matchmaking',
     name: 'Transporter Matchmaking Overview',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'preview',
@@ -834,7 +807,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/tl-overview-tr-matchmaking-white-bg',
     name: 'Tr Matchmaking White Bg',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'preview',
@@ -843,7 +816,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/hr-analytics-summary',
     name: 'Hr Analytics Summary',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'analytics',
@@ -852,7 +825,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-active-call-focus-refined',
     name: 'Mm Active Call Focus Refined',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'caller',
     icon: 'phone',
@@ -861,7 +834,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-intro-manager',
     name: 'Mm Intro Manager',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'article',
@@ -870,7 +843,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/mm/mm-training-hub',
     name: 'Training Hub',
-    role: 'mm',
+    role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'school',
@@ -881,7 +854,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/sc-home-dashboard',
     name: 'Home Dashboard',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'dashboard',
@@ -890,7 +863,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/dialer/live-console',
     name: 'Active Call Console (Live)',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'caller',
     icon: 'phone',
@@ -899,7 +872,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/partner-network-overview',
     name: 'Partner Network Overview',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'group',
@@ -908,7 +881,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/partner-queue-detail',
     name: 'Partner Queue Detail',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'queue',
@@ -917,7 +890,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/score-trends',
     name: 'Score Trends',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'trending_up',
@@ -926,7 +899,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/scoring-interface',
     name: 'Scoring Interface',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'fact_check',
@@ -935,7 +908,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/script-editor-console',
     name: 'Script Editor Console',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'edit_note',
@@ -944,7 +917,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/script-compliance-tracker',
     name: 'Script Compliance Tracker',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'checklist',
@@ -953,7 +926,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/sc-performance-hub',
     name: 'Performance Hub',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'equalizer',
@@ -962,7 +935,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/special-categories-script-library',
     name: 'Script Library',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'menu_book',
@@ -971,7 +944,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/absconding-protocol-tracker',
     name: 'Absconding Protocol Tracker',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'warning',
@@ -980,7 +953,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/active-call-focus-special-categories',
     name: 'Active Call Focus Special Categories',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'caller',
     icon: 'phone',
@@ -989,7 +962,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/sc/login-screen',
     name: 'Login Screen',
-    role: 'sc',
+    role: 'Special Categories',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'login',
@@ -1000,7 +973,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/overview-live',
     name: 'Overview Dashboard (Live)',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'dashboard',
@@ -1009,7 +982,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/team-monitor-live',
     name: 'Team Monitor (Live)',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'calls:view',
     layout: 'dashboard',
     icon: 'groups',
@@ -1018,7 +991,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/leads-live',
     name: 'Lead Management (Live)',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'leaderboard',
@@ -1027,7 +1000,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/sla-live',
     name: 'SLA Dashboard (Live)',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'qc:view',
     layout: 'dashboard',
     icon: 'timer',
@@ -1036,7 +1009,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/backlog-live',
     name: 'Backlog Sprint (Live)',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'backlog:view',
     layout: 'dashboard',
     icon: 'view_week',
@@ -1045,7 +1018,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/settings-live',
     name: 'Settings (Live)',
-    role: 'th',
+    role: 'Telecalling Head',
     permission: 'admin:view',
     layout: 'dashboard',
     icon: 'settings',
@@ -1054,7 +1027,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/th/notifications-live',
     name: 'Notifications (Live)',
-    role: 'th',
+    role: 'Telecalling Head',
     layout: 'dashboard',
     icon: 'notifications',
     showInMenu: false
@@ -1062,7 +1035,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/qc/qc-console-live',
     name: 'QC Console (Live)',
-    role: 'qc',
+    role: 'QC Analyst',
     permission: 'qc:audit',
     layout: 'dashboard',
     icon: 'fact_check',
@@ -1071,7 +1044,7 @@ export const dynamicRoutes: RouteItem[] = [
   {
     path: '/hr/hiring-dashboard-live',
     name: 'Hiring Dashboard (Live)',
-    role: 'hr',
+    role: 'HR Executive',
     permission: 'hr:view',
     layout: 'dashboard',
     icon: 'badge',

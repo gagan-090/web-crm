@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const PostCallDispositionGate: React.FC = () => {
+export const ThPostCallDispositionGate: React.FC = () => {
   return (
     <main className=" mt-16 p-lg pointer-events-none opacity-40">
 <div className="grid grid-cols-12 gap-lg">
@@ -19,4 +19,4 @@ export const PostCallDispositionGate: React.FC = () => {
   );
 };
 
-export default PostCallDispositionGate;
+export default ThPostCallDispositionGate;

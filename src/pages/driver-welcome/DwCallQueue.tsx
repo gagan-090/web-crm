@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGetDwQueueQuery } from '../../services/api/webCrmApi';
 
 interface CallHistory {
   date: string;
@@ -120,8 +121,20 @@ export const DwCallQueue: React.FC = () => {
     }
   ]);
 
+  const { data: realData } = useGetDwQueueQuery();
+
   // UI States
   const [selectedId, setSelectedId] = useState<string>('L1');
+
+  useEffect(() => {
+    if (realData?.leads && realData.leads.length > 0) {
+      setLeads(realData.leads as any);
+      if (realData.leads[0]) {
+        setSelectedId(realData.leads[0].id);
+      }
+    }
+  }, [realData]);
+
   const [activeTab, setActiveTab] = useState<'all' | 'fresh' | 'callbacks' | 'nr' | 'funnel'>('all');
   const [sortBy, setSortBy] = useState<'oldest' | 'callbacks' | 'sla'>('oldest');
   const [backupMode, setBackupMode] = useState<boolean>(true);

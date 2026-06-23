@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../app/providers/AuthProvider';
-import { Role, ROLE_LABELS } from '../../../shared/constants/roles';
+import { Role, ROLE_LABELS, ROLE_SHORT_CODES } from '../../../shared/constants/roles';
 import { loginSchema, type LoginInput } from '../../../shared/validations/loginSchema';
 
 interface RoleDemoInfo {
@@ -115,7 +115,8 @@ export const LoginPage: React.FC = () => {
   const quickLoginAsRole = async (role: Role) => {
     try {
       setServerError(null);
-      const success = await login(`${role.toLowerCase()}@truckmitr.com`, role);
+      const shortCode = ROLE_SHORT_CODES[role];
+      const success = await login(`${shortCode}@truckmitr.com`, role);
       if (success) {
         const activeCallerRoles: Role[] = [Role.DW, Role.WCT, Role.MM, Role.SC];
         if (activeCallerRoles.includes(role)) {
@@ -136,7 +137,8 @@ export const LoginPage: React.FC = () => {
 
   const autofillForRole = (role: Role) => {
     setSelectedRole(role);
-    setValue('email', `${role.toLowerCase()}@truckmitr.com`);
+    const shortCode = ROLE_SHORT_CODES[role];
+    setValue('email', `${shortCode}@truckmitr.com`);
     setValue('password', 'password123');
     setRoleMenuOpen(false);
   };
@@ -247,7 +249,7 @@ export const LoginPage: React.FC = () => {
                       onClick={() => autofillForRole(r)}
                       className="w-full block px-md py-sm font-label-caps text-on-surface hover:bg-surface-container-low transition-colors text-xs text-left"
                     >
-                      {ROLE_LABELS[r]} ({r})
+                      {ROLE_LABELS[r]} ({ROLE_SHORT_CODES[r]})
                     </button>
                   ))}
                 </div>
@@ -284,7 +286,7 @@ export const LoginPage: React.FC = () => {
                         </span>
                       </div>
                       <span className={`px-2 py-0.5 border rounded-[4px] text-[8px] font-bold font-data-mono ${r.badgeColor}`}>
-                        {r.role}
+                        {ROLE_SHORT_CODES[r.role].toUpperCase()}
                       </span>
                     </div>
                     <p className="text-[10px] text-on-surface-variant leading-snug line-clamp-2">

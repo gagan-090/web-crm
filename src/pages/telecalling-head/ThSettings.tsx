@@ -28,30 +28,30 @@ interface TargetRow {
 
 /* ─── Static data ─── */
 const INITIAL_CALLERS: CallerAccount[] = [
-  { id: 'c1', initials: 'RK', name: 'Rohan Kumar',  team: 'North Logistics',   status: 'ACTIVE',   tmId: 'TM-882' },
-  { id: 'c2', initials: 'SS', name: 'Sneha Sharma', team: 'Customer Success',  status: 'ACTIVE',   tmId: 'TM-419' },
-  { id: 'c3', initials: 'AP', name: 'Arjun Patel',  team: 'Operations',        status: 'INACTIVE', tmId: 'TM-202' },
-  { id: 'c4', initials: 'VD', name: 'Vikram Das',   team: 'Inbound Sales',     status: 'ACTIVE',   tmId: 'TM-612' },
+  { id: 'c1', initials: 'RK', name: 'Rohan Kumar', team: 'North Logistics', status: 'ACTIVE', tmId: 'TM-882' },
+  { id: 'c2', initials: 'SS', name: 'Sneha Sharma', team: 'Customer Success', status: 'ACTIVE', tmId: 'TM-419' },
+  { id: 'c3', initials: 'AP', name: 'Arjun Patel', team: 'Operations', status: 'INACTIVE', tmId: 'TM-202' },
+  { id: 'c4', initials: 'VD', name: 'Vikram Das', team: 'Inbound Sales', status: 'ACTIVE', tmId: 'TM-612' },
 ];
 
 const INITIAL_PLANS: PricingPlan[] = [
-  { id: 'p1', name: 'Enterprise Pro',  price: '₹45,000', effectiveDate: '01 Oct 2023', status: 'CURRENT' },
-  { id: 'p2', name: 'Fleet Scale',     price: '₹28,500', effectiveDate: '15 Sep 2023', status: 'CURRENT' },
-  { id: 'p3', name: 'Lite Startup',    price: '₹12,000', effectiveDate: '01 Jan 2024', status: 'SCHEDULED' },
+  { id: 'p1', name: 'Enterprise Pro', price: '₹45,000', effectiveDate: '01 Oct 2023', status: 'CURRENT' },
+  { id: 'p2', name: 'Fleet Scale', price: '₹28,500', effectiveDate: '15 Sep 2023', status: 'CURRENT' },
+  { id: 'p3', name: 'Lite Startup', price: '₹12,000', effectiveDate: '01 Jan 2024', status: 'SCHEDULED' },
 ];
 
 const TARGET_ROWS: TargetRow[] = [
-  { key: 'leadGen',    label: 'Lead Gen',   unit: 'Units', trend: '+12% YoY', trendColor: 'text-green-600' },
-  { key: 'conversion', label: 'Conversion', unit: '%',     trend: 'Baseline', trendColor: 'text-blue-600'  },
-  { key: 'retention',  label: 'Retention',  unit: '%',     trend: '-2.4%',    trendColor: 'text-red-500'   },
+  { key: 'leadGen', label: 'Lead Gen', unit: 'Units', trend: '+12% YoY', trendColor: 'text-green-600' },
+  { key: 'conversion', label: 'Conversion', unit: '%', trend: 'Baseline', trendColor: 'text-blue-600' },
+  { key: 'retention', label: 'Retention', unit: '%', trend: '-2.4%', trendColor: 'text-red-500' },
 ];
 
 /* ─── Helper ─── */
 const StatusBadge: React.FC<{ status: PricingPlan['status'] }> = ({ status }) => {
   const map = {
-    CURRENT:   'bg-blue-50 text-blue-700 border-blue-200',
+    CURRENT: 'bg-blue-50 text-blue-700 border-blue-200',
     SCHEDULED: 'bg-orange-50 text-orange-700 border-orange-200',
-    ARCHIVED:  'bg-slate-100 text-slate-500 border-slate-200',
+    ARCHIVED: 'bg-slate-100 text-slate-500 border-slate-200',
   };
   return (
     <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${map[status]}`}>{status}</span>
@@ -59,21 +59,21 @@ const StatusBadge: React.FC<{ status: PricingPlan['status'] }> = ({ status }) =>
 };
 
 /* ─── Main Component ─── */
-export const Settings: React.FC = () => {
+export const ThSettings: React.FC = () => {
   /* State */
-  const [callers, setCallers]     = useState<CallerAccount[]>(INITIAL_CALLERS);
-  const [plans, setPlans]         = useState<PricingPlan[]>(INITIAL_PLANS);
-  const [targets, setTargets]     = useState({ leadGen: 1200, conversion: 15, retention: 88 });
-  const [toast, setToast]         = useState<string | null>(null);
+  const [callers, setCallers] = useState<CallerAccount[]>(INITIAL_CALLERS);
+  const [plans, setPlans] = useState<PricingPlan[]>(INITIAL_PLANS);
+  const [targets, setTargets] = useState({ leadGen: 1200, conversion: 15, retention: 88 });
+  const [toast, setToast] = useState<string | null>(null);
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
   const [editingPrice, setEditingPrice] = useState('');
   const [showNewCallerModal, setShowNewCallerModal] = useState(false);
-  const [showNewPlanModal, setShowNewPlanModal]     = useState(false);
-  const [newCallerName, setNewCallerName]   = useState('');
-  const [newCallerTeam, setNewCallerTeam]   = useState('');
-  const [newPlanName, setNewPlanName]       = useState('');
-  const [newPlanPrice, setNewPlanPrice]     = useState('');
-  const [showChangeLog, setShowChangeLog]   = useState(false);
+  const [showNewPlanModal, setShowNewPlanModal] = useState(false);
+  const [newCallerName, setNewCallerName] = useState('');
+  const [newCallerTeam, setNewCallerTeam] = useState('');
+  const [newPlanName, setNewPlanName] = useState('');
+  const [newPlanPrice, setNewPlanPrice] = useState('');
+  const [showChangeLog, setShowChangeLog] = useState(false);
   const [integrationRefreshing, setIntegrationRefreshing] = useState(false);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
@@ -99,7 +99,7 @@ export const Settings: React.FC = () => {
 
   const addCaller = () => {
     if (!newCallerName.trim()) return;
-    const initials = newCallerName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+    const initials = newCallerName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
     const newId = `TM-${Math.floor(Math.random() * 900) + 100}`;
     setCallers(prev => [...prev, { id: Date.now().toString(), initials, name: newCallerName, team: newCallerTeam || 'General', status: 'ACTIVE', tmId: newId }]);
     showToast(`Caller "${newCallerName}" added successfully.`);
@@ -158,9 +158,9 @@ export const Settings: React.FC = () => {
           </div>
           <div className="space-y-3">
             {[
-              { icon: 'call',     label: 'Exotel Cloud Telephony',   sub: 'API Latency: 42ms',  status: 'ACTIVE',  iconColor: 'text-blue-600' },
-              { icon: 'chat',     label: 'WhatsApp Business API',     sub: 'Status: Connected',  status: 'ACTIVE',  iconColor: 'text-green-600' },
-              { icon: 'payments', label: 'Razorpay Payment Gateway',  sub: 'Auth Error: retry 5',status: 'FAILED',  iconColor: 'text-purple-600' },
+              { icon: 'call', label: 'Exotel Cloud Telephony', sub: 'API Latency: 42ms', status: 'ACTIVE', iconColor: 'text-blue-600' },
+              { icon: 'chat', label: 'WhatsApp Business API', sub: 'Status: Connected', status: 'ACTIVE', iconColor: 'text-green-600' },
+              { icon: 'payments', label: 'Razorpay Payment Gateway', sub: 'Auth Error: retry 5', status: 'FAILED', iconColor: 'text-purple-600' },
             ].map((item) => (
               <div key={item.label} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-lg hover:border-slate-200 transition-colors">
                 <div className="flex items-center gap-3">
@@ -381,8 +381,8 @@ export const Settings: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 divide-x divide-slate-100">
             {[
               { title: 'Onboarding Script v4.2', content: '"नमस्ते, मैं ट्रकमित्र से [Caller Name] बात कर रहा हूँ। क्या मेरी बात [Lead Name] से हो रही है? हम आपकी लॉजिस्टिक्स यात्रा को आसान बनाने के लिए कुछ बेहतरीन समाधान लाए हैं..."' },
-              { title: 'Renewal Pitch v2.1',     content: '"प्रिय ग्राहक, आपके ट्रकमित्र सब्सक्रिप्शन को रिन्यू करने का समय आ गया है। इस महीने हमारे पास आपके लिए विशेष डिस्काउंट ऑफर हैं जो आपकी बचत बढ़ाएंगे..."' },
-              { title: 'Escalation Protocol',    content: '"असुविधा के लिए हमें खेद है। मैं आपकी कॉल को हमारे सीनियर सुपरवाइजर को ट्रांसफर कर रहा हूँ जो इस मुद्दे का तुरंत समाधान करेंगे। कृपया लाइन पर बने रहें..."' },
+              { title: 'Renewal Pitch v2.1', content: '"प्रिय ग्राहक, आपके ट्रकमित्र सब्सक्रिप्शन को रिन्यू करने का समय आ गया है। इस महीने हमारे पास आपके लिए विशेष डिस्काउंट ऑफर हैं जो आपकी बचत बढ़ाएंगे..."' },
+              { title: 'Escalation Protocol', content: '"असुविधा के लिए हमें खेद है। मैं आपकी कॉल को हमारे सीनियर सुपरवाइजर को ट्रांसफर कर रहा हूँ जो इस मुद्दे का तुरंत समाधान करेंगे। कृपया लाइन पर बने रहें..."' },
             ].map(script => (
               <div key={script.title} className="p-5">
                 <h4 className="font-bold text-sm text-slate-800 mb-3 flex items-center gap-2">
@@ -450,4 +450,4 @@ export const Settings: React.FC = () => {
   );
 };
 
-export default Settings;
+export default ThSettings;

@@ -54,8 +54,8 @@ export const AuditQueue: React.FC = () => {
     const matchesCaller = selectedCaller === 'All Analysts' || rec.caller === selectedCaller;
     const matchesStatus = statusFilter === 'ALL' || rec.status.toUpperCase() === statusFilter;
     const matchesDate = !dateFilter || rec.callDate === dateFilter;
-    const matchesSearch = rec.caller.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          rec.leadTmid.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = rec.caller.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      rec.leadTmid.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesProcess && matchesCaller && matchesStatus && matchesDate && matchesSearch;
   });
 
@@ -90,7 +90,7 @@ export const AuditQueue: React.FC = () => {
 
   return (
     <main className="w-full max-w-7xl mx-auto p-6 space-y-6 relative">
-      
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs md:text-sm px-5 py-2.5 rounded-xl z-50 flex items-center gap-2 border border-slate-800 animate-bounce">
@@ -105,7 +105,7 @@ export const AuditQueue: React.FC = () => {
           <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">Audit Queue</h1>
           <p className="text-xs md:text-sm text-slate-400 mt-1">Manage and perform quality audits for this week's call recordings.</p>
         </div>
-        <button 
+        <button
           onClick={() => setShowAddModal(true)}
           className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold flex items-center gap-2 transition-all active:scale-95"
         >
@@ -118,7 +118,7 @@ export const AuditQueue: React.FC = () => {
       <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-center">
         <div className="flex flex-col gap-1 min-w-[150px]">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">PROCESS</label>
-          <select 
+          <select
             value={selectedProcess}
             onChange={(e) => { setSelectedProcess(e.target.value); setCurrentPage(1); }}
             className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs md:text-sm font-bold text-slate-700 outline-none w-full"
@@ -133,7 +133,7 @@ export const AuditQueue: React.FC = () => {
 
         <div className="flex flex-col gap-1 min-w-[150px]">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">CALLER</label>
-          <select 
+          <select
             value={selectedCaller}
             onChange={(e) => { setSelectedCaller(e.target.value); setCurrentPage(1); }}
             className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs md:text-sm font-bold text-slate-700 outline-none w-full"
@@ -150,7 +150,7 @@ export const AuditQueue: React.FC = () => {
 
         <div className="flex flex-col gap-1 min-w-[150px]">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">DATE RANGE</label>
-          <input 
+          <input
             type="date"
             value={dateFilter}
             onChange={(e) => { setDateFilter(e.target.value); setCurrentPage(1); }}
@@ -161,7 +161,7 @@ export const AuditQueue: React.FC = () => {
         <div className="flex flex-col gap-1 min-w-[150px]">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">SEARCH</label>
           <div className="relative">
-            <input 
+            <input
               type="text"
               placeholder="Search TMID/Caller..."
               value={searchQuery}
@@ -176,7 +176,7 @@ export const AuditQueue: React.FC = () => {
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">STATUS</label>
           <div className="flex gap-1.5 p-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold">
             {(['ALL', 'PENDING', 'IN PROGRESS', 'COMPLETED'] as const).map(status => (
-              <button 
+              <button
                 key={status}
                 onClick={() => { setStatusFilter(status); setCurrentPage(1); }}
                 className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === status ? 'bg-amber-500 text-white font-extrabold' : 'text-slate-500 hover:text-slate-800'}`}
@@ -188,7 +188,7 @@ export const AuditQueue: React.FC = () => {
         </div>
 
         <div className="ml-auto flex items-center gap-2 self-end">
-          <button 
+          <button
             onClick={() => { setSelectedProcess('All Processes'); setSelectedCaller('All Analysts'); setDateFilter(''); setStatusFilter('ALL'); setSearchQuery(''); }}
             className="p-2 border border-slate-200 hover:border-amber-500 rounded-lg text-slate-500 hover:text-amber-500 hover:bg-amber-50/10 transition-all flex items-center justify-center"
             title="Reset Filters"
@@ -236,7 +236,7 @@ export const AuditQueue: React.FC = () => {
                         <td className="p-4 text-slate-400">{rec.callDate}</td>
                         <td className="p-4 font-mono text-xs">{rec.duration}</td>
                         <td className="p-4 text-center">
-                          <button 
+                          <button
                             onClick={() => triggerToast(`Streaming audio for ${rec.leadTmid}...`)}
                             className="text-slate-450 hover:text-amber-500 flex items-center justify-center mx-auto transition-colors"
                           >
@@ -244,16 +244,15 @@ export const AuditQueue: React.FC = () => {
                           </button>
                         </td>
                         <td className="p-4">
-                          <span className={`text-[10px] md:text-xs font-black px-2.5 py-0.5 rounded-full border uppercase ${
-                            rec.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' :
-                            rec.status === 'In Progress' ? 'bg-yellow-50 text-yellow-700 border-yellow-250' :
-                            'bg-slate-100 text-slate-600 border-slate-200'
-                          }`}>
+                          <span className={`text-[10px] md:text-xs font-black px-2.5 py-0.5 rounded-full border uppercase ${rec.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' :
+                              rec.status === 'In Progress' ? 'bg-yellow-50 text-yellow-700 border-yellow-250' :
+                                'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}>
                             {rec.status}
                           </span>
                         </td>
                         <td className="p-4 text-right pr-5">
-                          <button 
+                          <button
                             onClick={() => handleAuditAction(rec)}
                             className="bg-white border border-slate-200 hover:border-amber-500 hover:bg-amber-500 hover:text-white text-slate-700 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95"
                           >
@@ -284,7 +283,7 @@ export const AuditQueue: React.FC = () => {
             <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
               <p className="text-xs text-slate-400 font-bold">Showing {Math.min(filteredRecords.length, activePage * ITEMS_PER_PAGE)} of {filteredRecords.length} recordings</p>
               <div className="flex items-center gap-2">
-                <button 
+                <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   className={`p-1.5 rounded-lg hover:bg-slate-100 text-slate-650 border border-slate-200 transition-colors flex items-center justify-center ${activePage === 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
                   disabled={activePage === 1}
@@ -295,7 +294,7 @@ export const AuditQueue: React.FC = () => {
                   {Array.from({ length: totalPages }).map((_, pageIdx) => {
                     const pageNum = pageIdx + 1;
                     return (
-                      <button 
+                      <button
                         key={pageNum}
                         onClick={() => setCurrentPage(pageNum)}
                         className={`w-8 h-8 rounded-lg transition-colors ${activePage === pageNum ? 'bg-amber-500 text-white font-extrabold' : 'hover:bg-slate-100 text-slate-600'}`}
@@ -305,7 +304,7 @@ export const AuditQueue: React.FC = () => {
                     );
                   })}
                 </div>
-                <button 
+                <button
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   className={`p-1.5 rounded-lg hover:bg-slate-100 text-slate-650 border border-slate-200 transition-colors flex items-center justify-center ${activePage === totalPages ? 'opacity-40 cursor-not-allowed' : ''}`}
                   disabled={activePage === totalPages}
@@ -369,12 +368,12 @@ export const AuditQueue: React.FC = () => {
               <span className="material-symbols-outlined text-amber-500">add_box</span>
               Add Call Manually to Queue
             </h3>
-            
+
             <form onSubmit={handleAddCallSubmit} className="space-y-4">
               <div>
                 <label className="text-slate-450 block mb-1.5 font-bold uppercase">Caller Agent Name</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={newCaller}
                   onChange={(e) => setNewCaller(e.target.value)}
                   required
@@ -385,7 +384,7 @@ export const AuditQueue: React.FC = () => {
 
               <div>
                 <label className="text-slate-450 block mb-1.5 font-bold uppercase">Process / Stream</label>
-                <select 
+                <select
                   value={newProcess}
                   onChange={(e) => setNewProcess(e.target.value)}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 bg-white outline-none font-bold text-slate-800"
@@ -400,8 +399,8 @@ export const AuditQueue: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-450 block mb-1.5 font-bold uppercase">Lead TMID</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={newLeadTmid}
                     onChange={(e) => setNewLeadTmid(e.target.value)}
                     required
@@ -411,8 +410,8 @@ export const AuditQueue: React.FC = () => {
                 </div>
                 <div>
                   <label className="text-slate-450 block mb-1.5 font-bold uppercase">Duration</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={newDuration}
                     onChange={(e) => setNewDuration(e.target.value)}
                     required
@@ -423,14 +422,14 @@ export const AuditQueue: React.FC = () => {
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowAddModal(false)}
                   className="px-4 py-2 border border-slate-200 text-slate-500 rounded-lg font-bold hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold"
                 >

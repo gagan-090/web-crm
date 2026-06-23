@@ -11,6 +11,7 @@ interface Transaction {
   revenue: number;
 }
 
+
 export const ReportsHub: React.FC = () => {
   // Navigation State
   const [activeTab, setActiveTab] = useState<TabType>('revenue');
@@ -77,91 +78,85 @@ export const ReportsHub: React.FC = () => {
         <div className="bg-white p-sm rounded border border-outline-variant shadow-xs">
           <p className="font-label-caps text-[10px] text-on-surface-variant uppercase mb-sm px-xs font-bold tracking-widest">Performance Hub</p>
           <div className="space-y-1">
-            <button 
+            <button
               onClick={() => setActiveTab('revenue')}
-              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${
-                activeTab === 'revenue' 
-                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary' 
+              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${activeTab === 'revenue'
+                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary'
                   : 'text-on-surface-variant hover:bg-slate-50'
-              }`}
+                }`}
             >
               <span className="flex items-center gap-sm">
-                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'revenue' ? 'text-primary' : 'text-slate-500'}`} data-icon="payments">payments</span> 
+                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'revenue' ? 'text-primary' : 'text-slate-500'}`} data-icon="payments">payments</span>
                 Revenue Report
               </span>
               <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right">chevron_right</span>
             </button>
 
-            <button 
+            <button
               onClick={() => setActiveTab('funnel')}
-              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${
-                activeTab === 'funnel' 
-                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary' 
+              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${activeTab === 'funnel'
+                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary'
                   : 'text-on-surface-variant hover:bg-slate-50'
-              }`}
+                }`}
             >
               <span className="flex items-center gap-sm">
-                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'funnel' ? 'text-primary' : 'text-slate-500'}`} data-icon="filter_alt">filter_alt</span> 
+                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'funnel' ? 'text-primary' : 'text-slate-500'}`} data-icon="filter_alt">filter_alt</span>
                 Funnel Report
               </span>
               <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right">chevron_right</span>
             </button>
 
-            <button 
+            <button
               onClick={() => setActiveTab('benchmarking')}
-              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${
-                activeTab === 'benchmarking' 
-                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary' 
+              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${activeTab === 'benchmarking'
+                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary'
                   : 'text-on-surface-variant hover:bg-slate-50'
-              }`}
+                }`}
             >
               <span className="flex items-center gap-sm">
-                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'benchmarking' ? 'text-primary' : 'text-slate-500'}`} data-icon="monitoring">monitoring</span> 
+                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'benchmarking' ? 'text-primary' : 'text-slate-500'}`} data-icon="monitoring">monitoring</span>
                 Caller Benchmarking
               </span>
               <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right">chevron_right</span>
             </button>
 
-            <button 
+            <button
               onClick={() => setActiveTab('qc')}
-              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${
-                activeTab === 'qc' 
-                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary' 
+              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${activeTab === 'qc'
+                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary'
                   : 'text-on-surface-variant hover:bg-slate-50'
-              }`}
+                }`}
             >
               <span className="flex items-center gap-sm">
-                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'qc' ? 'text-primary' : 'text-slate-500'}`} data-icon="trending_up">trending_up</span> 
+                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'qc' ? 'text-primary' : 'text-slate-500'}`} data-icon="trending_up">trending_up</span>
                 QC Trend
               </span>
               <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right">chevron_right</span>
             </button>
 
-            <button 
+            <button
               onClick={() => setActiveTab('incentive')}
-              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${
-                activeTab === 'incentive' 
-                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary' 
+              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${activeTab === 'incentive'
+                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary'
                   : 'text-on-surface-variant hover:bg-slate-50'
-              }`}
+                }`}
             >
               <span className="flex items-center gap-sm">
-                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'incentive' ? 'text-primary' : 'text-slate-500'}`} data-icon="redeem">redeem</span> 
+                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'incentive' ? 'text-primary' : 'text-slate-500'}`} data-icon="redeem">redeem</span>
                 Incentive Summary
               </span>
               <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right">chevron_right</span>
             </button>
 
-            <button 
+            <button
               onClick={() => setActiveTab('attendance')}
-              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${
-                activeTab === 'attendance' 
-                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary' 
+              className={`w-full text-left px-sm py-md font-label-caps text-label-caps flex items-center justify-between rounded transition-all group ${activeTab === 'attendance'
+                  ? 'bg-primary/10 text-primary font-bold border-l-4 border-primary'
                   : 'text-on-surface-variant hover:bg-slate-50'
-              }`}
+                }`}
             >
               <span className="flex items-center gap-sm">
-                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'attendance' ? 'text-primary' : 'text-slate-500'}`} data-icon="event_available">event_available</span> 
+                <span className={`material-symbols-outlined text-[20px] ${activeTab === 'attendance' ? 'text-primary' : 'text-slate-500'}`} data-icon="event_available">event_available</span>
                 Attendance
               </span>
               <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right">chevron_right</span>
@@ -172,7 +167,7 @@ export const ReportsHub: React.FC = () => {
         <div className="bg-primary/5 text-primary p-md rounded border border-primary/20 shadow-xs">
           <p className="font-label-caps text-label-caps font-bold mb-xs text-primary">Download Center</p>
           <p className="text-[11px] text-slate-600 mb-md">All scheduled reports are ready for bulk export.</p>
-          <button 
+          <button
             onClick={handleExportDailyBatch}
             className="w-full bg-primary text-white font-label-caps text-label-caps py-2 rounded font-bold hover:bg-primary-container shadow-xs transition-all flex items-center justify-center gap-sm"
           >
@@ -183,7 +178,7 @@ export const ReportsHub: React.FC = () => {
 
       {/* Main Reports Hub Canvas */}
       <section className="flex-grow space-y-md">
-        
+
         {/* REVENUE REPORT TAB */}
         {activeTab === 'revenue' && (
           <div className="space-y-md">
@@ -193,7 +188,7 @@ export const ReportsHub: React.FC = () => {
                 <p className="text-on-surface-variant text-body-sm">Visualizing monetary conversion across processes and callers.</p>
               </div>
               <div className="flex items-center gap-sm relative">
-                <div 
+                <div
                   onClick={() => setShowDatePicker(!showDatePicker)}
                   className="flex items-center bg-white border border-outline-variant rounded px-sm py-1.5 cursor-pointer hover:border-primary transition-all gap-1"
                 >
@@ -204,7 +199,7 @@ export const ReportsHub: React.FC = () => {
                 {showDatePicker && (
                   <div className="absolute top-full right-0 mt-1 bg-white border border-outline-variant rounded shadow-md z-30 py-1 w-44 text-xs font-semibold text-slate-700">
                     {['Oct 01 - Oct 31, 2023', 'Last 7 Days', 'Today', 'Yesterday'].map(range => (
-                      <div 
+                      <div
                         key={range}
                         onClick={() => { setDateRange(range); setShowDatePicker(false); showToast(`Date filter updated to ${range}`); }}
                         className={`px-3 py-1.5 hover:bg-slate-50 cursor-pointer ${dateRange === range ? 'text-primary font-bold bg-primary/5' : ''}`}
@@ -214,7 +209,7 @@ export const ReportsHub: React.FC = () => {
                     ))}
                   </div>
                 )}
-                <button 
+                <button
                   onClick={() => showToast(`Filtering data for date range: ${dateRange}`)}
                   className="bg-primary text-white px-md py-2 rounded font-label-caps text-label-caps font-bold hover:bg-primary-container shadow-xs transition-all"
                 >
@@ -314,19 +309,18 @@ export const ReportsHub: React.FC = () => {
               <div className="px-md py-sm bg-white border-b border-outline-variant flex justify-between items-center">
                 <div className="flex items-center gap-md">
                   <h3 className="font-label-caps text-label-caps font-bold text-slate-800">Transaction Breakdown</h3>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search by Caller..."
                     className="border border-outline-variant rounded px-2.5 py-1 text-xs focus:outline-none focus:border-primary w-48"
                   />
                 </div>
-                <button 
+                <button
                   onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                  className={`font-label-caps text-label-caps flex items-center gap-xs px-2.5 py-1 rounded transition-colors ${
-                    showAdvancedFilters ? 'bg-primary/10 text-primary font-bold' : 'text-primary hover:bg-slate-50'
-                  }`}
+                  className={`font-label-caps text-label-caps flex items-center gap-xs px-2.5 py-1 rounded transition-colors ${showAdvancedFilters ? 'bg-primary/10 text-primary font-bold' : 'text-primary hover:bg-slate-50'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[18px]" data-icon="tune">tune</span> Advanced Filters
                 </button>
@@ -337,8 +331,8 @@ export const ReportsHub: React.FC = () => {
                 <div className="bg-slate-50 p-md border-b border-outline-variant flex gap-xl text-xs font-semibold text-slate-700">
                   <div className="flex items-center gap-2">
                     <span>Process:</span>
-                    <select 
-                      value={processFilter} 
+                    <select
+                      value={processFilter}
                       onChange={(e) => setProcessFilter(e.target.value)}
                       className="border border-outline-variant rounded p-1 text-xs bg-white focus:outline-none"
                     >
@@ -351,8 +345,8 @@ export const ReportsHub: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <span>Lead Type:</span>
-                    <select 
-                      value={leadTypeFilter} 
+                    <select
+                      value={leadTypeFilter}
                       onChange={(e) => setLeadTypeFilter(e.target.value)}
                       className="border border-outline-variant rounded p-1 text-xs bg-white focus:outline-none"
                     >
@@ -363,7 +357,7 @@ export const ReportsHub: React.FC = () => {
                     </select>
                   </div>
                   {(processFilter !== 'ALL' || leadTypeFilter !== 'ALL' || searchQuery !== '') && (
-                    <button 
+                    <button
                       onClick={() => { setProcessFilter('ALL'); setLeadTypeFilter('ALL'); setSearchQuery(''); }}
                       className="text-error text-xs font-bold hover:underline"
                     >
@@ -394,10 +388,9 @@ export const ReportsHub: React.FC = () => {
                           <td className="px-md py-sm text-xs text-slate-600">{tx.process}</td>
                           <td className="px-md py-sm text-xs text-slate-600">{tx.units}</td>
                           <td className="px-md py-sm">
-                            <span className={`px-sm py-0.5 rounded text-[10px] font-bold ${
-                              tx.leadType === 'HOT' ? 'bg-red-50 text-red-700' :
-                              tx.leadType === 'WARM' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'
-                            }`}>{tx.leadType}</span>
+                            <span className={`px-sm py-0.5 rounded text-[10px] font-bold ${tx.leadType === 'HOT' ? 'bg-red-50 text-red-700' :
+                                tx.leadType === 'WARM' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'
+                              }`}>{tx.leadType}</span>
                           </td>
                           <td className="px-md py-sm font-data-mono text-xs text-right font-bold text-slate-800">₹{tx.revenue.toLocaleString()}</td>
                         </tr>
@@ -421,7 +414,7 @@ export const ReportsHub: React.FC = () => {
               <h2 className="font-headline-md text-headline-md font-bold text-slate-800">Funnel Analysis</h2>
               <p className="text-on-surface-variant text-body-sm">Analysis of lead transition rates through marketing and sales pipelines.</p>
             </div>
-            
+
             <div className="grid grid-cols-4 gap-md">
               {[
                 { label: 'Total Leads', count: '14,284', desc: 'Sourced leads', color: 'bg-primary' },
@@ -437,7 +430,7 @@ export const ReportsHub: React.FC = () => {
                 </div>
               ))}
             </div>
-            
+
             <div className="bg-white p-md rounded border border-outline-variant shadow-xs">
               <h3 className="font-bold text-slate-800 text-xs mb-4">Pipeline Conversion Rate (Historical Trend)</h3>
               <div className="h-48 bg-slate-50 rounded flex items-end justify-between p-lg relative">
@@ -462,7 +455,7 @@ export const ReportsHub: React.FC = () => {
                 <p className="text-on-surface-variant text-body-sm">Standardized comparison across all operational metrics.</p>
               </div>
               <div className="flex items-center gap-sm">
-                <button 
+                <button
                   onClick={handleExportFullBenchmarks}
                   className="bg-[#FB641B] text-white px-md py-2 rounded font-label-caps text-label-caps font-bold hover:brightness-110 shadow-xs transition-all flex items-center gap-sm"
                 >
@@ -470,7 +463,7 @@ export const ReportsHub: React.FC = () => {
                 </button>
               </div>
             </div>
-            
+
             <div className="bg-white rounded border border-outline-variant shadow-xs overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-[#F0F2F5]">
@@ -616,4 +609,4 @@ export const ReportsHub: React.FC = () => {
   );
 };
 
-export default ReportsHub;
+export default ThReportsHub;

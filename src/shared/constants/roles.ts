@@ -1,16 +1,29 @@
 export const Role = {
-  TH: 'TH',       // Telecalling Head
-  TL: 'TL',       // Team Leader
-  DW: 'DW',       // Driver Welcome Caller
-  WCT: 'WCT',     // Transporter Welcome Caller
-  MM: 'MM',       // Matchmaking Caller
-  SC: 'SC',       // Special Categories Caller
-  QC: 'QC',       // QC Analyst
-  HR: 'HR',       // HR Executive
-  ADMIN: 'ADMIN'  // Admin
+  TH: 'Telecalling Head',
+  TL: 'Team Leader',
+  DW: 'Driver Welcome',
+  WCT: 'Transporter Welcome',
+  MM: 'Matchmaking',
+  SC: 'Special Categories',
+  QC: 'QC Analyst',
+  HR: 'HR Executive',
+  ADMIN: 'System Admin'
 } as const;
 
 export type Role = typeof Role[keyof typeof Role];
+
+// Mapping from full role name to email-friendly short code (for demo login emails)
+export const ROLE_SHORT_CODES: Record<Role, string> = {
+  [Role.TH]: 'th',
+  [Role.TL]: 'tl',
+  [Role.DW]: 'dw',
+  [Role.WCT]: 'wct',
+  [Role.MM]: 'mm',
+  [Role.SC]: 'sc',
+  [Role.QC]: 'qc',
+  [Role.HR]: 'hr',
+  [Role.ADMIN]: 'admin'
+};
 
 export const ROLE_LABELS: Record<Role, string> = {
   [Role.TH]: 'Telecalling Head',

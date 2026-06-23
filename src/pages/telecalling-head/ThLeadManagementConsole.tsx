@@ -50,14 +50,14 @@ export const LeadManagementConsole: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  
+
   // New Lead Form State
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadMobile, setNewLeadMobile] = useState('');
   const [newLeadType, setNewLeadType] = useState<'FM' | 'DR' | 'TR' | 'EC'>('FM');
   const [newLeadStatus, setNewLeadStatus] = useState<'HOT' | 'WARM' | 'COLD'>('HOT');
   const [newLeadProcess, setNewLeadProcess] = useState('Vendor Onboarding');
-  
+
   // Toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -85,7 +85,7 @@ export const LeadManagementConsole: React.FC = () => {
 
   // Toggle single lead selection
   const handleSelectLead = (id: string) => {
-    setSelectedLeads(prev => 
+    setSelectedLeads(prev =>
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   };
@@ -198,9 +198,9 @@ export const LeadManagementConsole: React.FC = () => {
     <main className="flex flex-col relative min-h-screen pb-24 bg-white">
       {/* Click outside backdrop overlay */}
       {activeDropdown && (
-        <div 
-          className="fixed inset-0 z-20 cursor-default" 
-          onClick={() => setActiveDropdown(null)} 
+        <div
+          className="fixed inset-0 z-20 cursor-default"
+          onClick={() => setActiveDropdown(null)}
         />
       )}
 
@@ -215,16 +215,15 @@ export const LeadManagementConsole: React.FC = () => {
       <section className="px-md py-sm bg-white border-b border-outline-variant flex items-center justify-between">
         <div className="flex items-center gap-sm overflow-visible">
           <span className="text-label-caps font-bold text-on-surface-variant mr-2">FILTERS:</span>
-          
+
           {/* Process Filter */}
           <div className={`relative ${activeDropdown === 'process' ? 'z-30' : ''}`}>
-            <div 
+            <div
               onClick={() => toggleDropdown('process')}
-              className={`flex items-center px-3 py-1 rounded-full border gap-2 cursor-pointer transition-all ${
-                processFilter !== 'ALL' 
-                  ? 'bg-primary/10 border-primary text-primary font-bold' 
+              className={`flex items-center px-3 py-1 rounded-full border gap-2 cursor-pointer transition-all ${processFilter !== 'ALL'
+                  ? 'bg-primary/10 border-primary text-primary font-bold'
                   : 'bg-surface-container-high border-outline-variant hover:border-primary'
-              }`}
+                }`}
             >
               <span className="text-label-caps">
                 {processFilter === 'ALL' ? 'Process' : `Process: ${processFilter}`}
@@ -234,12 +233,11 @@ export const LeadManagementConsole: React.FC = () => {
             {activeDropdown === 'process' && (
               <div className="absolute top-full left-0 mt-1 bg-white border border-outline-variant rounded shadow-md z-30 py-1 w-52 text-xs">
                 {['ALL', 'Vendor Onboarding', 'KYC Verification', 'RTO Check', 'Direct Load Booking', 'Account Setup'].map(proc => (
-                  <div 
+                  <div
                     key={proc}
                     onClick={() => { setProcessFilter(proc); setActiveDropdown(null); }}
-                    className={`px-3 py-1.5 hover:bg-surface-container-low cursor-pointer font-medium ${
-                      processFilter === proc ? 'text-primary font-bold bg-primary/5' : ''
-                    }`}
+                    className={`px-3 py-1.5 hover:bg-surface-container-low cursor-pointer font-medium ${processFilter === proc ? 'text-primary font-bold bg-primary/5' : ''
+                      }`}
                   >
                     {proc === 'ALL' ? 'All Processes' : proc}
                   </div>
@@ -250,20 +248,19 @@ export const LeadManagementConsole: React.FC = () => {
 
           {/* Status Filter */}
           <div className={`relative ${activeDropdown === 'status' ? 'z-30' : ''}`}>
-            <div 
+            <div
               onClick={() => toggleDropdown('status')}
-              className={`flex items-center px-3 py-1 rounded-full border gap-2 cursor-pointer transition-all ${
-                statusFilter !== 'ALL' 
-                  ? 'bg-primary/10 border-primary text-primary font-bold' 
+              className={`flex items-center px-3 py-1 rounded-full border gap-2 cursor-pointer transition-all ${statusFilter !== 'ALL'
+                  ? 'bg-primary/10 border-primary text-primary font-bold'
                   : 'bg-surface-container-high border-outline-variant hover:border-primary'
-              }`}
+                }`}
             >
               <span className="text-label-caps">
                 {statusFilter === 'ALL' ? 'Status: All' : `Status: ${statusFilter}`}
               </span>
               {statusFilter !== 'ALL' ? (
-                <span 
-                  className="material-symbols-outlined text-[16px] text-primary hover:bg-primary/20 rounded-full" 
+                <span
+                  className="material-symbols-outlined text-[16px] text-primary hover:bg-primary/20 rounded-full"
                   data-icon="close"
                   onClick={(e) => { e.stopPropagation(); setStatusFilter('ALL'); }}
                 >
@@ -276,12 +273,11 @@ export const LeadManagementConsole: React.FC = () => {
             {activeDropdown === 'status' && (
               <div className="absolute top-full left-0 mt-1 bg-white border border-outline-variant rounded shadow-md z-30 py-1 w-36 text-xs">
                 {['ALL', 'HOT', 'WARM', 'COLD'].map(stat => (
-                  <div 
+                  <div
                     key={stat}
                     onClick={() => { setStatusFilter(stat as any); setActiveDropdown(null); }}
-                    className={`px-3 py-1.5 hover:bg-surface-container-low cursor-pointer font-medium ${
-                      statusFilter === stat ? 'text-primary font-bold bg-primary/5' : ''
-                    }`}
+                    className={`px-3 py-1.5 hover:bg-surface-container-low cursor-pointer font-medium ${statusFilter === stat ? 'text-primary font-bold bg-primary/5' : ''
+                      }`}
                   >
                     {stat === 'ALL' ? 'All Statuses' : stat}
                   </div>
@@ -291,13 +287,12 @@ export const LeadManagementConsole: React.FC = () => {
           </div>
 
           {/* Date Filter (Toggle Last 7 Days) */}
-          <div 
+          <div
             onClick={() => setDateFilter(!dateFilter)}
-            className={`flex items-center px-3 py-1 rounded-full border gap-2 cursor-pointer transition-all ${
-              dateFilter 
-                ? 'bg-primary/10 border-primary text-primary font-bold' 
+            className={`flex items-center px-3 py-1 rounded-full border gap-2 cursor-pointer transition-all ${dateFilter
+                ? 'bg-primary/10 border-primary text-primary font-bold'
                 : 'bg-surface-container-high border-outline-variant hover:border-primary'
-            }`}
+              }`}
           >
             <span className="material-symbols-outlined text-[16px]" data-icon="calendar_month">calendar_month</span>
             <span className="text-label-caps">Last 7 Days</span>
@@ -305,13 +300,12 @@ export const LeadManagementConsole: React.FC = () => {
 
           {/* Assigned Caller Filter */}
           <div className={`relative ${activeDropdown === 'caller' ? 'z-30' : ''}`}>
-            <div 
+            <div
               onClick={() => toggleDropdown('caller')}
-              className={`flex items-center px-3 py-1 rounded-full border gap-2 cursor-pointer transition-all ${
-                callerFilter !== 'ALL' 
-                  ? 'bg-primary/10 border-primary text-primary font-bold' 
+              className={`flex items-center px-3 py-1 rounded-full border gap-2 cursor-pointer transition-all ${callerFilter !== 'ALL'
+                  ? 'bg-primary/10 border-primary text-primary font-bold'
                   : 'bg-surface-container-high border-outline-variant hover:border-primary'
-              }`}
+                }`}
             >
               <span className="text-label-caps">
                 {callerFilter === 'ALL' ? 'Assigned Caller' : `Caller: ${callerFilter}`}
@@ -321,12 +315,11 @@ export const LeadManagementConsole: React.FC = () => {
             {activeDropdown === 'caller' && (
               <div className="absolute top-full left-0 mt-1 bg-white border border-outline-variant rounded shadow-md z-30 py-1 w-44 text-xs">
                 {['ALL', 'Animesh Roy', 'Sunita Sharma', 'Preeti Jain', 'Unassigned'].map(caller => (
-                  <div 
+                  <div
                     key={caller}
                     onClick={() => { setCallerFilter(caller); setActiveDropdown(null); }}
-                    className={`px-3 py-1.5 hover:bg-surface-container-low cursor-pointer font-medium ${
-                      callerFilter === caller ? 'text-primary font-bold bg-primary/5' : ''
-                    }`}
+                    className={`px-3 py-1.5 hover:bg-surface-container-low cursor-pointer font-medium ${callerFilter === caller ? 'text-primary font-bold bg-primary/5' : ''
+                      }`}
                   >
                     {caller === 'ALL' ? 'All Callers' : caller}
                   </div>
@@ -337,14 +330,14 @@ export const LeadManagementConsole: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-sm shrink-0">
-          <button 
+          <button
             onClick={handleRefresh}
             className="bg-surface border border-outline-variant px-3 py-1.5 rounded flex items-center gap-2 hover:bg-surface-container-high transition-colors"
           >
             <span className={`material-symbols-outlined ${isRefreshing ? 'animate-spin' : ''}`} data-icon="refresh">refresh</span>
             <span className="text-label-caps uppercase">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
-          <button 
+          <button
             onClick={() => setIsCreateModalOpen(true)}
             className="bg-primary text-on-primary px-4 py-1.5 rounded shadow-sm flex items-center gap-2 hover:bg-primary-container transition-colors font-bold"
           >
@@ -361,9 +354,9 @@ export const LeadManagementConsole: React.FC = () => {
               <thead className="sticky top-0 bg-[#F0F2F5] border-b border-outline-variant z-10">
                 <tr>
                   <th className="w-10 px-sm py-2">
-                    <input 
-                      className="rounded border-outline text-primary focus:ring-primary w-4 h-4 cursor-pointer" 
-                      id="master-select" 
+                    <input
+                      className="rounded border-outline text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                      id="master-select"
                       type="checkbox"
                       checked={selectedLeads.length === filteredLeads.length && filteredLeads.length > 0}
                       onChange={handleSelectAllLeads}
@@ -384,16 +377,15 @@ export const LeadManagementConsole: React.FC = () => {
               <tbody className="divide-y divide-outline-variant">
                 {filteredLeads.length > 0 ? (
                   filteredLeads.map((lead) => (
-                    <tr 
-                      key={lead.id} 
+                    <tr
+                      key={lead.id}
                       onClick={() => handleSelectLead(lead.id)}
-                      className={`lead-row hover:bg-surface-container-low transition-colors group cursor-pointer ${
-                        selectedLeads.includes(lead.id) ? 'bg-primary/5' : ''
-                      }`}
+                      className={`lead-row hover:bg-surface-container-low transition-colors group cursor-pointer ${selectedLeads.includes(lead.id) ? 'bg-primary/5' : ''
+                        }`}
                     >
                       <td className="px-sm py-1" onClick={(e) => e.stopPropagation()}>
-                        <input 
-                          className="lead-checkbox rounded border-outline text-primary focus:ring-primary w-4 h-4 cursor-pointer" 
+                        <input
+                          className="lead-checkbox rounded border-outline text-primary focus:ring-primary w-4 h-4 cursor-pointer"
                           type="checkbox"
                           checked={selectedLeads.includes(lead.id)}
                           onChange={() => handleSelectLead(lead.id)}
@@ -403,26 +395,23 @@ export const LeadManagementConsole: React.FC = () => {
                       <td className="px-sm py-1 font-body-sm font-semibold">{lead.name}</td>
                       <td className="px-sm py-1 font-data-mono text-body-sm">{lead.mobile}</td>
                       <td className="px-sm py-1 text-center">
-                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
-                          lead.type === 'FM' ? 'bg-tertiary-fixed text-on-tertiary-fixed' :
-                          lead.type === 'DR' ? 'bg-secondary-fixed text-on-secondary-fixed' :
-                          lead.type === 'TR' ? 'bg-outline-variant text-on-surface-variant' :
-                          'bg-primary-fixed text-on-primary-fixed'
-                        }`}>
+                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${lead.type === 'FM' ? 'bg-tertiary-fixed text-on-tertiary-fixed' :
+                            lead.type === 'DR' ? 'bg-secondary-fixed text-on-secondary-fixed' :
+                              lead.type === 'TR' ? 'bg-outline-variant text-on-surface-variant' :
+                                'bg-primary-fixed text-on-primary-fixed'
+                          }`}>
                           {lead.type}
                         </span>
                       </td>
                       <td className="px-sm py-1">
-                        <span className={`px-2 py-0.5 text-[11px] font-bold rounded flex items-center w-fit gap-1 ${
-                          lead.status === 'HOT' ? 'bg-red-100 text-red-700' :
-                          lead.status === 'WARM' ? 'bg-blue-100 text-blue-700' :
-                          'bg-surface-variant text-outline'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${
-                            lead.status === 'HOT' ? 'bg-red-600' :
-                            lead.status === 'WARM' ? 'bg-blue-600' :
-                            'bg-outline'
-                          }`}></span> 
+                        <span className={`px-2 py-0.5 text-[11px] font-bold rounded flex items-center w-fit gap-1 ${lead.status === 'HOT' ? 'bg-red-100 text-red-700' :
+                            lead.status === 'WARM' ? 'bg-blue-100 text-blue-700' :
+                              'bg-surface-variant text-outline'
+                          }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${lead.status === 'HOT' ? 'bg-red-600' :
+                              lead.status === 'WARM' ? 'bg-blue-600' :
+                                'bg-outline'
+                            }`}></span>
                           {lead.status}
                         </span>
                       </td>
@@ -465,7 +454,7 @@ export const LeadManagementConsole: React.FC = () => {
                 <button className="w-7 h-7 flex items-center justify-center rounded border border-outline-variant bg-surface hover:bg-surface-container-high disabled:opacity-50" disabled>
                   <span className="material-symbols-outlined text-[18px]" data-icon="chevron_left">chevron_left</span>
                 </button>
-                <button 
+                <button
                   onClick={() => showToast('Pagination clicked (Mock behavior)')}
                   className="w-7 h-7 flex items-center justify-center rounded border border-outline-variant bg-surface hover:bg-surface-container-high"
                 >
@@ -501,7 +490,7 @@ export const LeadManagementConsole: React.FC = () => {
                 <span className="text-label-caps text-white font-bold">EXPORT CSV</span>
               </button>
             </div>
-            <button 
+            <button
               onClick={() => setSelectedLeads([])}
               className="ml-4 p-1 hover:bg-surface-variant/20 rounded-full transition-colors"
             >
@@ -512,10 +501,9 @@ export const LeadManagementConsole: React.FC = () => {
       </section>
 
       {/* Collapsible Cold Lead Reactivation Portal Drawer */}
-      <div className={`fixed bottom-0 left-[240px] right-0 bg-white border-t border-outline-variant shadow-[0_-8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 z-20 ${
-        drawerOpen ? 'h-[330px]' : 'h-12 overflow-hidden'
-      }`}>
-        <div 
+      <div className={`fixed bottom-0 left-[240px] right-0 bg-white border-t border-outline-variant shadow-[0_-8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 z-20 ${drawerOpen ? 'h-[330px]' : 'h-12 overflow-hidden'
+        }`}>
+        <div
           onClick={() => setDrawerOpen(!drawerOpen)}
           className="h-12 flex items-center justify-between px-md cursor-pointer hover:bg-slate-50 border-b border-outline-variant transition-colors"
         >
@@ -525,14 +513,14 @@ export const LeadManagementConsole: React.FC = () => {
             <span className="px-2.5 py-0.5 bg-primary/10 text-primary text-[10px] font-extrabold rounded-full">{coldLeads.length} Leads Available</span>
           </div>
           <div className="flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
-            <button 
+            <button
               onClick={handleAddColdToCampaign}
               className="bg-primary text-on-primary px-4 py-1.5 rounded text-xs font-extrabold uppercase hover:bg-primary-container shadow-sm transition-all flex items-center gap-1"
             >
               <span className="material-symbols-outlined text-[16px]" data-icon="bolt">bolt</span>
               Add to Reactivation Campaign
             </button>
-            <button 
+            <button
               onClick={() => setDrawerOpen(!drawerOpen)}
               className="p-1 hover:bg-slate-100 rounded-full transition-all"
             >
@@ -545,12 +533,11 @@ export const LeadManagementConsole: React.FC = () => {
           <div className="h-64 px-md py-sm overflow-auto custom-scrollbar bg-white">
             <div className="grid grid-cols-3 gap-md">
               {coldLeads.map((c) => (
-                <div 
+                <div
                   key={c.id}
                   onClick={() => handleSelectColdLead(c.id)}
-                  className={`border p-md rounded-md bg-white flex items-center justify-between hover:border-primary hover:shadow-md transition-all cursor-pointer group ${
-                    selectedColdLeads.includes(c.id) ? 'border-primary ring-1 ring-primary/20 bg-primary/[0.01]' : 'border-outline-variant'
-                  }`}
+                  className={`border p-md rounded-md bg-white flex items-center justify-between hover:border-primary hover:shadow-md transition-all cursor-pointer group ${selectedColdLeads.includes(c.id) ? 'border-primary ring-1 ring-primary/20 bg-primary/[0.01]' : 'border-outline-variant'
+                    }`}
                 >
                   <div className="flex items-center gap-sm">
                     <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-primary/10 group-hover:text-primary transition-all">
@@ -570,8 +557,8 @@ export const LeadManagementConsole: React.FC = () => {
                       Cold
                     </span>
                     <p className="text-[10px] text-slate-400">Last called {c.lastCalled}</p>
-                    <input 
-                      className="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4 cursor-pointer mt-1" 
+                    <input
+                      className="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4 cursor-pointer mt-1"
                       type="checkbox"
                       checked={selectedColdLeads.includes(c.id)}
                       onChange={() => handleSelectColdLead(c.id)}
@@ -580,7 +567,7 @@ export const LeadManagementConsole: React.FC = () => {
                 </div>
               ))}
 
-              <div 
+              <div
                 onClick={handleLoadMoreCold}
                 className="border border-outline-variant p-md rounded-md bg-white border-dashed flex flex-col items-center justify-center text-outline text-xs font-bold cursor-pointer hover:border-primary hover:text-primary hover:bg-primary/[0.02] hover:shadow-xs transition-all h-[76px]"
               >
@@ -600,8 +587,8 @@ export const LeadManagementConsole: React.FC = () => {
             <form onSubmit={handleCreateLead} className="space-y-4">
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Lead Name</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={newLeadName}
                   onChange={(e) => setNewLeadName(e.target.value)}
                   className="w-full border border-outline-variant rounded p-2 text-xs focus:outline-none focus:border-primary"
@@ -611,8 +598,8 @@ export const LeadManagementConsole: React.FC = () => {
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Mobile</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={newLeadMobile}
                   onChange={(e) => setNewLeadMobile(e.target.value)}
                   className="w-full border border-outline-variant rounded p-2 text-xs focus:outline-none focus:border-primary"
@@ -623,7 +610,7 @@ export const LeadManagementConsole: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[11px] font-bold text-outline uppercase mb-1">Type</label>
-                  <select 
+                  <select
                     value={newLeadType}
                     onChange={(e) => setNewLeadType(e.target.value as any)}
                     className="w-full border border-outline-variant rounded p-2 text-xs focus:outline-none focus:border-primary"
@@ -636,7 +623,7 @@ export const LeadManagementConsole: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-outline uppercase mb-1">Status</label>
-                  <select 
+                  <select
                     value={newLeadStatus}
                     onChange={(e) => setNewLeadStatus(e.target.value as any)}
                     className="w-full border border-outline-variant rounded p-2 text-xs focus:outline-none focus:border-primary"
@@ -649,7 +636,7 @@ export const LeadManagementConsole: React.FC = () => {
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-outline uppercase mb-1">Process</label>
-                <select 
+                <select
                   value={newLeadProcess}
                   onChange={(e) => setNewLeadProcess(e.target.value)}
                   className="w-full border border-outline-variant rounded p-2 text-xs focus:outline-none focus:border-primary"
@@ -662,15 +649,15 @@ export const LeadManagementConsole: React.FC = () => {
                 </select>
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setIsCreateModalOpen(false)}
                   className="border border-outline-variant text-outline px-4 py-2 rounded text-xs hover:bg-surface-container-high transition-colors font-bold uppercase"
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="bg-primary text-white px-4 py-2 rounded text-xs hover:bg-primary-container transition-colors font-bold uppercase"
                 >
                   Save Lead
@@ -684,4 +671,4 @@ export const LeadManagementConsole: React.FC = () => {
   );
 };
 
-export default LeadManagementConsole;
+export default ThLeadManagementConsole;

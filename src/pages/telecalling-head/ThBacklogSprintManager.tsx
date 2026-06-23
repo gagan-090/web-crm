@@ -11,67 +11,7 @@ interface CallerSprint {
   bgClass: string;
 }
 
-export const BacklogSprintManager: React.FC = () => {
-  // Config States
-  const [selectedTeam, setSelectedTeam] = useState<'level2' | 'velocity' | 'retention'>('level2');
-  const [dateRange, setDateRange] = useState('Oct 24 - Oct 31');
-  const [dailyLimit, setDailyLimit] = useState(150);
-  const [sprintActive, setSprintActive] = useState(true);
-
-  // Modal & Toast States
-  const [toast, setToast] = useState<string | null>(null);
-  const [showActiveSprintsModal, setShowActiveSprintsModal] = useState(false);
-
-  // Table data state
-  const [callersData, setCallersData] = useState<CallerSprint[]>([
-    { name: 'Animesh Kumar', initials: 'AK', limit: 150, attempted: 142, conversion: '12.4%', trend: 'up', status: 'COMPLETING', bgClass: 'bg-secondary-fixed' },
-    { name: 'Sunita Devi', initials: 'SD', limit: 150, attempted: 88, conversion: '8.1%', trend: 'flat', status: 'IN PROGRESS', bgClass: 'bg-tertiary-fixed' },
-    { name: 'Rahul Prasad', initials: 'RP', limit: 150, attempted: 12, conversion: '2.4%', trend: 'down', status: 'IDLE / ALERT', bgClass: 'bg-error-container text-on-error-container' }
-  ]);
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  // Dynamic capacity calculations
-  const teamCallersCount = useMemo(() => {
-    switch (selectedTeam) {
-      case 'level2': return 14;
-      case 'velocity': return 8;
-      case 'retention': return 5;
-    }
-  }, [selectedTeam]);
-
-  const teamNameText = useMemo(() => {
-    switch (selectedTeam) {
-      case 'level2': return 'Level 2 Support';
-      case 'velocity': return 'High Velocity Team';
-      case 'retention': return 'Retention Specialists';
-    }
-  }, [selectedTeam]);
-
-  const projectedCapacity = useMemo(() => {
-    return teamCallersCount * dailyLimit;
-  }, [teamCallersCount, dailyLimit]);
-
-  const capacityProgressWidth = useMemo(() => {
-    const maxCapacity = 3000;
-    return Math.min(100, Math.max(10, (projectedCapacity / maxCapacity) * 100));
-  }, [projectedCapacity]);
-
-  // Actions
-  const handleDeploySprint = () => {
-    setSprintActive(true);
-    setCallersData(prev => prev.map(c => ({ ...c, limit: dailyLimit })));
-    showToast(`Sprint deployed successfully for ${teamNameText} (${teamCallersCount} callers) with limit ${dailyLimit} calls/day.`);
-  };
-
-  const handleCancelSprint = () => {
-    setSprintActive(false);
-    showToast('Active backlog sprint has been suspended.');
-  };
-
+export const ThBacklogSprintManager: React.FC = () => {
   return (
     <main className="p-md min-h-[calc(100vh-56px)] bg-white relative">
       {/* Toast Notification */}
@@ -122,9 +62,8 @@ export const BacklogSprintManager: React.FC = () => {
                 Assign Funnel Callers
               </h3>
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  sprintActive ? 'bg-primary text-white' : 'bg-slate-200 text-slate-600'
-                }`}>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${sprintActive ? 'bg-primary text-white' : 'bg-slate-200 text-slate-600'
+                  }`}>
                   {sprintActive ? 'SPRINT ACTIVE' : 'SPRINT INACTIVE'}
                 </span>
               </div>
@@ -133,7 +72,7 @@ export const BacklogSprintManager: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-md mb-lg">
               <div className="space-y-1">
                 <label className="text-label-caps text-[11px] text-on-surface-variant">SELECT CALLER TEAM</label>
-                <select 
+                <select
                   value={selectedTeam}
                   onChange={(e) => setSelectedTeam(e.target.value as any)}
                   className="w-full bg-white border border-outline-variant rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none text-slate-800 font-semibold"
@@ -146,9 +85,9 @@ export const BacklogSprintManager: React.FC = () => {
               <div className="space-y-1">
                 <label className="text-label-caps text-[11px] text-on-surface-variant">DATE RANGE</label>
                 <div className="relative">
-                  <input 
-                    className="w-full bg-white border border-outline-variant rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none text-slate-850 font-semibold" 
-                    type="text" 
+                  <input
+                    className="w-full bg-white border border-outline-variant rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none text-slate-850 font-semibold"
+                    type="text"
                     value={dateRange}
                     onChange={(e) => setDateRange(e.target.value)}
                   />
@@ -157,9 +96,9 @@ export const BacklogSprintManager: React.FC = () => {
               </div>
               <div className="space-y-1">
                 <label className="text-label-caps text-[11px] text-on-surface-variant">CALL LIMIT (DAILY)</label>
-                <input 
-                  className="w-full bg-white border border-outline-variant rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none text-slate-800 font-semibold" 
-                  type="number" 
+                <input
+                  className="w-full bg-white border border-outline-variant rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none text-slate-800 font-semibold"
+                  type="number"
                   value={dailyLimit}
                   onChange={(e) => setDailyLimit(Number(e.target.value))}
                 />
@@ -178,14 +117,14 @@ export const BacklogSprintManager: React.FC = () => {
           </div>
 
           <div className="mt-lg flex gap-md">
-            <button 
+            <button
               onClick={handleDeploySprint}
               className="bg-primary text-white px-xl py-2 rounded font-bold text-sm hover:bg-primary-container transition-all flex items-center gap-2 active:scale-98"
             >
               <span className="material-symbols-outlined text-[20px]">rocket_launch</span>
               DEPLOY SPRINT
             </button>
-            <button 
+            <button
               onClick={handleCancelSprint}
               className="border border-outline-variant text-on-surface px-lg py-2 rounded font-bold text-sm hover:bg-slate-50 transition-all active:scale-98"
             >
@@ -298,7 +237,7 @@ export const BacklogSprintManager: React.FC = () => {
         <div className="col-span-12 bg-white border border-outline-variant rounded shadow-xs overflow-hidden">
           <div className="p-md border-b border-outline-variant flex justify-between items-center bg-slate-50">
             <h3 className="font-label-caps font-bold text-slate-800">Active Sprint Performance (Real-time)</h3>
-            <button 
+            <button
               onClick={() => setShowActiveSprintsModal(true)}
               className="text-primary font-bold text-xs hover:underline"
             >
@@ -335,11 +274,10 @@ export const BacklogSprintManager: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-md py-3 text-right">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      !sprintActive ? 'bg-slate-100 text-slate-500' :
-                      c.status === 'COMPLETING' ? 'bg-blue-100 text-blue-800' :
-                      c.status === 'IN PROGRESS' ? 'bg-slate-100 text-slate-700' : 'bg-red-100 text-red-800'
-                    }`}>{sprintActive ? c.status : 'INACTIVE'}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${!sprintActive ? 'bg-slate-100 text-slate-500' :
+                        c.status === 'COMPLETING' ? 'bg-blue-100 text-blue-800' :
+                          c.status === 'IN PROGRESS' ? 'bg-slate-100 text-slate-700' : 'bg-red-100 text-red-800'
+                      }`}>{sprintActive ? c.status : 'INACTIVE'}</span>
                   </td>
                 </tr>
               ))}
@@ -369,16 +307,15 @@ export const BacklogSprintManager: React.FC = () => {
                     <h4 className="font-bold text-slate-800">{s.name}</h4>
                     <p className="text-[10px] text-slate-400">Team: {s.team} • Call Limit: {s.limit}</p>
                   </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    s.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
-                    s.status === 'COMPLETED' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-500'
-                  }`}>{s.status}</span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${s.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
+                      s.status === 'COMPLETED' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-500'
+                    }`}>{s.status}</span>
                 </div>
               ))}
             </div>
             <div className="flex justify-end pt-4 border-t border-outline-variant mt-4">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setShowActiveSprintsModal(false)}
                 className="px-4 py-2 bg-primary text-white rounded text-xs font-bold hover:bg-primary-container"
               >
@@ -392,4 +329,4 @@ export const BacklogSprintManager: React.FC = () => {
   );
 };
 
-export default BacklogSprintManager;
+export default ThBacklogSprintManager;

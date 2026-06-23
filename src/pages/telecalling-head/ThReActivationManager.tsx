@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const ReActivationManager: React.FC = () => {
+export const ThReActivationManager: React.FC = () => {
   return (
     <main className="md:ml-64 mt-16 p-lg bg-background min-h-screen">
 
@@ -248,4 +248,4 @@ export const ReActivationManager: React.FC = () => {
   );
 };
 
-export default ReActivationManager;
+export default ThReActivationManager;

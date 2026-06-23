@@ -1,10 +1,11 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { API_BASE_URL } from '../../shared/constants/config';
 
 // Setup Laravel Sanctum / JWT base API
 export const baseApi = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({
-    baseUrl: '/api', // Standard Laravel API endpoint base
+    baseUrl: API_BASE_URL,
     prepareHeaders: (headers) => {
       // Pull auth token from localStorage if present
       const storedUser = localStorage.getItem('tm_connect_user');

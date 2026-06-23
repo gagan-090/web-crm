@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useInitiateIvrCallMutation, useSubmitCtiFeedbackMutation } from '../../services/api/ctiApi';
 
 interface Objection {
   key: string;
@@ -11,6 +12,10 @@ export const DwActiveCallFocus: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const [initiateIvrCall] = useInitiateIvrCallMutation();
+  const [submitCtiFeedback] = useSubmitCtiFeedbackMutation();
+  const [ivrCallId, setIvrCallId] = useState<number | null>(null);
+
   // Load state from routing if available, else use default mock
   const stateLead = location.state || {};
   const leadName = stateLead.name || 'Suresh Yadav';
@@ -18,11 +23,27 @@ export const DwActiveCallFocus: React.FC = () => {
   const leadPhone = stateLead.phone || '+91-98765-43210';
   const leadLocation = stateLead.location || 'Agra, Uttar Pradesh';
 
+  const isCampaign = stateLead.isCampaign || false;
+  const campaignContext = stateLead.campaignContext || null;
+
   // Live timer state
   const [seconds, setSeconds] = useState(154); // starts at 02:34
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
-  const [activeTab, setActiveTab] = useState<'opening' | 'jobReady' | 'verified' | 'trusted' | 'objections' | 'closing'>('opening');
+  const [activeTab, setActiveTab] = useState<string>('opening');
+
+  // Campaign specific feedback states
+  const [tempUpdate, setTempUpdate] = useState<'HOT' | 'WARM' | 'COLD' | ''>('');
+  const [starRating, setStarRating] = useState<number>(0);
+
+  useEffect(() => {
+    if (isCampaign) {
+      setActiveTab('campaignOpening');
+      if (campaignContext?.temperature) {
+        setTempUpdate(campaignContext.temperature);
+      }
+    }
+  }, [isCampaign, campaignContext]);
 
   // Interactive link trigger
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -59,6 +80,32 @@ export const DwActiveCallFocus: React.FC = () => {
       setSeconds(prev => prev + 1);
     }, 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Log CTI Call start on backend
+  useEffect(() => {
+    const numericLeadId = parseInt(leadTmid.replace(/\D/g, ''), 10) || null;
+    initiateIvrCall({
+      user_id: numericLeadId,
+      user_name: leadName,
+      user_mobile: leadPhone,
+      user_tm_id: leadTmid,
+      assigned_to: 1, // overwritten on backend
+      assigned_name: 'Demo Agent',
+      assigned_number: '178',
+      did_number: '4310735',
+      process: 'dw',
+      call_type: 'Outgoing'
+    }).unwrap()
+      .then((res) => {
+        if (res.success && res.data) {
+          console.log('[CTI] DW Call initiated logged with ID:', res.data.id);
+          setIvrCallId(res.data.id);
+        }
+      })
+      .catch((err) => {
+        console.warn('[CTI] Failed to log Call initiation:', err);
+      });
   }, []);
 
   const formatTimer = (secCount: number) => {
@@ -129,7 +176,35 @@ export const DwActiveCallFocus: React.FC = () => {
   const sortedObjections = getSortedObjections();
 
   // Submit Disposition
-  const handleDispositionSubmit = () => {
+  const handleDispositionSubmit = async () => {
+    // Map UI outcomes to CTI validation outcomes
+    let ctiStatus = 'FAILED';
+    if (outcome === 'connected') ctiStatus = 'ANSWER';
+    else if (outcome === 'nr') ctiStatus = 'NO_ANSWER';
+    else if (outcome === 'busy') ctiStatus = 'BUSY';
+    else if (outcome === 'off') ctiStatus = 'SWITCH_OFF';
+    else if (outcome === 'wrong') ctiStatus = 'FAILED';
+
+    let ctiFeedback = 'Not Interested';
+    if (connectedSubStatus === 'interested') ctiFeedback = 'Interested';
+    else if (connectedSubStatus === 'callback') ctiFeedback = 'Callback Requested';
+    else if (connectedSubStatus === 'subscribed') ctiFeedback = 'Already Placed';
+
+    const recordId = ivrCallId || parseInt(leadTmid.replace(/\D/g, ''), 10) || 1;
+
+    try {
+      await submitCtiFeedback({
+        id: recordId,
+        call_status: ctiStatus,
+        call_feedback: ctiFeedback,
+        call_remarks: dispositionNotes || 'Disposition logged from Active Call screen'
+      }).unwrap();
+      
+      triggerToast('CTI Call feedback saved successfully ✓');
+    } catch (err: any) {
+      console.error('[CTI] Failed to save CTI disposition feedback:', err);
+    }
+
     // Navigate back to queue after a successful conversion toast
     if (outcome === 'connected' && connectedSubStatus === 'interested' && interestedPlan) {
       triggerToast('Marked as Converted ✓');
@@ -137,10 +212,10 @@ export const DwActiveCallFocus: React.FC = () => {
       triggerToast('Disposition logged successfully');
     }
     
-    // Frictionless loop: transition immediately to Call Queue
+    // Frictionless loop: transition immediately to Call Queue or Campaign Leads
     setTimeout(() => {
-      navigate('/dw/dw-call-queue');
-    }, 500);
+      navigate(isCampaign ? '/dw/dw-campaign-leads' : '/dw/dw-call-queue');
+    }, 800);
   };
 
   return (
@@ -187,6 +262,22 @@ export const DwActiveCallFocus: React.FC = () => {
           <div className="text-xs text-gray-500 mt-2 font-semibold">
             Active: <span className="text-gray-800">{leadName}</span> · <span className="font-mono">{leadTmid}</span> · <span className="text-gray-600">{leadPhone}</span> · <span className="text-gray-600">{leadLocation}</span>
           </div>
+
+          {isCampaign && campaignContext && (
+            <div className="mt-3 bg-red-500/5 border border-red-500/10 rounded-lg p-2.5 text-[11px] text-gray-700 space-y-1">
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-bold text-red-800 uppercase tracking-wider text-[9px]">Campaign Source</span>
+                <span className="bg-red-500 text-white px-1.5 py-0.5 rounded font-mono text-[9px] font-bold uppercase">{campaignContext.source}</span>
+              </div>
+              <div className="truncate"><span className="text-gray-400">Campaign:</span> <span className="font-semibold text-gray-800">{campaignContext.campaignName}</span></div>
+              <div className="flex justify-between items-center text-[10px] pt-1">
+                <span><span className="text-gray-400">Form:</span> <span className="font-semibold">{campaignContext.leadForm}</span></span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${campaignContext.temperature === 'HOT' ? 'bg-red-100 text-red-700 animate-pulse' : campaignContext.temperature === 'WARM' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {campaignContext.temperature}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* PLAN PRICE REFERENCE CARD (PALE YELLOW, UNDISMISSABLE) */}
@@ -282,6 +373,7 @@ export const DwActiveCallFocus: React.FC = () => {
         {/* Script Tab Bar */}
         <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto scrollbar-none shrink-0">
           {[
+            ...(isCampaign ? [{ key: 'campaignOpening', label: '📢 Campaign Script' }] : []),
             { key: 'opening', label: 'Opening' },
             { key: 'jobReady', label: 'Job Ready Pitch' },
             { key: 'verified', label: 'Verified Upsell' },
@@ -307,6 +399,23 @@ export const DwActiveCallFocus: React.FC = () => {
         <div className="flex-grow overflow-y-auto p-6 min-h-0">
           <div className="max-w-[480px] mx-auto text-gray-800">
             
+            {activeTab === 'campaignOpening' && campaignContext && (
+              <div className="space-y-4 font-hindi leading-relaxed text-[15px]">
+                <h3 className="text-sm font-bold text-red-500 uppercase tracking-wide font-sans">Campaign Opening Script ({campaignContext.source})</h3>
+                <div className="bg-red-50/50 border-l-4 border-red-500 p-4 rounded-r-xl">
+                  "{campaignContext.openingScript}"
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs space-y-1 text-gray-600 font-sans">
+                  <div className="font-bold text-gray-700">Campaign Context:</div>
+                  <div><span className="text-gray-400">Ad Source:</span> {campaignContext.source}</div>
+                  <div><span className="text-gray-400">Campaign:</span> {campaignContext.campaignName}</div>
+                  <div><span className="text-gray-400">Form:</span> {campaignContext.leadForm}</div>
+                  <div><span className="text-gray-400">Captured:</span> {campaignContext.capturedTime}</div>
+                  {campaignContext.utmCampaign && <div><span className="text-gray-400">UTM:</span> {campaignContext.utmSource} / {campaignContext.utmMedium} / {campaignContext.utmCampaign}</div>}
+                </div>
+              </div>
+            )}
+
             {activeTab === 'opening' && (
               <div className="space-y-4 font-hindi leading-relaxed text-[15px]">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide font-sans">Greeting Dialogue</h3>
@@ -628,6 +737,63 @@ export const DwActiveCallFocus: React.FC = () => {
               </div>
             )}
 
+            {/* Campaign Specific — Temperature & Rating */}
+            {isCampaign && outcome && (
+              <div className="space-y-4 bg-red-50/30 p-4 rounded-xl border border-red-100 mt-4 text-xs">
+                <div className="font-bold text-red-800 uppercase tracking-wider flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px]">campaign</span>
+                  Campaign Disposition Details
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="font-bold text-gray-700 block">Temperature Update *</label>
+                  <div className="flex gap-2">
+                    {[
+                      { id: 'HOT', label: '🔥 Keep HOT' },
+                      { id: 'WARM', label: '~ Downgrade WARM' },
+                      { id: 'COLD', label: '❄ Downgrade COLD' }
+                    ].map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setTempUpdate(t.id as any)}
+                        className={`flex-1 py-2 border rounded-lg font-bold text-center transition-all ${
+                          tempUpdate === t.id 
+                            ? 'bg-red-500 text-white border-red-500' 
+                            : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-gray-700 block">Lead Quality Rating (Optional)</label>
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setStarRating(star)}
+                        className="text-lg transition-transform active:scale-125 focus:outline-none"
+                      >
+                        <span className={`material-symbols-outlined text-[24px] ${
+                          star <= starRating ? 'text-yellow-500 fill-current' : 'text-gray-300'
+                        }`}>
+                          star
+                        </span>
+                      </button>
+                    ))}
+                    {starRating > 0 && (
+                      <span className="text-[11px] font-bold text-gray-500 ml-2">({starRating} Star{starRating > 1 ? 's' : ''})</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Step 4 — Remarks (Optional, All Paths) */}
             {outcome && (
               <div className="space-y-2 mt-4 text-xs">
@@ -694,14 +860,16 @@ export const DwActiveCallFocus: React.FC = () => {
                   (outcome === 'connected' && !connectedSubStatus) ||
                   (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
                   (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason) ||
-                  ((outcome === 'nr' || leadTmid === 'DR-48292') && !escalateChoice)
+                  ((outcome === 'nr' || leadTmid === 'DR-48292') && !escalateChoice) ||
+                  (isCampaign && !tempUpdate)
                 }
                 className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
                   (!outcome || 
                    (outcome === 'connected' && !connectedSubStatus) ||
                    (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
                    (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason) ||
-                   ((outcome === 'nr' || leadTmid === 'DR-48292') && !escalateChoice))
+                   ((outcome === 'nr' || leadTmid === 'DR-48292') && !escalateChoice) ||
+                   (isCampaign && !tempUpdate))
                     ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
                     : 'bg-[#27AE60] hover:bg-[#219653] text-white font-bold'
                 }`}

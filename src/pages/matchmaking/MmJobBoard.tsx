@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGetMmJobsQuery } from '../../services/api/webCrmApi';
 
 interface JobCard {
   id: string;
@@ -39,20 +40,48 @@ export const MmJobBoard: React.FC = () => {
   // Selected job for slide-out detail panel
   const [selectedJob, setSelectedJob] = useState<JobCard | null>(null);
 
+  const { data: realJobsData } = useGetMmJobsQuery();
+  const [jobs, setJobs] = useState<JobCard[]>([]);
+
+  useEffect(() => {
+    if (realJobsData?.jobs && realJobsData.jobs.length > 0) {
+      const mappedJobs: JobCard[] = realJobsData.jobs.map((job: any) => {
+        const parts = job.route ? job.route.split('➔') : [];
+        return {
+          id: job.jobId || `JD-${job.id}`,
+          transporter: job.transporter,
+          source: parts[0]?.trim() || 'Delhi',
+          destination: parts[1]?.trim() || 'Mumbai',
+          tier: job.tier === 'SUPER PREMIUM' ? 'SUPER PREMIUM' : job.tier === 'STANDARD' ? 'STANDARD' : 'PREMIUM',
+          status: job.status === 'Open' ? 'Open' : (job.status === 'Filled' ? 'Filled' : 'In Progress'),
+          slaDaysLeft: job.daysOpen > 7 ? 0 : 7 - job.daysOpen,
+          totalSlaDays: job.tier === 'SUPER PREMIUM' ? 7 : 10,
+          postedText: `${job.daysOpen} day${job.daysOpen === 1 ? '' : 's'} ago`,
+          driversContacted: 0,
+          truckType: job.truckType,
+          license: job.license,
+          experience: job.experience,
+          duration: '3 months',
+          startDate: '01 Jul 2026'
+        };
+      });
+      setJobs(mappedJobs);
+    } else {
+      setJobs([
+        { id: 'JD-12034', transporter: 'Sharma Logistics', source: 'Delhi', destination: 'Mumbai', tier: 'SUPER PREMIUM', status: 'SLA Risk', slaDaysLeft: 1, totalSlaDays: 7, postedText: '3 days ago', driversContacted: 6, truckType: 'Heavy Truck', license: 'HMV', experience: '5+ years', duration: '3 months', startDate: '01 Jul 2026' },
+        { id: 'JD-12041', transporter: 'Anand Transport', source: 'Jaipur', destination: 'Pune', tier: 'PREMIUM', status: 'SLA Risk', slaDaysLeft: 2, totalSlaDays: 10, postedText: '8 days ago', driversContacted: 4, truckType: 'Medium Truck', license: 'HMV', experience: '3+ years', duration: '6 months', startDate: '05 Jul 2026' },
+        { id: 'JD-12045', transporter: 'VRL Express', source: 'Ahmedabad', destination: 'Chennai', tier: 'SUPER PREMIUM', status: 'In Progress', slaDaysLeft: 5, totalSlaDays: 7, postedText: '2 days ago', driversContacted: 3, truckType: 'Container 24ft', license: 'MCV', experience: '4+ years', duration: '1 month', startDate: '10 Jul 2026' },
+        { id: 'JD-12050', transporter: 'LogiForce Systems', source: 'Kolkata', destination: 'Patna', tier: 'PREMIUM', status: 'Open', slaDaysLeft: 9, totalSlaDays: 10, postedText: '1 day ago', driversContacted: 1, truckType: 'Light Commercial', license: 'LMV', experience: '2+ years', duration: '2 weeks', startDate: '12 Jul 2026' },
+        { id: 'JD-12055', transporter: 'SwiftLine Shippers', source: 'Delhi', destination: 'Bangalore', tier: 'PREMIUM', status: 'Open', slaDaysLeft: 7, totalSlaDays: 10, postedText: '3 hours ago', driversContacted: 0, truckType: 'Container 32ft', license: 'HMV', experience: '5+ years', duration: '3 months', startDate: '15 Jul 2026' },
+        { id: 'JD-12099', transporter: 'Agrawal Global', source: 'Surat', destination: 'Jaipur', tier: 'PREMIUM', status: 'Filled', slaDaysLeft: 0, totalSlaDays: 10, postedText: '10 days ago', driversContacted: 8, truckType: 'Taurus 14W', license: 'HMV', experience: '6+ years', duration: '12 months', startDate: '20 Jun 2026' }
+      ]);
+    }
+  }, [realJobsData]);
+
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
-
-  // Mock Job board dataset
-  const [jobs, setJobs] = useState<JobCard[]>([
-    { id: 'JD-12034', transporter: 'Sharma Logistics', source: 'Delhi', destination: 'Mumbai', tier: 'SUPER PREMIUM', status: 'SLA Risk', slaDaysLeft: 1, totalSlaDays: 7, postedText: '3 days ago', driversContacted: 6, truckType: 'Heavy Truck', license: 'HMV', experience: '5+ years', duration: '3 months', startDate: '01 Jul 2026' },
-    { id: 'JD-12041', transporter: 'Anand Transport', source: 'Jaipur', destination: 'Pune', tier: 'PREMIUM', status: 'SLA Risk', slaDaysLeft: 2, totalSlaDays: 10, postedText: '8 days ago', driversContacted: 4, truckType: 'Medium Truck', license: 'HMV', experience: '3+ years', duration: '6 months', startDate: '05 Jul 2026' },
-    { id: 'JD-12045', transporter: 'VRL Express', source: 'Ahmedabad', destination: 'Chennai', tier: 'SUPER PREMIUM', status: 'In Progress', slaDaysLeft: 5, totalSlaDays: 7, postedText: '2 days ago', driversContacted: 3, truckType: 'Container 24ft', license: 'MCV', experience: '4+ years', duration: '1 month', startDate: '10 Jul 2026' },
-    { id: 'JD-12050', transporter: 'LogiForce Systems', source: 'Kolkata', destination: 'Patna', tier: 'PREMIUM', status: 'Open', slaDaysLeft: 9, totalSlaDays: 10, postedText: '1 day ago', driversContacted: 1, truckType: 'Light Commercial', license: 'LMV', experience: '2+ years', duration: '2 weeks', startDate: '12 Jul 2026' },
-    { id: 'JD-12055', transporter: 'SwiftLine Shippers', source: 'Delhi', destination: 'Bangalore', tier: 'PREMIUM', status: 'Open', slaDaysLeft: 7, totalSlaDays: 10, postedText: '3 hours ago', driversContacted: 0, truckType: 'Container 32ft', license: 'HMV', experience: '5+ years', duration: '3 months', startDate: '15 Jul 2026' },
-    { id: 'JD-12099', transporter: 'Agrawal Global', source: 'Surat', destination: 'Jaipur', tier: 'PREMIUM', status: 'Filled', slaDaysLeft: 0, totalSlaDays: 10, postedText: '10 days ago', driversContacted: 8, truckType: 'Taurus 14W', license: 'HMV', experience: '6+ years', duration: '12 months', startDate: '20 Jun 2026' }
-  ]);
 
   // Mock candidates database for slide-out
   const candidates: ShortlistedDriver[] = [

@@ -56,7 +56,7 @@ const NOTIFICATIONS_INIT: Notification[] = [
   {
     id: 'n4',
     title: 'Roster Update: Shift B',
-    body: '3 agents have requested emergency leave for tomorrow\'s shift. Please review and reassign lead distribution.',
+    body: "3 agents have requested emergency leave for tomorrow's shift. Please review and reassign lead distribution.",
     badge: 'ADMIN', badgeColor: 'bg-purple-100 text-purple-700',
     category: 'HR/Admin', icon: 'person_alert', iconColor: 'text-purple-500',
     borderColor: 'border-l-purple-500', timeAgo: '3h ago', read: true,
@@ -91,7 +91,7 @@ const Toggle: React.FC<{ checked: boolean; onChange: () => void }> = ({ checked,
 );
 
 /* ─────────────────────── Main Component ─────────────────────── */
-export const Page10Notifications: React.FC = () => {
+export const ThNotificationsAlertsCenter: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>(NOTIFICATIONS_INIT);
   const [prefs, setPrefs] = useState<AlertPref[]>(PREFS_INIT);
   const [activeTab, setActiveTab] = useState<Category>('All');
@@ -115,17 +115,15 @@ export const Page10Notifications: React.FC = () => {
   };
 
   const archiveNotification = (id: string) => {
-    const remaining = notifications.filter(n => n.id !== id);
-    setNotifications(remaining);
+    setNotifications(prev => prev.filter(n => n.id !== id));
     showToast('Notification archived.');
-    setSelectedId(remaining[0]?.id ?? '');
+    setSelectedId(notifications.filter(n => n.id !== id)[0]?.id ?? '');
   };
 
   const deleteNotification = (id: string) => {
-    const remaining = notifications.filter(n => n.id !== id);
-    setNotifications(remaining);
+    setNotifications(prev => prev.filter(n => n.id !== id));
     showToast('Notification deleted.');
-    setSelectedId(remaining[0]?.id ?? '');
+    setSelectedId(notifications.filter(n => n.id !== id)[0]?.id ?? '');
   };
 
   const togglePref = (id: string, field: 'push' | 'email') => {
@@ -154,7 +152,7 @@ export const Page10Notifications: React.FC = () => {
 
       {/* ── Toast ── */}
       {toast && (
-        <div className="fixed top-4 right-4 z-50 bg-slate-900 text-white text-sm font-medium px-5 py-3 rounded-lg shadow-2xl flex items-center gap-2">
+        <div className="fixed top-4 right-4 z-50 bg-slate-900 text-white text-sm font-medium px-5 py-3 rounded-lg shadow-2xl flex items-center gap-2 animate-fade-in">
           <span className="material-symbols-outlined text-[18px] text-green-400">check_circle</span>
           {toast}
         </div>
@@ -229,7 +227,7 @@ export const Page10Notifications: React.FC = () => {
                     <div className="flex items-center gap-2.5">
                       {!n.read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-0.5" />}
                       <span className={`material-symbols-outlined ${n.iconColor} text-[18px]`}>{n.icon}</span>
-                      <span className={`font-bold text-[13px] text-slate-800`}>{n.title}</span>
+                      <span className={`font-bold text-[13px] text-slate-800 ${n.read ? 'font-semibold' : ''}`}>{n.title}</span>
                     </div>
                     <span className="text-[11px] text-slate-400 ml-2 flex-shrink-0">{n.timeAgo}</span>
                   </div>
@@ -391,4 +389,4 @@ export const Page10Notifications: React.FC = () => {
   );
 };
 
-export default Page10Notifications;
+export default ThNotificationsAlertsCenter;

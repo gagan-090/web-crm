@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGetWctQueueQuery } from '../../services/api/webCrmApi';
 
 interface CallHistory {
   date: string;
@@ -106,7 +107,29 @@ export const WctCallQueue: React.FC = () => {
     }
   ]);
 
+  const { data: realData } = useGetWctQueueQuery();
+
   const [selectedId, setSelectedId] = useState<string>('TR1');
+
+  useEffect(() => {
+    if (realData?.leads && realData.leads.length > 0) {
+      setLeads(realData.leads.map(l => ({
+        ...l,
+        companyName: l.name,
+        contactName: (l as any).contactName || 'POC Name',
+        registeredMinutesAgo: 60,
+        slaMinutesLeft: 180,
+        preferredRoutes: (l as any).preferredRoutes || 'Local',
+        subscribedStatus: (l as any).subscribedStatus || 'none',
+        jobsPosted: 0,
+        jobsFilled: 0
+      })) as any);
+      if (realData.leads[0]) {
+        setSelectedId(realData.leads[0].id);
+      }
+    }
+  }, [realData]);
+
   const [activeTab, setActiveTab] = useState<'all' | 'sla' | 'callbacks' | 'nr' | 'upsell' | 'free'>('all');
   const [sortBy, setSortBy] = useState<'sla' | 'reg' | 'callbacks'>('sla');
   const [toast, setToast] = useState<string | null>(null);

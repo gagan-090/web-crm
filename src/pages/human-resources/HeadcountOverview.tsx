@@ -1,8 +1,16 @@
 import React from 'react';
+import { useGetHrDashboardQuery } from '../../services/api/webCrmApi';
 
 export const HeadcountOverview: React.FC = () => {
+  const { data: realDashboard } = useGetHrDashboardQuery();
+
+  const kpis = realDashboard?.data?.kpis;
+  const headcount = kpis?.headcount ?? 14;
+  const todayAttendance = kpis?.todayAttendance ?? 11;
+  const openPositions = kpis?.openPositions ?? 5;
+
   return (
-    <main className=" custom-scrollbar p-margin-page max-w-[1440px] mx-auto">
+    <main className=" custom-scrollbar p-margin-page max-w-[1440px] mx-auto text-xs">
 
 <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter mb-8">
 <div className="bg-surface-container-lowest border border-outline-variant p-4 flex flex-col justify-between h-28">
@@ -11,18 +19,18 @@ export const HeadcountOverview: React.FC = () => {
 <span className="material-symbols-outlined text-primary">groups</span>
 </div>
 <div className="flex items-baseline gap-2">
-<span className="font-headline-lg text-headline-lg">14 <span className="text-on-surface-variant text-body-md font-normal">of 19</span></span>
-<span className="text-error font-bold text-label-md">(-5 Vacant)</span>
+<span className="font-headline-lg text-headline-lg">{headcount} <span className="text-on-surface-variant text-body-md font-normal">Active</span></span>
+<span className="text-error font-bold text-label-md">({openPositions} Open Pos.)</span>
 </div>
 </div>
 <div className="bg-surface-container-lowest border border-outline-variant p-4 flex flex-col justify-between h-28">
 <div className="flex justify-between items-start">
-<span className="text-label-md font-label-md text-on-surface-variant uppercase">Attrition %</span>
-<span className="material-symbols-outlined text-primary">trending_down</span>
+<span className="text-label-md font-label-md text-on-surface-variant uppercase">Today's Attendance</span>
+<span className="material-symbols-outlined text-primary">co_present</span>
 </div>
 <div className="flex items-baseline gap-2">
-<span className="font-headline-lg text-headline-lg">8.2%</span>
-<span className="text-tertiary-container font-bold text-label-md">Target &lt;10%</span>
+<span className="font-headline-lg text-headline-lg">{todayAttendance} Present</span>
+<span className="text-tertiary-container font-bold text-label-md">Target {headcount}</span>
 </div>
 </div>
 <div className="bg-surface-container-lowest border border-outline-variant p-4 flex flex-col justify-between h-28">

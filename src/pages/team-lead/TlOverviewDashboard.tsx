@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGetTlDashboardQuery, useGetTlRosterQuery } from '../../services/api/webCrmApi';
 
 interface TeamMember {
   name: string;
@@ -23,14 +24,23 @@ interface CallbackItem {
 
 export const TlOverviewDashboard: React.FC = () => {
   const navigate = useNavigate();
-  
+
   // Toggle between 'dw' and 'tr-mm'
   const [tlMode, setTlMode] = useState<'dw' | 'tr-mm'>('dw');
-  
+
   // Dashboard state to simulate resolving untagged calls
   const [untaggedCount, setUntaggedCount] = useState(3);
-  
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const { data: realDashboard } = useGetTlDashboardQuery();
+  const { data: realRosterData } = useGetTlRosterQuery();
+
+  const kpis = realDashboard?.data?.kpis;
+  const activeCallersCount = kpis?.activeCallers ?? 7;
+  const slaBreachesCount = kpis?.slaBreaches ?? 12;
+  const callsTodayCount = kpis?.callsToday ?? 324;
+  const unresolvedCallsCount = kpis?.unresolvedCalls ?? 5;
 
   // Callbacks list
   const [callbacks, setCallbacks] = useState<CallbackItem[]>([
@@ -55,8 +65,22 @@ export const TlOverviewDashboard: React.FC = () => {
     triggerToast('All calls auto-resolved/tagged successfully!');
   };
 
+  // Roster mapping
+  const rawRoster = realRosterData?.roster && realRosterData.roster.length > 0 ? realRosterData.roster : null;
+  const activeDirectReports: TeamMember[] = rawRoster ? rawRoster.map((caller: any) => ({
+    name: caller.name,
+    roleLabel: `${caller.role} Caller`,
+    roleType: caller.role.toLowerCase() === 'dw' ? 'primary' : caller.role.toLowerCase() === 'wct' ? 'primary' : caller.role.toLowerCase() === 'mm' ? 'matchmaker' : 'special',
+    status: caller.status === 'READY' ? 'Idle' : (caller.status === 'ON_BREAK' ? 'Break' : (caller.status === 'OFFLINE' ? 'Offline' : 'On Call')),
+    calls: caller.callsMade,
+    revenue: caller.role.toLowerCase() === 'dw' ? 2400 : 4000,
+    queueDepth: caller.queueDepth,
+    convRate: caller.compliance || '6.3%',
+    avatarColor: caller.role.toLowerCase() === 'dw' ? 'bg-teal-500' : 'bg-indigo-500'
+  })) : [];
+
   // Caller Lists
-  const dwTeam: TeamMember[] = [
+  const dwTeam: TeamMember[] = activeDirectReports.length > 0 ? activeDirectReports.filter(c => c.roleLabel.includes('DW') || c.roleLabel.includes('SC')) : [
     { name: 'Rahul S.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'On Call', calls: 32, revenue: 2400, queueDepth: 28, convRate: '6.3%', avatarColor: 'bg-teal-500' },
     { name: 'Sonia R.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'On Call', calls: 28, revenue: 1900, queueDepth: 36, convRate: '7.1%', avatarColor: 'bg-indigo-500' },
     { name: 'Aman K.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'Idle', calls: 24, revenue: 1500, queueDepth: 14, convRate: '8.3%', avatarColor: 'bg-emerald-500' },
@@ -66,7 +90,7 @@ export const TlOverviewDashboard: React.FC = () => {
     { name: 'Aditi S.', roleLabel: 'Special Categories', roleType: 'special', status: 'On Call', calls: 8, revenue: 3100, queueDepth: 5, convRate: '25.0%', avatarColor: 'bg-purple-500' }
   ];
 
-  const trMmTeam: TeamMember[] = [
+  const trMmTeam: TeamMember[] = activeDirectReports.length > 0 ? activeDirectReports.filter(c => c.roleLabel.includes('WCT') || c.roleLabel.includes('MM')) : [
     { name: 'Alex R.', roleLabel: 'Primary TR Caller', roleType: 'primary', status: 'On Call', calls: 14, revenue: 4000, queueDepth: 18, convRate: '14.2%', avatarColor: 'bg-teal-500' },
     { name: 'Sarah C.', roleLabel: 'Primary TR Caller', roleType: 'primary', status: 'On Call', calls: 12, revenue: 1999, queueDepth: 28, convRate: '16.6%', avatarColor: 'bg-indigo-500' },
     { name: 'Marcus T.', roleLabel: 'Primary TR Caller', roleType: 'primary', status: 'Break', calls: 8, revenue: 0, queueDepth: 36, convRate: '0.0%', avatarColor: 'bg-rose-500' },
@@ -97,7 +121,7 @@ export const TlOverviewDashboard: React.FC = () => {
 
   return (
     <div className="w-full max-w-7xl mx-auto p-6 md:p-8 space-y-6 md:space-y-8 relative">
-      
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs md:text-sm px-5 py-2.5 rounded-xl shadow-xl z-50 flex items-center gap-2 border border-slate-800 animate-bounce">
@@ -138,14 +162,14 @@ export const TlOverviewDashboard: React.FC = () => {
               <span>⚠ {untaggedCount} calls untagged across your team. Resolve before 6 PM.</span>
             </span>
             <div className="flex items-center gap-3">
-              <button 
-                onClick={() => navigate('/tl/tl-daily-wrap-up-panel')} 
+              <button
+                onClick={() => navigate('/tl/tl-daily-wrap-up-panel')}
                 className="underline text-red-700 hover:text-red-900 font-extrabold"
               >
                 [View Untagged]
               </button>
-              <button 
-                onClick={handleResolveUntagged} 
+              <button
+                onClick={handleResolveUntagged}
                 className="bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 font-extrabold transition-colors"
               >
                 Auto-Tag CDR &lt;5s
@@ -167,8 +191,8 @@ export const TlOverviewDashboard: React.FC = () => {
               <span className="material-symbols-outlined text-purple-600 text-[20px]">explore</span>
               <span>2 leads ready for Funnel escalation (NR ×3 or in queue &gt;3 days) — assign before EOD.</span>
             </span>
-            <button 
-              onClick={() => navigate('/tl/tl-lead-queue-manager')} 
+            <button
+              onClick={() => navigate('/tl/tl-lead-queue-manager')}
               className="underline text-purple-700 hover:text-purple-900 font-extrabold"
             >
               [View Funnel Leads →]
@@ -182,21 +206,21 @@ export const TlOverviewDashboard: React.FC = () => {
                 <span className="material-symbols-outlined text-orange-600 text-[20px]">alarm</span>
                 <span>TR-12094 has been in queue 2h 47m without first call. First-Call SLA at risk!</span>
               </span>
-              <button 
-                onClick={() => navigate('/tl/tl-lead-queue-manager')} 
+              <button
+                onClick={() => navigate('/tl/tl-lead-queue-manager')}
                 className="underline text-orange-700 hover:text-orange-900 font-extrabold"
               >
                 [Assign Now →]
               </button>
             </div>
-            
+
             <div className="bg-red-50 border border-red-200 text-red-950 px-5 py-3.5 rounded-2xl text-xs md:text-sm font-bold flex justify-between items-center">
               <span className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-red-600 text-[20px]">priority_high</span>
                 <span>JD-12034 Super Premium — 1 day to SLA breach. Matchmaking queue delayed!</span>
               </span>
-              <button 
-                onClick={() => navigate('/mm/tl-matchmaking-job-board')} 
+              <button
+                onClick={() => navigate('/mm/tl-matchmaking-job-board')}
                 className="underline text-red-700 hover:text-red-900 font-extrabold"
               >
                 [View Job Board →]
@@ -245,8 +269,8 @@ export const TlOverviewDashboard: React.FC = () => {
           </div>
           <div className="mt-4">
             <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-amber-500 rounded-full" 
+              <div
+                className="h-full bg-amber-500 rounded-full"
                 style={{ width: tlMode === 'dw' ? '62%' : '56.7%' }}
               ></div>
             </div>
@@ -286,30 +310,30 @@ export const TlOverviewDashboard: React.FC = () => {
         {/* Card 3: Calls Today */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition-all flex flex-col justify-between min-h-[140px]">
           <div>
-            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Calls Today (Team Aggregate)</span>
-            <div className="text-2xl md:text-3xl font-black text-slate-800 mt-2">
-              {tlMode === 'dw' ? '412' : '95'} <span className="text-sm font-normal text-slate-400">Total calls</span>
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Calls Today (Team Aggregate)</span>
+            <div className="text-xl font-extrabold text-gray-800 mt-1">
+              {callsTodayCount} <span className="text-xs font-normal text-gray-400">Total calls</span>
             </div>
           </div>
           <div className="text-xs text-slate-500 font-bold mt-4">
             {tlMode === 'dw' ? (
-              <div>38 conversions · 9.2% rate</div>
+              <div>{unresolvedCallsCount} unresolved calls</div>
             ) : (
-              <div>34 TR calls · 61 MM calls · 4 placements</div>
+              <div>34 TR calls · 61 MM calls · {slaBreachesCount} SLA breaches</div>
             )}
           </div>
         </div>
 
         {/* Card 4: Team Status Snapshot */}
-        <div 
+        <div
           onClick={() => navigate('/tl/tl-real-time-monitor')}
           className="bg-white border border-slate-200 rounded-2xl p-5 hover:border-amber-400 cursor-pointer flex flex-col justify-between min-h-[140px] transition-all"
         >
           <div>
-            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Team Roster Snapshot</span>
-            <div className="flex flex-wrap gap-2 mt-3">
-              <span className="bg-green-50 text-green-700 border border-green-100 text-[10px] font-extrabold px-2.5 py-1 rounded-lg">
-                5 CALLING
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Team Roster Snapshot</span>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <span className="bg-green-50 text-green-700 border border-green-100 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                {activeCallersCount} ACTIVE
               </span>
               <span className="bg-slate-50 text-slate-600 border border-slate-100 text-[10px] font-extrabold px-2.5 py-1 rounded-lg">
                 2 IDLE
@@ -325,18 +349,100 @@ export const TlOverviewDashboard: React.FC = () => {
         </div>
       </section>
 
+      {/* CAMPAIGN PERFORMANCE HUB */}
+      <section className="bg-gradient-to-r from-red-50/50 via-orange-50/30 to-amber-50/20 border border-orange-100 rounded-xl p-4 shadow-sm space-y-3">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-orange-600 text-lg">campaign</span>
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+              Campaign Performance Hub ({tlMode === 'dw' ? 'Driver Welcome' : 'Transporter Welcome'})
+            </h3>
+          </div>
+          <span className="text-[10px] bg-red-105 text-red-800 font-extrabold px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span> Live Campaigns Active
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          {/* Card 1: Leads Received */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Leads Received</span>
+            <div className="text-lg font-extrabold text-gray-800 mt-1">
+              {tlMode === 'dw' ? '1,420' : '840'}
+              <span className="text-[10px] font-normal text-green-600 ml-1.5">↑ 12% today</span>
+            </div>
+            <div className="text-[9px] text-gray-400 mt-2 flex justify-between">
+              <span>Meta Ads: {tlMode === 'dw' ? '820' : '450'}</span>
+              <span>Google: {tlMode === 'dw' ? '410' : '230'}</span>
+            </div>
+          </div>
+
+          {/* Card 2: Coverage / Called */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Call Coverage</span>
+            <div className="text-lg font-extrabold text-gray-800 mt-1">
+              {tlMode === 'dw' ? '85.2%' : '78.5%'}
+              <span className="text-[10px] font-normal text-gray-400 ml-1">({tlMode === 'dw' ? '1,210' : '660'} called)</span>
+            </div>
+            <div className="w-full h-1 bg-gray-100 rounded-full mt-2 overflow-hidden">
+              <div className="h-full bg-orange-500 rounded-full" style={{ width: tlMode === 'dw' ? '85.2%' : '78.5%' }}></div>
+            </div>
+          </div>
+
+          {/* Card 3: Conversion Rate */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Campaign Conv. Rate</span>
+            <div className="text-lg font-extrabold text-orange-600 mt-1">
+              {tlMode === 'dw' ? '14.2%' : '18.5%'}
+              <span className="text-[10px] font-normal text-gray-400 ml-1">tgt 12%</span>
+            </div>
+            <div className="text-[9px] text-gray-400 mt-2 flex justify-between">
+              <span>Meta: {tlMode === 'dw' ? '12.8%' : '16.2%'}</span>
+              <span>Google: {tlMode === 'dw' ? '17.1%' : '21.0%'}</span>
+            </div>
+          </div>
+
+          {/* Card 4: Lead Quality Rating */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Lead Quality Score</span>
+            <div className="text-lg font-extrabold text-yellow-600 mt-1 flex items-center gap-1">
+              <span>{tlMode === 'dw' ? '3.8' : '4.1'}</span>
+              <span className="text-xs text-gray-400">/ 5.0</span>
+              <div className="flex text-yellow-500 text-xs ml-1">
+                {'★'.repeat(4)}{'☆'.repeat(1)}
+              </div>
+            </div>
+            <div className="text-[9px] text-gray-400 mt-2">
+              Based on {tlMode === 'dw' ? '420' : '210'} agent disposition ratings
+            </div>
+          </div>
+
+          {/* Card 5: Cost per Conversion */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Cost per Conversion</span>
+            <div className="text-lg font-extrabold text-purple-600 mt-1">
+              {tlMode === 'dw' ? '₹142' : '₹380'}
+              <span className="text-[10px] font-normal text-green-600 ml-1">↓ 8.3% MoM</span>
+            </div>
+            <div className="text-[9px] text-gray-400 mt-2">
+              ROI: {tlMode === 'dw' ? '3.4x' : '4.8x'} on total ad spend
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* MY TEAM GRID */}
       <section className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
         <h3 className="text-xs md:text-sm font-bold text-slate-600 uppercase tracking-wider mb-4">
           Active Team Roster ({currentTeam.length} Direct Reports)
         </h3>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {currentTeam.map((member, idx) => {
             const isOverloaded = member.queueDepth > 35;
 
             return (
-              <div 
+              <div
                 key={idx}
                 onClick={() => handleCallerClick(member)}
                 className="bg-white border border-slate-200 rounded-2xl p-4 hover:border-slate-300 transition-all cursor-pointer flex flex-col justify-between min-h-[160px]"
@@ -351,12 +457,11 @@ export const TlOverviewDashboard: React.FC = () => {
                       <span className="text-xs text-slate-400 block font-semibold mt-0.5">{member.roleLabel}</span>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${
-                    member.status === 'On Call' ? 'bg-green-50 text-green-700 border-green-200' :
-                    member.status === 'Break' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                    member.status === 'Offline' ? 'bg-red-50 text-red-700 border-red-200' :
-                    'bg-slate-50 text-slate-600 border-slate-200'
-                  }`}>
+                  <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${member.status === 'On Call' ? 'bg-green-50 text-green-700 border-green-200' :
+                      member.status === 'Break' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                        member.status === 'Offline' ? 'bg-red-50 text-red-700 border-red-200' :
+                          'bg-slate-50 text-slate-600 border-slate-200'
+                    }`}>
                     {member.status}
                   </span>
                 </div>
@@ -376,8 +481,8 @@ export const TlOverviewDashboard: React.FC = () => {
                     </div>
                     {member.roleType !== 'matchmaker' && (
                       <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full ${isOverloaded ? 'bg-red-500' : 'bg-slate-400'}`} 
+                        <div
+                          className={`h-full ${isOverloaded ? 'bg-red-500' : 'bg-slate-400'}`}
                           style={{ width: `${Math.min(100, (member.queueDepth / 40) * 100)}%` }}
                         ></div>
                       </div>
@@ -394,7 +499,7 @@ export const TlOverviewDashboard: React.FC = () => {
       <section className="bg-white border border-slate-200 rounded-2xl p-6">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wider">Callbacks Due Today (Team View)</h3>
-          <button 
+          <button
             onClick={() => navigate('/tl/tl-team-callback-calendar')}
             className="text-xs font-black text-amber-500 hover:text-amber-600"
           >
@@ -417,25 +522,24 @@ export const TlOverviewDashboard: React.FC = () => {
               {callbacks.map((cb) => {
                 const isOverdue = cb.status === 'Overdue';
                 return (
-                  <tr 
-                    key={cb.id} 
+                  <tr
+                    key={cb.id}
                     className={`hover:bg-slate-50/50 transition-colors ${isOverdue ? 'bg-red-50/40 text-red-950' : ''}`}
                   >
                     <td className="py-3.5 px-2 font-bold">{cb.callerName}</td>
                     <td className="py-3.5 px-2">{cb.leadName}</td>
                     <td className="py-3.5 px-2 font-mono text-xs">{cb.time}</td>
                     <td className="py-3.5 px-2">
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${
-                        cb.status === 'Overdue' ? 'bg-red-100 text-red-800 border-red-200' :
-                        cb.status === 'Done' ? 'bg-green-100 text-green-800 border-green-200' :
-                        'bg-slate-100 text-slate-600 border-slate-200'
-                      }`}>
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${cb.status === 'Overdue' ? 'bg-red-100 text-red-800 border-red-200' :
+                          cb.status === 'Done' ? 'bg-green-100 text-green-800 border-green-200' :
+                            'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
                         {cb.status}
                       </span>
                     </td>
                     <td className="py-3.5 px-2 text-right">
                       {cb.status !== 'Done' && (
-                        <button 
+                        <button
                           onClick={() => handleMarkCallbackDone(cb.id, cb.leadName)}
                           className="bg-white border border-slate-200 hover:border-amber-500 hover:bg-amber-500 hover:text-white text-slate-700 px-3.5 py-1.5 rounded-lg transition-all text-xs font-bold"
                         >

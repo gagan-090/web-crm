@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGetMmDashboardQuery, useGetMmJobsQuery } from '../../services/api/webCrmApi';
 
 interface JobItem {
   id: string;
@@ -15,9 +16,11 @@ interface JobItem {
 export const MmHomeDashboard: React.FC = () => {
   const navigate = useNavigate();
 
+  const { data: realDashboard } = useGetMmDashboardQuery();
+  const { data: realJobsData } = useGetMmJobsQuery();
+
   // Simulated state
   const [driverBankUpdated, setDriverBankUpdated] = useState(false);
-  const [placementsCount] = useState(24);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const triggerToast = (msg: string) => {
@@ -25,14 +28,30 @@ export const MmHomeDashboard: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Mock jobs data
-  const [jobs] = useState<JobItem[]>([
+  const dashboardKpis = realDashboard?.data?.kpis;
+  const placementsCount = dashboardKpis?.placementsCount ?? 24;
+  const targetPlacements = dashboardKpis?.targetPlacements ?? 55;
+  const slaComplianceRate = dashboardKpis?.slaComplianceRate ?? 91.7;
+  const activeJobsCount = dashboardKpis?.activeJobsCount ?? 7;
+
+  // Resolve jobs from backend or fall back to mock
+  const rawJobs = realJobsData?.jobs && realJobsData.jobs.length > 0 ? realJobsData.jobs : null;
+  const jobs: JobItem[] = rawJobs ? rawJobs.slice(0, 5).map((job: any) => ({
+    id: job.jobId || `JD-${job.id}`,
+    transporter: job.transporter,
+    plan: job.tier === 'SUPER PREMIUM' ? 'SUPER PREMIUM' : 'PREMIUM',
+    route: job.route,
+    daysLeft: job.daysOpen > 7 ? 0 : 7 - job.daysOpen,
+    totalSlaDays: job.tier === 'SUPER PREMIUM' ? 7 : 10,
+    driversShortlisted: 0,
+    status: job.status === 'Open' ? 'Open' : (job.status === 'Filled' ? 'Filled' : 'In Progress') as any
+  })) : [
     { id: 'JD-12034', transporter: 'Sharma Logistics', plan: 'SUPER PREMIUM', route: 'Delhi ➔ Mumbai', daysLeft: 1, totalSlaDays: 7, driversShortlisted: 6, status: 'SLA Risk' },
     { id: 'JD-12041', transporter: 'Anand Transport', plan: 'PREMIUM', route: 'Jaipur ➔ Pune', daysLeft: 2, totalSlaDays: 10, driversShortlisted: 4, status: 'SLA Risk' },
     { id: 'JD-12045', transporter: 'VRL Logistics', plan: 'SUPER PREMIUM', route: 'Ahmedabad ➔ Chennai', daysLeft: 5, totalSlaDays: 7, driversShortlisted: 3, status: 'In Progress' },
     { id: 'JD-12050', transporter: 'LogiForce Systems', plan: 'PREMIUM', route: 'Kolkata ➔ Patna', daysLeft: 9, totalSlaDays: 10, driversShortlisted: 1, status: 'Open' },
     { id: 'JD-12055', transporter: 'SwiftLine Shippers', plan: 'PREMIUM', route: 'Delhi ➔ Bangalore', daysLeft: 7, totalSlaDays: 10, driversShortlisted: 0, status: 'Open' }
-  ]);
+  ];
 
   // SLA watches (jobs in SLA Risk column)
   const slaRiskJobs = jobs.filter(j => j.status === 'SLA Risk' || j.daysLeft / j.totalSlaDays <= 0.2);
@@ -142,15 +161,15 @@ export const MmHomeDashboard: React.FC = () => {
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Placements This Month</span>
               <h2 className="text-xl font-extrabold text-[#8E44AD] mt-1.5">
-                {placementsCount} <span className="text-xs font-normal text-gray-400">/ 55 Target</span>
+                {placementsCount} <span className="text-xs font-normal text-gray-400">/ {targetPlacements} Target</span>
               </h2>
             </div>
             <div className="mt-3">
               <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="bg-[#8E44AD] h-full" style={{ width: `${(placementsCount/55)*100}%` }}></div>
+                <div className="bg-[#8E44AD] h-full" style={{ width: `${(placementsCount/targetPlacements)*100}%` }}></div>
               </div>
               <div className="flex justify-between text-[9.5px] text-gray-400 font-bold mt-1.5">
-                <span>{((placementsCount/55)*100).toFixed(1)}% achieved</span>
+                <span>{((placementsCount/targetPlacements)*100).toFixed(1)}% achieved</span>
                 <span className="text-gray-500">18 Premium · 6 Super Premium</span>
               </div>
             </div>
@@ -160,8 +179,8 @@ export const MmHomeDashboard: React.FC = () => {
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">SLA Compliance Rate</span>
-              <h2 className="text-xl font-extrabold text-green-600 mt-1.5">91.7%</h2>
-              <span className="text-[10px] text-gray-400 mt-1 block font-semibold">22 of 24 placements made within SLA</span>
+              <h2 className="text-xl font-extrabold text-green-600 mt-1.5">{slaComplianceRate}%</h2>
+              <span className="text-[10px] text-gray-400 mt-1 block font-semibold">{placementsCount} placements made within SLA</span>
             </div>
             <div className="text-[9.5px] font-bold text-[#8E44AD] mt-2 pt-1.5 border-t border-gray-50 uppercase tracking-wider">
               Target: 100% Compliance
@@ -172,7 +191,7 @@ export const MmHomeDashboard: React.FC = () => {
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">My Assigned Jobs</span>
-              <h2 className="text-xl font-extrabold text-gray-800 mt-1.5">7 Jobs</h2>
+              <h2 className="text-xl font-extrabold text-gray-800 mt-1.5">{activeJobsCount} Jobs</h2>
             </div>
             <div className="flex gap-1.5 mt-2 text-[9.5px] font-bold select-none">
               <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">2 OPEN</span>

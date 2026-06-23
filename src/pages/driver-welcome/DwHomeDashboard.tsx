@@ -1,18 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGetDwDashboardQuery } from '../../services/api/webCrmApi';
 
 export const DwHomeDashboard: React.FC = () => {
   const navigate = useNavigate();
 
+  const { data: realData } = useGetDwDashboardQuery();
+
   // Dashboard state for premium interactivity
   const [todayEarnings, setTodayEarnings] = useState(420);
-  const [todayCalls] = useState(24);
-  const [todayConversions] = useState(3);
+  const [todayCalls, setTodayCalls] = useState(24);
+  const [todayConversions, setTodayConversions] = useState(3);
   
   // Salary gate simulation
   const [monthlyRevenue, setMonthlyRevenue] = useState(4200);
   const baseSalary = 11000;
   const gateThreshold = baseSalary * 2; // ₹22,000
+
+  // Mock data for callbacks
+  const [overdueCallbacks, setOverdueCallbacks] = useState<any[]>([
+    { id: '1', name: 'Suresh Yadav', time: '11:30 AM', tmid: 'DR-48291' },
+    { id: '2', name: 'Rajesh Kumar', time: '10:15 AM', tmid: 'DR-48294' }
+  ]);
+
+  // Sync with real data from database
+  useEffect(() => {
+    if (realData?.data?.kpis) {
+      const k = realData.data.kpis;
+      setTodayEarnings(k.todayEarnings);
+      setMonthlyRevenue(k.monthlyRevenue);
+      // derive some mock calls and conversions relative to queue
+      setTodayCalls(k.queueCount * 2 || 24);
+      setTodayConversions(Math.round(k.queueCount * 0.3) || 3);
+    }
+    if (realData?.data?.overdueCallbacks && realData.data.overdueCallbacks.length > 0) {
+      setOverdueCallbacks(realData.data.overdueCallbacks.map(c => ({
+        id: c.id.toString(),
+        name: c.name,
+        time: c.callback.replace('Today, ', ''),
+        tmid: c.tmid
+      })));
+    }
+  }, [realData]);
 
   // Computed values
   const todayTarget = 1667; // target ₹50,000 / 30 days
@@ -29,12 +58,6 @@ export const DwHomeDashboard: React.FC = () => {
     if (pct < 80) return 'bg-[#F2C94C]'; // amber
     return 'bg-[#27AE60]'; // green
   };
-
-  // Mock data for callbacks
-  const [overdueCallbacks] = useState([
-    { id: '1', name: 'Suresh Yadav', time: '11:30 AM', tmid: 'DR-48291' },
-    { id: '2', name: 'Rajesh Kumar', time: '10:15 AM', tmid: 'DR-48294' }
-  ]);
 
   const handleCallbackCall = (name: string, tmid: string) => {
     // Navigate directly to active call with search query or lead parameters

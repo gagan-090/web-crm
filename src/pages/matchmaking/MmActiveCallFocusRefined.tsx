@@ -14,6 +14,8 @@ export const MmActiveCallFocusRefined: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+
+
   // Resolve state passed from navigation
   const state: CallState = location.state || {
     driverName: 'Suresh Yadav',

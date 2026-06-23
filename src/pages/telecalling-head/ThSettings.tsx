@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const Settings: React.FC = () => {
+export const ThSettings: React.FC = () => {
   return (
     <main className=" p-md custom-scrollbar bg-background">
 <div className="max-w-[1400px] mx-auto grid grid-cols-12 gap-gutter">
@@ -281,4 +281,4 @@ export const Settings: React.FC = () => {
   );
 };
 
-export default Settings;
+export default ThSettings;

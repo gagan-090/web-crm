@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useInitiateIvrCallMutation } from '../../services/api/ctiApi';
 
 export interface WhatsAppMessage {
   id: string;
@@ -26,11 +27,12 @@ export interface CallingKeypadState {
   tmid: string;
   contextLine?: string; // e.g. "For: JD-12034 — Sharma Logistics"
   roleContext: string;
-  callStatus: 'dialing' | 'ringing' | 'connected' | 'idle';
+  callStatus: 'dialing' | 'ringing' | 'connected' | 'wrapup' | 'idle';
   isMuted: boolean;
   isSpeakerActive: boolean;
   secondsElapsed: number;
   dtmfTones: string;
+  ivrCallId?: number;
 }
 
 interface GlobalOverlaysContextType {
@@ -52,6 +54,7 @@ const GlobalOverlaysContext = createContext<GlobalOverlaysContextType | undefine
 
 export const GlobalOverlaysProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeChats, setActiveChats] = useState<WhatsAppChat[]>([]);
+  const [initiateIvrCall] = useInitiateIvrCallMutation();
   const [callingState, setCallingState] = useState<CallingKeypadState>({
     isOpen: false,
     name: '',
@@ -63,6 +66,7 @@ export const GlobalOverlaysProvider: React.FC<{ children: React.ReactNode }> = (
     isSpeakerActive: false,
     secondsElapsed: 0,
     dtmfTones: '',
+    ivrCallId: undefined,
   });
 
   // Call timer ticking when connected
@@ -196,7 +200,35 @@ export const GlobalOverlaysProvider: React.FC<{ children: React.ReactNode }> = (
       isSpeakerActive: false,
       secondsElapsed: 0,
       dtmfTones: '',
+      ivrCallId: undefined,
     });
+
+    // Invoke API call to backend to store the call initiation record
+    const numericLeadId = parseInt(tmid.replace(/\D/g, ''), 10) || null;
+    initiateIvrCall({
+      user_id: numericLeadId,
+      user_name: name,
+      user_mobile: phone,
+      user_tm_id: tmid,
+      assigned_to: 1, // Will be overridden on Laravel backend by Auth::user()
+      assigned_name: 'Demo Agent',
+      assigned_number: '178',
+      did_number: '4310735',
+      process: role,
+      call_type: 'Outgoing'
+    }).unwrap()
+      .then((res) => {
+        const data = res.data;
+        if (res.success && data) {
+          console.log('[CTI] IVR Call initiated logged with ID:', data.id);
+          setCallingState(prev => ({ ...prev, ivrCallId: data.id }));
+        }
+      })
+      .catch((err) => {
+        console.warn('[CTI] Failed to log IVR Call initiation (using mock fallback):', err);
+        const mockCallId = Math.floor(Date.now() / 1000);
+        setCallingState(prev => ({ ...prev, ivrCallId: mockCallId }));
+      });
 
     // Simulate Ringing after 1.5 seconds
     setTimeout(() => {
@@ -232,11 +264,10 @@ export const GlobalOverlaysProvider: React.FC<{ children: React.ReactNode }> = (
       const duration = prev.secondsElapsed;
       console.log(`[Auto-logged Outbound Call] To: ${prev.name} (${prev.phone}) - Duration: ${duration}s`);
       
-      // Close dialer
+      // Transition to wrapup stage
       return {
         ...prev,
-        isOpen: false,
-        callStatus: 'idle',
+        callStatus: 'wrapup',
       };
     });
   };
@@ -255,6 +286,159 @@ export const GlobalOverlaysProvider: React.FC<{ children: React.ReactNode }> = (
       dtmfTones: prev.dtmfTones + digit,
     }));
   };
+
+  // Attach global CTI Spec functions onto window for parent-child iframe communication
+  useEffect(() => {
+    // 1. Initial CTI SSO Event definition
+    (window as any).SANAppInitEvent = (payload: any) => {
+      console.log('---------------- CTI SSO INIT EVENT ----------------');
+      console.log('Auth Details:', payload);
+      console.log('----------------------------------------------------');
+      
+      // Auto-dialer can be registered using credentials
+      alert(`[CTI SSO Initialized] User: ${payload.userName || 'Agent'} (${payload.userId})`);
+    };
+
+    // 2. CTI Option events logs
+    (window as any).SANAppReadyEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppReadyEvent triggered:', data);
+    };
+
+    (window as any).SANAppOutgoingEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppOutgoingEvent triggered:', data);
+    };
+
+    (window as any).SANAppIncomingEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppIncomingEvent triggered:', data);
+    };
+
+    (window as any).SANAppHoldEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppHoldEvent triggered:', data);
+    };
+
+    (window as any).SANAppSavePageEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppSavePageEvent triggered:', data);
+    };
+
+    (window as any).SANAppManualOnOffEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppManualOnOffEvent triggered:', data);
+    };
+
+    (window as any).SANAppBreakEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppBreakEvent triggered:', data);
+    };
+
+    (window as any).SANAppLogoutEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppLogoutEvent triggered:', data);
+    };
+
+    (window as any).SANAppTransferEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppTransferEvent triggered:', data);
+    };
+
+    (window as any).SANAppConferenceEvent = (data: any) => {
+      console.log('[CTI EVENT] SANAppConferenceEvent triggered:', data);
+    };
+
+    // 3. Parent-Child iframe interaction buttons
+    (window as any).sendToChild = (_context: any, action: string) => {
+      console.log(`[CTI Window Command] sendToChild() called. Action: ${action}`);
+      
+      if (action === 'ready') {
+        // Trigger Ready CTI status
+        if (typeof (window as any).SANAppReadyEvent === 'function') {
+          (window as any).SANAppReadyEvent({
+            state: 3,
+            agent_id: callingState.tmid || '178',
+            name: callingState.name || 'Lokesh',
+            process_id: '1',
+            exten: '178'
+          });
+        }
+        alert('CTI Status: Agent Marked READY');
+      } else if (action === 'Hangup') {
+        // Trigger Hangup
+        hangUpCall();
+      }
+    };
+
+    (window as any).toggleManualDial = () => {
+      const isManual = !callingState.isMuted; // simulated manual state toggle
+      console.log(`[CTI Window Command] toggleManualDial() called. Active: ${isManual}`);
+      
+      if (typeof (window as any).SANAppManualOnOffEvent === 'function') {
+        (window as any).SANAppManualOnOffEvent({
+          state: isManual ? 10 : 11,
+          agent_id: '1',
+          name: 'Lokesh',
+          process_id: '1',
+          exten: '178',
+          team_leader: null,
+          data: { acd_array: ['803'] }
+        });
+      }
+      alert(`CTI Status: Manual Dial Mode ${isManual ? 'ON' : 'OFF'}`);
+    };
+
+    (window as any).dialAgentCall = (number?: string) => {
+      const targetNumber = number || '99xxxxxx35';
+      console.log(`[CTI Window Command] dialAgentCall() called. Target: ${targetNumber}`);
+      
+      // Trigger Outbound Dialing status CTI event
+      if (typeof (window as any).SANAppOutgoingEvent === 'function') {
+        (window as any).SANAppOutgoingEvent({
+          trunk_channel: 'SIP/1004-00009394',
+          exten: '178',
+          caller_id: targetNumber,
+          did: '4310735',
+          call_type: 'Outgoing',
+          exten_status: 'Dialing',
+          ts: new Date().toISOString()
+        });
+      }
+
+      startCall('CTI Caller', targetNumber, 'DR-178', 'dw', 'Outbound Dial');
+    };
+
+    (window as any).toggleHold = () => {
+      const held = !callingState.isSpeakerActive;
+      console.log(`[CTI Window Command] toggleHold() called. Held: ${held}`);
+      
+      if (typeof (window as any).SANAppHoldEvent === 'function') {
+        (window as any).SANAppHoldEvent({
+          Channel: 'SIP/1004-0000939c',
+          set: held ? '1' : '0',
+          class: ''
+        });
+      }
+      toggleSpeaker(); // toggle speakers as visual indicator of hold state
+    };
+
+    (window as any).toggleMute = () => {
+      console.log('[CTI Window Command] toggleMute() called');
+      toggleMute();
+    };
+
+    return () => {
+      // Cleanup global bindings
+      delete (window as any).SANAppInitEvent;
+      delete (window as any).SANAppReadyEvent;
+      delete (window as any).SANAppOutgoingEvent;
+      delete (window as any).SANAppIncomingEvent;
+      delete (window as any).SANAppHoldEvent;
+      delete (window as any).SANAppSavePageEvent;
+      delete (window as any).SANAppManualOnOffEvent;
+      delete (window as any).SANAppBreakEvent;
+      delete (window as any).SANAppLogoutEvent;
+      delete (window as any).SANAppTransferEvent;
+      delete (window as any).SANAppConferenceEvent;
+      delete (window as any).sendToChild;
+      delete (window as any).toggleManualDial;
+      delete (window as any).dialAgentCall;
+      delete (window as any).toggleHold;
+      delete (window as any).toggleMute;
+    };
+  }, [callingState, toggleMute, toggleSpeaker, hangUpCall, startCall]);
 
   return (
     <GlobalOverlaysContext.Provider

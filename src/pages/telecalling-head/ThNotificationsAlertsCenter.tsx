@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const NotificationsAlertsCenter: React.FC = () => {
+export const ThNotificationsAlertsCenter: React.FC = () => {
   return (
     <main className=" flex flex-col ">
 
@@ -157,8 +157,8 @@ export const NotificationsAlertsCenter: React.FC = () => {
 <p>Failure to address this within the next 5 minutes will result in an automatic lead reassignment and a negative performance weight for the agent.</p>
 </div>
 <div className="flex gap-md">
-<button className="flex-1 bg-[#2874F0] text-white py-2 font-bold rounded-sm active:scale-[0.98] transition-transform">Call Agent Now</button>
-<button className="flex-1 bg-[#FB641B] text-white py-2 font-bold rounded-sm active:scale-[0.98] transition-transform">Reassign Lead</button>
+<button className="flex-grow bg-[#2874F0] text-white py-2 font-bold rounded-sm active:scale-[0.98] transition-transform">Call Agent Now</button>
+<button className="flex-grow bg-[#FB641B] text-white py-2 font-bold rounded-sm active:scale-[0.98] transition-transform">Reassign Lead</button>
 </div>
 </div>
 
@@ -281,4 +281,4 @@ export const NotificationsAlertsCenter: React.FC = () => {
   );
 };
 
-export default NotificationsAlertsCenter;
+export default ThNotificationsAlertsCenter;

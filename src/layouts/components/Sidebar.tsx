@@ -28,9 +28,36 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Nav Menu */}
-      <nav className="flex-1 space-y-1">
+      <nav className="flex-1 space-y-1 overflow-y-auto">
         {menuItems.map((item: RouteItem) => {
           const isActive = location.pathname === item.path;
+          let displayName = item.name;
+          let badge: React.ReactNode = null;
+
+          if (item.path === '/dw/dw-call-queue') {
+            displayName = 'My Queue';
+            badge = (
+              <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-full">
+                18
+              </span>
+            );
+          } else if (item.path === '/wct/wct-call-queue') {
+            displayName = 'My Queue';
+            badge = (
+              <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-full">
+                15
+              </span>
+            );
+          } else if (item.path === '/dw/dw-campaign-leads' || item.path === '/wct/wct-campaign-leads') {
+            displayName = 'Campaign Leads';
+            badge = (
+              <span className="ml-auto flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
+                <span>12</span>
+                <span className="text-[8px]">🔥</span>
+              </span>
+            );
+          }
+
           return (
             <Link
               key={item.path}
@@ -44,7 +71,8 @@ export const Sidebar: React.FC = () => {
               {item.icon && (
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
               )}
-              <span className="font-label-caps text-label-caps">{item.name}</span>
+              <span className="font-label-caps text-label-caps flex-1 truncate">{displayName}</span>
+              {badge}
             </Link>
           );
         })}

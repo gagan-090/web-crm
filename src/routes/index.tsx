@@ -7,7 +7,6 @@ import CallerLayout from '../layouts/CallerLayout';
 import LoginPage from '../features/auth/pages/LoginPage';
 
 // Live Core Feature Imports (Fully Redux Connected)
-import OverviewPage from '../features/dashboard/pages/OverviewPage';
 import TeamMonitorPage from '../features/dashboard/pages/TeamMonitorPage';
 import LeadManagementPage from '../features/leads/pages/LeadManagementPage';
 import SlaDashboardPage from '../features/dashboard/pages/SlaDashboardPage';
@@ -27,6 +26,7 @@ import WebhookLogsTroubleshooting from '../pages/admin/WebhookLogsTroubleshootin
 import IntegrationsRoutingConfig from '../pages/admin/IntegrationsRoutingConfig';
 import SystemHealthDashboard from '../pages/admin/SystemHealthDashboard';
 import ProcessQueueConfig from '../pages/admin/ProcessQueueConfig';
+import TargetAllocationConsole from '../pages/admin/TargetAllocationConsole';
 import AttendanceManagement from '../pages/human-resources/AttendanceManagement';
 import OnboardingTracker from '../pages/human-resources/OnboardingTracker';
 import HiringDashboard from '../pages/human-resources/HiringDashboard';
@@ -51,25 +51,19 @@ import FeedbackComposer from '../pages/quality-control/FeedbackComposer';
 import QcConsoleRefined from '../pages/quality-control/QcConsoleRefined';
 import AuditQueue from '../pages/quality-control/AuditQueue';
 import SystemAuditLogs from '../pages/quality-control/SystemAuditLogs';
-import Settings from '../pages/telecalling-head/Settings';
-import Page10Notifications from '../pages/telecalling-head/Page10Notifications';
-import NotificationsAlertsCenter from '../pages/telecalling-head/NotificationsAlertsCenter';
-import LeadManagementConsole from '../pages/telecalling-head/LeadManagementConsole';
-import Page01Dashboard from '../pages/telecalling-head/Page01Dashboard';
-import BacklogSprintManager from '../pages/telecalling-head/BacklogSprintManager';
-import Page02Login from '../pages/telecalling-head/Page02Login';
-import SlaDashboard from '../pages/telecalling-head/SlaDashboard';
-import ReActivationManager from '../pages/telecalling-head/ReActivationManager';
-import Page05SlaDashboard from '../pages/telecalling-head/Page05SlaDashboard';
-import Page08BacklogSprint from '../pages/telecalling-head/Page08BacklogSprint';
-import TeamMonitor from '../pages/telecalling-head/TeamMonitor';
-import PostCallDispositionGate from '../pages/telecalling-head/PostCallDispositionGate';
-import MainOverviewDashboard from '../pages/telecalling-head/MainOverviewDashboard';
-import ReportsHub from '../pages/telecalling-head/ReportsHub';
-import Page04LeadManagement from '../pages/telecalling-head/Page04LeadManagement';
-import BacklogCampaignManager from '../pages/telecalling-head/BacklogCampaignManager';
-import Page07Settings from '../pages/telecalling-head/Page07Settings';
-import Page03TeamMonitor from '../pages/telecalling-head/Page03TeamMonitor';
+import ThSettings from '../pages/telecalling-head/ThSettings';
+import ThNotificationsAlertsCenter from '../pages/telecalling-head/ThNotificationsAlertsCenter';
+import ThLeadManagementConsole from '../pages/telecalling-head/ThLeadManagementConsole';
+import ThBacklogSprintManager from '../pages/telecalling-head/ThBacklogSprintManager';
+import ThGlobalCallChatLog from '../pages/telecalling-head/ThGlobalCallChatLog';
+import ThSlaDashboard from '../pages/telecalling-head/ThSlaDashboard';
+import ThReActivationManager from '../pages/telecalling-head/ThReActivationManager';
+import ThTeamMonitor from '../pages/telecalling-head/ThTeamMonitor';
+import ThPostCallDispositionGate from '../pages/telecalling-head/ThPostCallDispositionGate';
+import ThHomeDashboard from '../pages/telecalling-head/ThHomeDashboard';
+import ThReportsHub from '../pages/telecalling-head/ThReportsHub';
+import ThBacklogCampaignManager from '../pages/telecalling-head/ThBacklogCampaignManager';
+import ThGlobalCampaignConsole from '../pages/telecalling-head/ThGlobalCampaignConsole';
 import TlTeamCallbackCalendar from '../pages/team-lead/TlTeamCallbackCalendar';
 import TlRealTimeMonitor from '../pages/team-lead/TlRealTimeMonitor';
 import TlLeadQueueManager from '../pages/team-lead/TlLeadQueueManager';
@@ -86,6 +80,7 @@ import DwActiveCallFocus from '../pages/driver-welcome/DwActiveCallFocus';
 import DwDispositionGate from '../pages/driver-welcome/DwDispositionGate';
 import DwWhatsappPanel from '../pages/driver-welcome/DwWhatsappPanel';
 import DwPerformanceStats from '../pages/driver-welcome/DwPerformanceStats';
+import DwCampaignLeads from '../pages/driver-welcome/DwCampaignLeads';
 import WctCallbackCalendar from '../pages/transporter-welcome/WctCallbackCalendar';
 import WctHomeDashboard from '../pages/transporter-welcome/WctHomeDashboard';
 import WctActiveCallFocus from '../pages/transporter-welcome/WctActiveCallFocus';
@@ -95,6 +90,7 @@ import WctCallQueue from '../pages/transporter-welcome/WctCallQueue';
 import WctPerformanceStats from '../pages/transporter-welcome/WctPerformanceStats';
 import WctDispositionGate from '../pages/transporter-welcome/WctDispositionGate';
 import WctD7UpsellQueue from '../pages/transporter-welcome/WctD7UpsellQueue';
+import WctCampaignLeads from '../pages/transporter-welcome/WctCampaignLeads';
 import HrAnalyticsSummary from '../pages/matchmaking/HrAnalyticsSummary';
 import MmDriverBank from '../pages/matchmaking/MmDriverBank';
 import TlOverviewTrMatchmaking from '../pages/matchmaking/TlOverviewTrMatchmaking';
@@ -162,7 +158,7 @@ export const AppRoutes: React.FC = () => {
           <Route index element={<RoleHomeRedirect />} />
           
           {/* Live Core Features (Redux Connected) */}
-          <Route path="th/overview-live" element={<RoleGuard permission="leads:view"><OverviewPage /></RoleGuard>} />
+          <Route path="th/overview-live" element={<RoleGuard permission="leads:view"><ThHomeDashboard /></RoleGuard>} />
           <Route path="th/team-monitor-live" element={<RoleGuard permission="calls:view"><TeamMonitorPage /></RoleGuard>} />
           <Route path="th/leads-live" element={<RoleGuard permission="leads:view"><LeadManagementPage /></RoleGuard>} />
           <Route path="th/sla-live" element={<RoleGuard permission="qc:view"><SlaDashboardPage /></RoleGuard>} />
@@ -179,6 +175,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="admin/integrations-routing-config" element={<RoleGuard permission="admin:view"><IntegrationsRoutingConfig /></RoleGuard>} />
           <Route path="admin/system-health-dashboard" element={<RoleGuard permission="admin:view"><SystemHealthDashboard /></RoleGuard>} />
           <Route path="admin/process-queue-config" element={<RoleGuard permission="admin:view"><ProcessQueueConfig /></RoleGuard>} />
+          <Route path="admin/target-allocation" element={<RoleGuard permission="admin:view"><TargetAllocationConsole /></RoleGuard>} />
           <Route path="hr/attendance-management" element={<RoleGuard permission="hr:view"><AttendanceManagement /></RoleGuard>} />
           <Route path="hr/onboarding-tracker" element={<RoleGuard permission="hr:view"><OnboardingTracker /></RoleGuard>} />
           <Route path="hr/hiring-dashboard" element={<RoleGuard permission="hr:view"><HiringDashboard /></RoleGuard>} />
@@ -203,25 +200,19 @@ export const AppRoutes: React.FC = () => {
           <Route path="qc/qc-console-refined" element={<RoleGuard permission="qc:view"><QcConsoleRefined /></RoleGuard>} />
           <Route path="qc/audit-queue" element={<RoleGuard permission="qc:view"><AuditQueue /></RoleGuard>} />
           <Route path="qc/system-audit-logs" element={<RoleGuard permission="qc:view"><SystemAuditLogs /></RoleGuard>} />
-          <Route path="th/settings" element={<RoleGuard permission="leads:view"><Settings /></RoleGuard>} />
-          <Route path="th/page10-notifications" element={<RoleGuard permission="leads:view"><Page10Notifications /></RoleGuard>} />
-          <Route path="th/notifications-alerts-center" element={<RoleGuard permission="leads:view"><NotificationsAlertsCenter /></RoleGuard>} />
-          <Route path="th/lead-management-console" element={<RoleGuard permission="leads:view"><LeadManagementConsole /></RoleGuard>} />
-          <Route path="th/page01-dashboard" element={<RoleGuard permission="leads:view"><Page01Dashboard /></RoleGuard>} />
-          <Route path="th/backlog-sprint-manager" element={<RoleGuard permission="leads:view"><BacklogSprintManager /></RoleGuard>} />
-          <Route path="th/page02-login" element={<RoleGuard permission="leads:view"><Page02Login /></RoleGuard>} />
-          <Route path="th/sla-dashboard" element={<RoleGuard permission="leads:view"><SlaDashboard /></RoleGuard>} />
-          <Route path="th/re-activation-manager" element={<RoleGuard permission="leads:view"><ReActivationManager /></RoleGuard>} />
-          <Route path="th/page05-sla-dashboard" element={<RoleGuard permission="leads:view"><Page05SlaDashboard /></RoleGuard>} />
-          <Route path="th/page08-backlog-sprint" element={<RoleGuard permission="leads:view"><Page08BacklogSprint /></RoleGuard>} />
-          <Route path="th/team-monitor" element={<RoleGuard permission="leads:view"><TeamMonitor /></RoleGuard>} />
-          <Route path="th/post-call-disposition-gate" element={<RoleGuard permission="leads:view"><PostCallDispositionGate /></RoleGuard>} />
-          <Route path="th/main-overview-dashboard" element={<RoleGuard permission="leads:view"><MainOverviewDashboard /></RoleGuard>} />
-          <Route path="th/reports-hub" element={<RoleGuard permission="leads:view"><ReportsHub /></RoleGuard>} />
-          <Route path="th/page04-lead-management" element={<RoleGuard permission="leads:view"><Page04LeadManagement /></RoleGuard>} />
-          <Route path="th/backlog-campaign-manager" element={<RoleGuard permission="leads:view"><BacklogCampaignManager /></RoleGuard>} />
-          <Route path="th/page07-settings" element={<RoleGuard permission="leads:view"><Page07Settings /></RoleGuard>} />
-          <Route path="th/page03-team-monitor" element={<RoleGuard permission="leads:view"><Page03TeamMonitor /></RoleGuard>} />
+          <Route path="th/settings" element={<RoleGuard permission="leads:view"><ThSettings /></RoleGuard>} />
+          <Route path="th/notifications-alerts-center" element={<RoleGuard permission="leads:view"><ThNotificationsAlertsCenter /></RoleGuard>} />
+          <Route path="th/lead-management-console" element={<RoleGuard permission="leads:view"><ThLeadManagementConsole /></RoleGuard>} />
+          <Route path="th/backlog-sprint-manager" element={<RoleGuard permission="leads:view"><ThBacklogSprintManager /></RoleGuard>} />
+          <Route path="th/sla-dashboard" element={<RoleGuard permission="leads:view"><ThSlaDashboard /></RoleGuard>} />
+          <Route path="th/global-call-chat-log" element={<RoleGuard permission="leads:view"><ThGlobalCallChatLog /></RoleGuard>} />
+          <Route path="th/re-activation-manager" element={<RoleGuard permission="leads:view"><ThReActivationManager /></RoleGuard>} />
+          <Route path="th/team-monitor" element={<RoleGuard permission="leads:view"><ThTeamMonitor /></RoleGuard>} />
+          <Route path="th/post-call-disposition-gate" element={<RoleGuard permission="leads:view"><ThPostCallDispositionGate /></RoleGuard>} />
+          <Route path="th/main-overview-dashboard" element={<RoleGuard permission="leads:view"><ThHomeDashboard /></RoleGuard>} />
+          <Route path="th/reports-hub" element={<RoleGuard permission="leads:view"><ThReportsHub /></RoleGuard>} />
+          <Route path="th/backlog-campaign-manager" element={<RoleGuard permission="leads:view"><ThBacklogCampaignManager /></RoleGuard>} />
+          <Route path="th/global-campaign-console" element={<RoleGuard permission="leads:view"><ThGlobalCampaignConsole /></RoleGuard>} />
           <Route path="tl/tl-overview-dashboard" element={<RoleGuard permission="leads:view"><TlOverviewDashboard /></RoleGuard>} />
           <Route path="tl/tl-team-callback-calendar" element={<RoleGuard permission="leads:view"><TlTeamCallbackCalendar /></RoleGuard>} />
           <Route path="tl/tl-real-time-monitor" element={<RoleGuard permission="leads:view"><TlRealTimeMonitor /></RoleGuard>} />
@@ -238,6 +229,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="dw/dw-whatsapp-panel" element={<RoleGuard permission="calls:dial"><DwWhatsappPanel /></RoleGuard>} />
           <Route path="dw/dw-performance-stats" element={<RoleGuard permission="calls:dial"><DwPerformanceStats /></RoleGuard>} />
           <Route path="dw/dw-active-call-focus" element={<RoleGuard permission="calls:dial"><DwActiveCallFocus /></RoleGuard>} />
+          <Route path="dw/dw-campaign-leads" element={<RoleGuard permission="calls:dial"><DwCampaignLeads /></RoleGuard>} />
           <Route path="wct/wct-active-call-focus" element={<RoleGuard permission="calls:dial"><WctActiveCallFocus /></RoleGuard>} />
           <Route path="wct/wct-callback-calendar" element={<RoleGuard permission="calls:dial"><WctCallbackCalendar /></RoleGuard>} />
           <Route path="wct/wct-home-dashboard" element={<RoleGuard permission="calls:dial"><WctHomeDashboard /></RoleGuard>} />
@@ -247,6 +239,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="wct/wct-performance-stats" element={<RoleGuard permission="calls:dial"><WctPerformanceStats /></RoleGuard>} />
           <Route path="wct/wct-disposition-gate" element={<RoleGuard permission="calls:dial"><WctDispositionGate /></RoleGuard>} />
           <Route path="wct/wct-d7-upsell-queue" element={<RoleGuard permission="calls:dial"><WctD7UpsellQueue /></RoleGuard>} />
+          <Route path="wct/wct-campaign-leads" element={<RoleGuard permission="calls:dial"><WctCampaignLeads /></RoleGuard>} />
           <Route path="mm/hr-analytics-summary" element={<RoleGuard permission="calls:dial"><HrAnalyticsSummary /></RoleGuard>} />
           <Route path="mm/mm-driver-bank" element={<RoleGuard permission="calls:dial"><MmDriverBank /></RoleGuard>} />
           <Route path="mm/tl-overview-tr-matchmaking" element={<RoleGuard permission="calls:dial"><TlOverviewTrMatchmaking /></RoleGuard>} />

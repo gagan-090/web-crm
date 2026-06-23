@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 export const DwPerformanceStats: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'thisMonth' | 'lastMonth' | 'history'>('thisMonth');
+  const [activeTab, setActiveTab] = useState<'thisMonth' | 'lastMonth' | 'history' | 'campaigns'>('thisMonth');
 
   // Simulator & gate states
   const [simulateConversions, setSimulateConversions] = useState<number>(12); // slider state
@@ -74,6 +74,14 @@ export const DwPerformanceStats: React.FC = () => {
             }`}
           >
             Last Month
+          </button>
+          <button
+            onClick={() => setActiveTab('campaigns')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded transition-all ${
+              activeTab === 'campaigns' ? 'bg-white text-red-600 shadow-sm font-bold' : 'text-gray-500 hover:text-red-500'
+            }`}
+          >
+            🔥 Campaigns
           </button>
           <button
             onClick={() => setActiveTab('history')}
@@ -404,6 +412,114 @@ export const DwPerformanceStats: React.FC = () => {
 
           </div>
 
+        </div>
+      )}
+
+      {activeTab === 'campaigns' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* Top Cards Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Campaign Conversions</span>
+              <div className="text-2xl font-bold text-gray-800 mt-1">18 <span className="text-xs text-gray-400 font-normal">leads converted</span></div>
+              <div className="text-xs text-[#27AE60] font-bold mt-2">↑ 4.2% higher vs organic target</div>
+            </div>
+            
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Campaign Conversion Rate</span>
+              <div className="text-2xl font-bold text-red-655 text-red-600 mt-1">8.5%</div>
+              <div className="text-xs text-gray-500 mt-2">Connected: 212 calls</div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Campaign Avg Star Rating</span>
+              <div className="text-2xl font-bold text-yellow-500 mt-1">4.2 ★</div>
+              <div className="text-xs text-gray-500 mt-2">From 18 conversions</div>
+            </div>
+          </div>
+
+          {/* Source-wise Breakdown Table & Temperature analysis */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Table */}
+            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-100 pb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-red-500">campaign</span>
+                Source-Wise Campaign Breakdown
+              </h3>
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b border-gray-205 border-gray-200 text-gray-400 font-bold uppercase text-[9px]">
+                    <th className="py-2">Source</th>
+                    <th className="py-2 text-center">Connected Calls</th>
+                    <th className="py-2 text-center">Conversions</th>
+                    <th className="py-2 text-right">Conv. Rate</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700">
+                  <tr>
+                    <td className="py-2.5 font-semibold">Meta Ads</td>
+                    <td className="py-2.5 text-center">112</td>
+                    <td className="py-2.5 text-center">10</td>
+                    <td className="py-2.5 text-right font-bold text-[#27AE60]">8.9%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 font-semibold">Google Ads</td>
+                    <td className="py-2.5 text-center">45</td>
+                    <td className="py-2.5 text-center">4</td>
+                    <td className="py-2.5 text-right font-bold text-[#27AE60]">8.8%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 font-semibold">Instagram</td>
+                    <td className="py-2.5 text-center">32</td>
+                    <td className="py-2.5 text-center">3</td>
+                    <td className="py-2.5 text-right font-bold text-[#27AE60]">9.3%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 font-semibold">Facebook Comments</td>
+                    <td className="py-2.5 text-center">23</td>
+                    <td className="py-2.5 text-center">1</td>
+                    <td className="py-2.5 text-right font-bold text-amber-500">4.3%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Temperature analysis */}
+            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-100 pb-2">
+                🔥 Temperature Conversion Analysis
+              </h3>
+              <div className="space-y-3.5">
+                <div>
+                  <div className="flex justify-between text-xs mb-1 font-semibold">
+                    <span className="text-red-600">HOT Leads (80% target)</span>
+                    <span>12/15 converted (80.0%)</span>
+                  </div>
+                  <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-red-500 rounded-full" style={{ width: '80%' }}></div>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1 font-semibold">
+                    <span className="text-amber-600">WARM Leads (40% target)</span>
+                    <span>5/20 converted (25.0%)</span>
+                  </div>
+                  <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-500 rounded-full" style={{ width: '25%' }}></div>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1 font-semibold">
+                    <span className="text-blue-600">COLD Leads (10% target)</span>
+                    <span>1/30 converted (3.3%)</span>
+                  </div>
+                  <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: '3.3%' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

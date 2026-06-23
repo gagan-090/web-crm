@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const BacklogSprintManager: React.FC = () => {
+export const ThBacklogSprintManager: React.FC = () => {
   return (
     <main className=" p-md min-h-[calc(100vh-56px)]">
 
@@ -263,4 +263,4 @@ export const BacklogSprintManager: React.FC = () => {
   );
 };
 
-export default BacklogSprintManager;
+export default ThBacklogSprintManager;

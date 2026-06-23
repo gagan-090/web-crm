@@ -1,10 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Role } from '../../shared/constants/roles';
+import { Role, ROLE_SHORT_CODES } from '../../shared/constants/roles';
+import { API_BASE_URL } from '../../shared/constants/config';
+
 
 export interface User {
   name: string;
   email: string;
   role: Role;
+  sub_role?: string | null;
+  token?: string;
 }
 
 interface AuthContextType {
@@ -14,6 +18,8 @@ interface AuthContextType {
   logout: () => void;
   switchRole: (role: Role) => void;
 }
+
+const API_BASE = API_BASE_URL;
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -36,12 +42,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, role: Role): Promise<boolean> => {
     setIsLoading(true);
-    // Simulate Laravel Sanctum API request
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      const response = await fetch(`${API_BASE}/web-crm/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email,
+          password: 'password123',
+        })
+      });
+
+      if (response.ok) {
+        const json = await response.json();
+        if (json.status && json.token) {
+          const userSession: User = {
+            name: json.user.name,
+            email: json.user.email,
+            role: json.user.role as Role,
+            sub_role: json.user.sub_role || null,
+            token: json.token
+          };
+          setUser(userSession);
+          localStorage.setItem('tm_connect_user', JSON.stringify(userSession));
+          setIsLoading(false);
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn('[AUTH] Backend offline or login failed. Using simulated session:', err);
+    }
+
+    // Fallback to simulated login
     const mockUser: User = {
       name: `Demo User (${role})`,
       email: email,
-      role: role
+      role: role,
+      sub_role: role === Role.TL ? 'Driver Welcome' : null,
+      token: 'mock_sanctum_token_12345'
     };
     setUser(mockUser);
     localStorage.setItem('tm_connect_user', JSON.stringify(mockUser));
@@ -56,7 +96,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const switchRole = (newRole: Role) => {
     if (user) {
-      const updated = { ...user, role: newRole, name: `Demo User (${newRole})` };
+      const shortCode = ROLE_SHORT_CODES[newRole] || 'dw';
+      const updated: User = { 
+        ...user, 
+        role: newRole, 
+        sub_role: newRole === Role.TL ? 'Driver Welcome' : null,
+        name: `Demo User (${newRole})`,
+        email: `${shortCode}@truckmitr.com`,
+        token: 'mock_sanctum_token_12345'
+      };
       setUser(updated);
       localStorage.setItem('tm_connect_user', JSON.stringify(updated));
     }

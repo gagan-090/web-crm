@@ -36,6 +36,23 @@ export const TlRealTimeMonitor: React.FC = () => {
   
   // Role Toggle
   const [tlMode, setTlMode] = useState<'dw' | 'tr-mm'>('dw');
+  const [monitorType, setMonitorType] = useState<'organic' | 'campaign'>('organic');
+
+  // Campaign Roster Mock Data
+  const campaignDwRoster = [
+    { name: 'Rahul S.', hot: 8, warm: 12, cold: 8, calls: 24, rate: '8.3%', oldestAge: '1h 12m', oldestOverSla: true },
+    { name: 'Sonia R.', hot: 3, warm: 15, cold: 18, calls: 20, rate: '9.0%', oldestAge: '35m', oldestOverSla: false },
+    { name: 'Aman K.', hot: 1, warm: 8, cold: 5, calls: 15, rate: '10.5%', oldestAge: '12m', oldestOverSla: false },
+    { name: 'Priya P.', hot: 0, warm: 5, cold: 12, calls: 12, rate: '8.3%', oldestAge: '--', oldestOverSla: false }
+  ];
+
+  const campaignTrRoster = [
+    { name: 'Alex R.', hot: 5, warm: 8, cold: 5, calls: 15, rate: '11.5%', oldestAge: '1h 45m', oldestOverSla: true },
+    { name: 'Sarah C.', hot: 2, warm: 12, cold: 14, calls: 12, rate: '12.0%', oldestAge: '45m', oldestOverSla: false },
+    { name: 'Marcus T.', hot: 0, warm: 4, cold: 6, calls: 8, rate: '10.0%', oldestAge: '--', oldestOverSla: false }
+  ];
+
+  const activeCampaignRoster = tlMode === 'dw' ? campaignDwRoster : campaignTrRoster;
   
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -210,90 +227,219 @@ export const TlRealTimeMonitor: React.FC = () => {
             </div>
           </div>
 
-          {/* Toggle Badge */}
-          <button
-            onClick={() => {
-              const nextMode = tlMode === 'dw' ? 'tr-mm' : 'dw';
-              setTlMode(nextMode);
-              triggerToast(`Switched control room simulation to ${nextMode === 'dw' ? 'Driver Welcome' : 'Transporter + Matchmaking'}`);
-            }}
-            className="bg-[#F39C12] text-white px-2.5 py-1 rounded text-[10px] font-bold shadow hover:bg-[#e08e0b]"
-          >
-            Switch Team: {tlMode === 'dw' ? 'DW' : 'TR+MM'}
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="bg-gray-150 p-0.5 rounded-lg flex items-center gap-0.5 select-none border border-gray-200">
+              <button
+                onClick={() => setMonitorType('organic')}
+                className={`px-2.5 py-1 text-[10px] font-bold rounded transition-all ${
+                  monitorType === 'organic' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                Organic
+              </button>
+              <button
+                onClick={() => setMonitorType('campaign')}
+                className={`px-2.5 py-1 text-[10px] font-bold rounded transition-all ${
+                  monitorType === 'campaign' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-500 hover:text-red-500'
+                }`}
+              >
+                🔥 Campaign
+              </button>
+            </div>
+            
+            <button
+              onClick={() => {
+                const nextMode = tlMode === 'dw' ? 'tr-mm' : 'dw';
+                setTlMode(nextMode);
+                triggerToast(`Switched control room simulation to ${nextMode === 'dw' ? 'Driver Welcome' : 'Transporter + Matchmaking'}`);
+              }}
+              className="bg-[#F39C12] text-white px-2.5 py-1 rounded text-[10px] font-bold shadow hover:bg-[#e08e0b]"
+            >
+              Switch Team: {tlMode === 'dw' ? 'DW' : 'TR+MM'}
+            </button>
+          </div>
         </div>
 
         {/* Active Team Roster Table */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider">
-              Active Callers Status
+        <div className="flex-grow overflow-y-auto p-4 space-y-4">
+          
+          {monitorType === 'campaign' && (
+            <div className="bg-red-500/10 border border-red-200 p-3 rounded-xl flex justify-between items-center text-xs text-red-800 font-semibold animate-pulse select-none">
+              <span className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-red-500 animate-spin">alarm</span>
+                <span>SLA BREACH ALERT: Hot campaign leads uncalled for &gt;1 hour detected in the queue!</span>
+              </span>
+              <button 
+                onClick={() => triggerToast('Broadcast alert sent to all callers ✓')}
+                className="bg-red-500 text-white font-bold text-[10px] px-2.5 py-1 rounded shadow hover:bg-red-600 transition-colors"
+              >
+                Broadcast Alert
+              </button>
             </div>
+          )}
 
-            <table className="w-full text-xs text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-100/50 border-b border-gray-200 text-gray-400 font-bold uppercase text-[9px]">
-                  <th className="p-3">Caller</th>
-                  <th className="p-3">Role</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Current Lead</th>
-                  <th className="p-3">Queue Depth (Cap 40)</th>
-                  <th className="p-3 text-center">Calls</th>
-                  <th className="p-3 text-right">Revenue Today</th>
-                  <th className="p-3 text-right">Last Call</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
-                {currentRoster.map((member, i) => {
-                  const isOverloaded = member.queueDepth > 35;
-                  return (
-                    <tr 
-                      key={i}
-                      onClick={() => navigate('/tl/tl-caller-profile-detail', { state: { callerName: member.name, roleLabel: member.roleLabel, tlMode: tlMode } })}
-                      className="hover:bg-gray-50/50 transition-colors cursor-pointer"
-                    >
-                      <td className="p-3 font-bold text-gray-800 flex items-center gap-1.5">
-                        <div className={`w-6 h-6 rounded-full ${member.avatarColor} text-white flex items-center justify-center font-bold text-[10px]`}>
-                          {member.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        {member.name}
-                      </td>
-                      <td className="p-3 text-gray-500 font-semibold">{member.roleLabel}</td>
-                      <td className="p-3">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                          member.status === 'On Call' ? 'bg-green-50 text-green-700 border border-green-200' :
-                          member.status === 'Break' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
-                          member.status === 'Offline' ? 'bg-red-50 text-red-700 border border-red-200' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>
-                          {member.status}
-                        </span>
-                      </td>
-                      <td className="p-3 font-mono text-gray-600">{member.currentLead}</td>
-                      <td className="p-3 w-40">
-                        <div className="flex items-center gap-2">
-                          <span className={`font-bold min-w-[14px] ${isOverloaded ? 'text-red-600' : 'text-gray-700'}`}>{member.queueDepth}</span>
-                          {member.roleType !== 'matchmaker' ? (
-                            <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full ${isOverloaded ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} 
-                                style={{ width: `${Math.min(100, (member.queueDepth / 40) * 100)}%` }}
-                              ></div>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-purple-700 bg-purple-50 px-1 py-0.2 rounded font-bold uppercase">MATCHMAKING</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3 text-center font-bold">{member.calls}</td>
-                      <td className="p-3 text-right font-mono font-bold">₹{member.revenue}</td>
-                      <td className="p-3 text-right text-gray-400 font-semibold">{member.lastCallAt}</td>
+          {monitorType === 'campaign' ? (
+            /* CAMPAIGN MONITOR TAB VIEW */
+            <div className="space-y-4 animate-in fade-in duration-300">
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider flex justify-between items-center">
+                  <span>Campaign Lead Monitor Console</span>
+                  <span className="text-[10px] text-red-500 bg-red-50 px-2 py-0.5 rounded font-extrabold">REAL-TIME</span>
+                </div>
+
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-100/50 border-b border-gray-200 text-gray-400 font-bold uppercase text-[9px]">
+                      <th className="p-3">Caller Name</th>
+                      <th className="p-3 text-center">🔥 Hot Leads</th>
+                      <th className="p-3 text-center">~ Warm Leads</th>
+                      <th className="p-3 text-center">❄ Cold Leads</th>
+                      <th className="p-3 text-center">Campaign Calls Today</th>
+                      <th className="p-3 text-center">Campaign Conv. Rate</th>
+                      <th className="p-3 text-center">Oldest Hot Lead (Age)</th>
+                      <th className="p-3 text-right">Actions</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+                    {activeCampaignRoster.map((c, i) => (
+                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="p-3 font-bold text-gray-800 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                          {c.name}
+                        </td>
+                        <td className="p-3 text-center font-bold text-red-600">{c.hot}</td>
+                        <td className="p-3 text-center font-bold text-amber-500">{c.warm}</td>
+                        <td className="p-3 text-center font-bold text-blue-500">{c.cold}</td>
+                        <td className="p-3 text-center font-bold">{c.calls}</td>
+                        <td className="p-3 text-center font-bold text-[#27AE60]">{c.rate}</td>
+                        <td className={`p-3 text-center font-mono font-bold ${c.oldestOverSla ? 'text-red-600 bg-red-50' : 'text-gray-600'}`}>
+                          {c.oldestAge}
+                        </td>
+                        <td className="p-3 text-right">
+                          {c.oldestOverSla ? (
+                            <button
+                              onClick={() => triggerToast(`Nudged ${c.name} to clear oldest Hot Lead immediately!`)}
+                              className="bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] px-2.5 py-1 rounded shadow-sm transition-all animate-bounce"
+                            >
+                              Nudge Caller ⚡
+                            </button>
+                          ) : (
+                            <span className="text-gray-450 text-[10px] text-gray-400 italic">SLA Met</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Stacked Source-Wise Distribution Bars */}
+              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4">
+                <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                  <h4 className="text-xs font-bold text-gray-750 uppercase tracking-wider text-gray-750">Source-Wise Lead Distribution Per Caller</h4>
+                  <div className="flex gap-2 text-[9px] font-bold">
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#1877F2' }}></span> Meta</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#4285F4' }}></span> Google</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#E1306C' }}></span> Insta</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-400"></span> Other</span>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {[
+                    { name: 'Rahul S.', meta: 40, google: 30, insta: 20, other: 10 },
+                    { name: 'Sonia R.', meta: 50, google: 10, insta: 30, other: 10 },
+                    { name: 'Aman K.', meta: 20, google: 60, insta: 20, other: 0 },
+                    { name: 'Priya P.', meta: 30, google: 20, insta: 50, other: 0 }
+                  ].map((bar, i) => (
+                    <div key={i} className="space-y-1 text-xs">
+                      <div className="flex justify-between font-semibold text-gray-705 text-gray-700">
+                        <span>{bar.name}</span>
+                        <span className="font-mono text-[10px] text-gray-400">Meta: {bar.meta}% | Google: {bar.google}% | Insta: {bar.insta}%</span>
+                      </div>
+                      <div className="w-full h-4 bg-gray-100 rounded overflow-hidden flex">
+                        {bar.meta > 0 && <div className="h-full transition-all animate-pulse" style={{ width: `${bar.meta}%`, backgroundColor: '#1877F2' }} title={`Meta: ${bar.meta}%`}></div>}
+                        {bar.google > 0 && <div className="h-full transition-all" style={{ width: `${bar.google}%`, backgroundColor: '#4285F4' }} title={`Google: ${bar.google}%`}></div>}
+                        {bar.insta > 0 && <div className="h-full transition-all" style={{ width: `${bar.insta}%`, backgroundColor: '#E1306C' }} title={`Insta: ${bar.insta}%`}></div>}
+                        {bar.other > 0 && <div className="h-full transition-all bg-gray-400" style={{ width: `${bar.other}%` }} title={`Other: ${bar.other}%`}></div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* ORGANIC VIEW */
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Active Callers Status
+              </div>
+
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-100/50 border-b border-gray-200 text-gray-400 font-bold uppercase text-[9px]">
+                    <th className="p-3">Caller</th>
+                    <th className="p-3">Role</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Current Lead</th>
+                    <th className="p-3">Queue Depth (Cap 40)</th>
+                    <th className="p-3 text-center">Calls</th>
+                    <th className="p-3 text-right">Revenue Today</th>
+                    <th className="p-3 text-right">Last Call</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+                  {currentRoster.map((member, i) => {
+                    const isOverloaded = member.queueDepth > 35;
+                    return (
+                      <tr 
+                        key={i}
+                        onClick={() => navigate('/tl/tl-caller-profile-detail', { state: { callerName: member.name, roleLabel: member.roleLabel, tlMode: tlMode } })}
+                        className="hover:bg-gray-50/50 transition-colors cursor-pointer"
+                      >
+                        <td className="p-3 font-bold text-gray-800 flex items-center gap-1.5">
+                          <div className={`w-6 h-6 rounded-full ${member.avatarColor} text-white flex items-center justify-center font-bold text-[10px]`}>
+                            {member.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          {member.name}
+                        </td>
+                        <td className="p-3 text-gray-500 font-semibold">{member.roleLabel}</td>
+                        <td className="p-3">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            member.status === 'On Call' ? 'bg-green-50 text-green-700 border border-green-200' :
+                            member.status === 'Break' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                            member.status === 'Offline' ? 'bg-red-50 text-red-700 border border-red-200' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {member.status}
+                          </span>
+                        </td>
+                        <td className="p-3 font-mono text-gray-600">{member.currentLead}</td>
+                        <td className="p-3 w-40">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-bold min-w-[14px] ${isOverloaded ? 'text-red-600' : 'text-gray-700'}`}>{member.queueDepth}</span>
+                            {member.roleType !== 'matchmaker' ? (
+                              <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full ${isOverloaded ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} 
+                                  style={{ width: `${Math.min(100, (member.queueDepth / 40) * 100)}%` }}
+                                ></div>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-purple-700 bg-purple-50 px-1 py-0.2 rounded font-bold uppercase">MATCHMAKING</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-3 text-center font-bold">{member.calls}</td>
+                        <td className="p-3 text-right font-mono font-bold">₹{member.revenue}</td>
+                        <td className="p-3 text-right text-gray-400 font-semibold">{member.lastCallAt}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Recent Call Logs list */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">

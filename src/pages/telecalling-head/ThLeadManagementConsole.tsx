@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const Page04LeadManagement: React.FC = () => {
+export const ThLeadManagementConsole: React.FC = () => {
   return (
     <main className=" flex flex-col ">
 
@@ -312,4 +312,4 @@ export const Page04LeadManagement: React.FC = () => {
   );
 };
 
-export default Page04LeadManagement;
+export default ThLeadManagementConsole;

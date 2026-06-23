@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGetWctDashboardQuery } from '../../services/api/webCrmApi';
 
 interface SLARow {
   id: string;
@@ -12,12 +13,26 @@ interface SLARow {
 export const WctHomeDashboard: React.FC = () => {
   const navigate = useNavigate();
 
+  const { data: realData } = useGetWctDashboardQuery();
+
   // Dashboard state for premium interactivity
   const [monthlyRevenue, setMonthlyRevenue] = useState(11200);
   const [slaList, setSlaList] = useState<SLARow[]>([
     { id: '1', company: 'Sharma Logistics', tmid: 'TR-12094', registeredMinutesAgo: 107, slaMinutesLeft: 133 },
     { id: '2', company: 'Anand Transport Co', tmid: 'TR-12098', registeredMinutesAgo: 178, slaMinutesLeft: 62 }
   ]);
+
+  useEffect(() => {
+    if (realData?.data?.overdueCallbacks && realData.data.overdueCallbacks.length > 0) {
+      setSlaList(realData.data.overdueCallbacks.map(c => ({
+        id: c.id.toString(),
+        company: c.name,
+        tmid: c.tmid,
+        registeredMinutesAgo: 80,
+        slaMinutesLeft: 160
+      })));
+    }
+  }, [realData]);
 
   const baseSalary = 14000;
   const gateThreshold = baseSalary * 2; // ₹28,000

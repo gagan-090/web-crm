@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const ReportsHub: React.FC = () => {
+export const ThReportsHub: React.FC = () => {
   return (
     <main className=" p-md flex gap-md min-h-[calc(100vh-56px)]">
 
@@ -314,4 +314,4 @@ export const ReportsHub: React.FC = () => {
   );
 };
 
-export default ReportsHub;
+export default ThReportsHub;

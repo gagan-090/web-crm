@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGetTlDashboardQuery, useGetTlRosterQuery } from '../../services/api/webCrmApi';
 
 interface TeamMember {
   name: string;
@@ -32,6 +33,15 @@ export const TlOverviewDashboard: React.FC = () => {
   
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const { data: realDashboard } = useGetTlDashboardQuery();
+  const { data: realRosterData } = useGetTlRosterQuery();
+
+  const kpis = realDashboard?.data?.kpis;
+  const activeCallersCount = kpis?.activeCallers ?? 7;
+  const slaBreachesCount = kpis?.slaBreaches ?? 12;
+  const callsTodayCount = kpis?.callsToday ?? 324;
+  const unresolvedCallsCount = kpis?.unresolvedCalls ?? 5;
+
   // Callbacks list
   const [callbacks, setCallbacks] = useState<CallbackItem[]>([
     { id: 'c1', callerName: 'Rahul S.', leadName: 'Suresh Yadav (DR-48291)', time: '11:30 AM', status: 'Overdue' },
@@ -55,8 +65,22 @@ export const TlOverviewDashboard: React.FC = () => {
     triggerToast('All calls auto-resolved/tagged successfully!');
   };
 
+  // Roster mapping
+  const rawRoster = realRosterData?.roster && realRosterData.roster.length > 0 ? realRosterData.roster : null;
+  const activeDirectReports: TeamMember[] = rawRoster ? rawRoster.map((caller: any) => ({
+    name: caller.name,
+    roleLabel: `${caller.role} Caller`,
+    roleType: caller.role.toLowerCase() === 'dw' ? 'primary' : caller.role.toLowerCase() === 'wct' ? 'primary' : caller.role.toLowerCase() === 'mm' ? 'matchmaker' : 'special',
+    status: caller.status === 'READY' ? 'Idle' : (caller.status === 'ON_BREAK' ? 'Break' : (caller.status === 'OFFLINE' ? 'Offline' : 'On Call')),
+    calls: caller.callsMade,
+    revenue: caller.role.toLowerCase() === 'dw' ? 2400 : 4000,
+    queueDepth: caller.queueDepth,
+    convRate: caller.compliance || '6.3%',
+    avatarColor: caller.role.toLowerCase() === 'dw' ? 'bg-teal-500' : 'bg-indigo-500'
+  })) : [];
+
   // Caller Lists
-  const dwTeam: TeamMember[] = [
+  const dwTeam: TeamMember[] = activeDirectReports.length > 0 ? activeDirectReports.filter(c => c.roleLabel.includes('DW') || c.roleLabel.includes('SC')) : [
     { name: 'Rahul S.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'On Call', calls: 32, revenue: 2400, queueDepth: 28, convRate: '6.3%', avatarColor: 'bg-teal-500' },
     { name: 'Sonia R.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'On Call', calls: 28, revenue: 1900, queueDepth: 36, convRate: '7.1%', avatarColor: 'bg-indigo-500' },
     { name: 'Aman K.', roleLabel: 'Primary Caller', roleType: 'primary', status: 'Idle', calls: 24, revenue: 1500, queueDepth: 14, convRate: '8.3%', avatarColor: 'bg-emerald-500' },
@@ -66,7 +90,7 @@ export const TlOverviewDashboard: React.FC = () => {
     { name: 'Aditi S.', roleLabel: 'Special Categories', roleType: 'special', status: 'On Call', calls: 8, revenue: 3100, queueDepth: 5, convRate: '25.0%', avatarColor: 'bg-purple-500' }
   ];
 
-  const trMmTeam: TeamMember[] = [
+  const trMmTeam: TeamMember[] = activeDirectReports.length > 0 ? activeDirectReports.filter(c => c.roleLabel.includes('WCT') || c.roleLabel.includes('MM')) : [
     { name: 'Alex R.', roleLabel: 'Primary TR Caller', roleType: 'primary', status: 'On Call', calls: 14, revenue: 4000, queueDepth: 18, convRate: '14.2%', avatarColor: 'bg-teal-500' },
     { name: 'Sarah C.', roleLabel: 'Primary TR Caller', roleType: 'primary', status: 'On Call', calls: 12, revenue: 1999, queueDepth: 28, convRate: '16.6%', avatarColor: 'bg-indigo-500' },
     { name: 'Marcus T.', roleLabel: 'Primary TR Caller', roleType: 'primary', status: 'Break', calls: 8, revenue: 0, queueDepth: 36, convRate: '0.0%', avatarColor: 'bg-rose-500' },
@@ -288,14 +312,14 @@ export const TlOverviewDashboard: React.FC = () => {
           <div>
             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Calls Today (Team Aggregate)</span>
             <div className="text-xl font-extrabold text-gray-800 mt-1">
-              {tlMode === 'dw' ? '412' : '95'} <span className="text-xs font-normal text-gray-400">Total calls</span>
+              {callsTodayCount} <span className="text-xs font-normal text-gray-400">Total calls</span>
             </div>
           </div>
           <div className="text-[10px] text-gray-500 font-semibold mt-3 space-y-0.5">
             {tlMode === 'dw' ? (
-              <div>38 conversions · 9.2% rate</div>
+              <div>{unresolvedCallsCount} unresolved calls</div>
             ) : (
-              <div>34 TR calls · 61 MM calls · 4 placements</div>
+              <div>34 TR calls · 61 MM calls · {slaBreachesCount} SLA breaches</div>
             )}
           </div>
         </div>
@@ -309,7 +333,7 @@ export const TlOverviewDashboard: React.FC = () => {
             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Team Roster Snapshot</span>
             <div className="flex flex-wrap gap-1.5 mt-2">
               <span className="bg-green-50 text-green-700 border border-green-100 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                5 CALLING
+                {activeCallersCount} ACTIVE
               </span>
               <span className="bg-gray-100 text-gray-600 text-[9px] font-bold px-1.5 py-0.5 rounded">
                 2 IDLE
@@ -322,6 +346,88 @@ export const TlOverviewDashboard: React.FC = () => {
           <span className="text-[10px] font-extrabold text-[#F39C12] mt-3 hover:underline flex items-center gap-0.5">
             Go to Control Room <span className="material-symbols-outlined text-[12px] font-bold">arrow_forward</span>
           </span>
+        </div>
+      </section>
+
+      {/* CAMPAIGN PERFORMANCE HUB */}
+      <section className="bg-gradient-to-r from-red-50/50 via-orange-50/30 to-amber-50/20 border border-orange-100 rounded-xl p-4 shadow-sm space-y-3">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-orange-600 text-lg">campaign</span>
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+              Campaign Performance Hub ({tlMode === 'dw' ? 'Driver Welcome' : 'Transporter Welcome'})
+            </h3>
+          </div>
+          <span className="text-[10px] bg-red-105 text-red-800 font-extrabold px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span> Live Campaigns Active
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          {/* Card 1: Leads Received */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Leads Received</span>
+            <div className="text-lg font-extrabold text-gray-800 mt-1">
+              {tlMode === 'dw' ? '1,420' : '840'}
+              <span className="text-[10px] font-normal text-green-600 ml-1.5">↑ 12% today</span>
+            </div>
+            <div className="text-[9px] text-gray-400 mt-2 flex justify-between">
+              <span>Meta Ads: {tlMode === 'dw' ? '820' : '450'}</span>
+              <span>Google: {tlMode === 'dw' ? '410' : '230'}</span>
+            </div>
+          </div>
+
+          {/* Card 2: Coverage / Called */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Call Coverage</span>
+            <div className="text-lg font-extrabold text-gray-800 mt-1">
+              {tlMode === 'dw' ? '85.2%' : '78.5%'}
+              <span className="text-[10px] font-normal text-gray-400 ml-1">({tlMode === 'dw' ? '1,210' : '660'} called)</span>
+            </div>
+            <div className="w-full h-1 bg-gray-100 rounded-full mt-2 overflow-hidden">
+              <div className="h-full bg-orange-500 rounded-full" style={{ width: tlMode === 'dw' ? '85.2%' : '78.5%' }}></div>
+            </div>
+          </div>
+
+          {/* Card 3: Conversion Rate */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Campaign Conv. Rate</span>
+            <div className="text-lg font-extrabold text-orange-600 mt-1">
+              {tlMode === 'dw' ? '14.2%' : '18.5%'}
+              <span className="text-[10px] font-normal text-gray-400 ml-1">tgt 12%</span>
+            </div>
+            <div className="text-[9px] text-gray-400 mt-2 flex justify-between">
+              <span>Meta: {tlMode === 'dw' ? '12.8%' : '16.2%'}</span>
+              <span>Google: {tlMode === 'dw' ? '17.1%' : '21.0%'}</span>
+            </div>
+          </div>
+
+          {/* Card 4: Lead Quality Rating */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Lead Quality Score</span>
+            <div className="text-lg font-extrabold text-yellow-600 mt-1 flex items-center gap-1">
+              <span>{tlMode === 'dw' ? '3.8' : '4.1'}</span>
+              <span className="text-xs text-gray-400">/ 5.0</span>
+              <div className="flex text-yellow-500 text-xs ml-1">
+                {'★'.repeat(4)}{'☆'.repeat(1)}
+              </div>
+            </div>
+            <div className="text-[9px] text-gray-400 mt-2">
+              Based on {tlMode === 'dw' ? '420' : '210'} agent disposition ratings
+            </div>
+          </div>
+
+          {/* Card 5: Cost per Conversion */}
+          <div className="bg-white border border-gray-150 rounded-lg p-3 shadow-xs">
+            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Cost per Conversion</span>
+            <div className="text-lg font-extrabold text-purple-600 mt-1">
+              {tlMode === 'dw' ? '₹142' : '₹380'}
+              <span className="text-[10px] font-normal text-green-600 ml-1">↓ 8.3% MoM</span>
+            </div>
+            <div className="text-[9px] text-gray-400 mt-2">
+              ROI: {tlMode === 'dw' ? '3.4x' : '4.8x'} on total ad spend
+            </div>
+          </div>
         </div>
       </section>
 

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const BacklogCampaignManager: React.FC = () => {
+export const ThBacklogCampaignManager: React.FC = () => {
   return (
     <main className=" flex flex-col h-full bg-background relative ">
 
@@ -230,7 +230,7 @@ export const BacklogCampaignManager: React.FC = () => {
 </div>
 <div className="flex justify-between">
 <span className="text-body-sm">Weekly Coverage:</span>
-<span className="font-code-sm text-primary">6,000 items</span>
+<span className="font-code-sm text-primary">6,00,0 items</span>
 </div>
 </div>
 <button className="w-full py-lg bg-inverse-surface text-white font-bold text-body-md hover:bg-on-surface transition-colors shadow-lg flex items-center justify-center gap-2">
@@ -315,4 +315,4 @@ export const BacklogCampaignManager: React.FC = () => {
   );
 };
 
-export default BacklogCampaignManager;
+export default ThBacklogCampaignManager;

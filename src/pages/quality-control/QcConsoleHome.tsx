@@ -1,6 +1,15 @@
 import React from 'react';
+import { useGetQcDashboardQuery } from '../../services/api/webCrmApi';
 
 export const QcConsoleHome: React.FC = () => {
+  const { data: realDashboard } = useGetQcDashboardQuery();
+
+  const kpis = realDashboard?.data?.kpis;
+  const avgScore = kpis?.avgScore ?? 78.4;
+  const fatalCount = kpis?.fatalCount ?? 0;
+  const pendingAudits = kpis?.pendingAudits ?? 14;
+  const auditedCount = kpis?.auditedCount ?? 12;
+
   return (
     <main className=" md:ml-[200px] flex flex-col min-h-screen">
 
@@ -20,7 +29,7 @@ export const QcConsoleHome: React.FC = () => {
 </div>
 <div>
 <p className="text-label-caps text-on-surface-variant">TEAM AVG QC SCORE</p>
-<p className="text-headline-md font-bold text-primary">78.4</p>
+<p className="text-headline-md font-bold text-primary">{avgScore}%</p>
 </div>
 </div>
 <div className="bg-surface-container-lowest border border-outline-variant p-4 rounded-xl flex items-center gap-4">
@@ -28,8 +37,8 @@ export const QcConsoleHome: React.FC = () => {
 <span className="material-symbols-outlined" data-icon="trending_down">trending_down</span>
 </div>
 <div>
-<p className="text-label-caps text-on-surface-variant">CALLERS &lt; 65</p>
-<p className="text-headline-md font-bold text-on-surface">2</p>
+<p className="text-label-caps text-on-surface-variant">FATAL ERRORS</p>
+<p className="text-headline-md font-bold text-on-surface">{fatalCount}</p>
 </div>
 </div>
 <div className="bg-surface-container-lowest border border-outline-variant p-4 rounded-xl flex items-center gap-4">
@@ -37,8 +46,8 @@ export const QcConsoleHome: React.FC = () => {
 <span className="material-symbols-outlined" data-icon="repeat">repeat</span>
 </div>
 <div>
-<p className="text-label-caps text-on-surface-variant">REPEAT ERRORS</p>
-<p className="text-headline-md font-bold text-on-surface">4</p>
+<p className="text-label-caps text-on-surface-variant">PENDING AUDITS</p>
+<p className="text-headline-md font-bold text-on-surface">{pendingAudits}</p>
 </div>
 </div>
 </div>
@@ -50,7 +59,7 @@ export const QcConsoleHome: React.FC = () => {
 <div className="flex justify-between items-start mb-6">
 <div>
 <h3 className="font-headline-md text-headline-md text-on-surface">Weekly Progress</h3>
-<p className="text-primary font-bold font-body-lg">12 of 20 calls audited this week</p>
+<p className="text-primary font-bold font-body-lg">{auditedCount} of 20 calls audited this week</p>
 </div>
 <span className="material-symbols-outlined text-primary" data-icon="query_stats">query_stats</span>
 </div>

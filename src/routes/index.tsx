@@ -75,6 +75,7 @@ import TlOverviewDriverWelcome from '../pages/driver-welcome/TlOverviewDriverWel
 import DwTrainingHub from '../pages/driver-welcome/DwTrainingHub';
 import DwScriptLibrary from '../pages/driver-welcome/DwScriptLibrary';
 import DwCallQueue from '../pages/driver-welcome/DwCallQueue';
+import DwCallHistory from '../pages/driver-welcome/DwCallHistory';
 import DwCallbackCalendar from '../pages/driver-welcome/DwCallbackCalendar';
 import DwActiveCallFocus from '../pages/driver-welcome/DwActiveCallFocus';
 import DwDispositionGate from '../pages/driver-welcome/DwDispositionGate';
@@ -224,6 +225,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="dw/dw-training-hub" element={<RoleGuard permission="calls:dial"><DwTrainingHub /></RoleGuard>} />
           <Route path="dw/dw-script-library" element={<RoleGuard permission="calls:dial"><DwScriptLibrary /></RoleGuard>} />
           <Route path="dw/dw-call-queue" element={<RoleGuard permission="calls:dial"><DwCallQueue /></RoleGuard>} />
+          <Route path="dw/dw-call-history" element={<RoleGuard permission="calls:dial"><DwCallHistory /></RoleGuard>} />
           <Route path="dw/dw-callback-calendar" element={<RoleGuard permission="calls:dial"><DwCallbackCalendar /></RoleGuard>} />
           <Route path="dw/dw-disposition-gate" element={<RoleGuard permission="calls:dial"><DwDispositionGate /></RoleGuard>} />
           <Route path="dw/dw-whatsapp-panel" element={<RoleGuard permission="calls:dial"><DwWhatsappPanel /></RoleGuard>} />

@@ -7,6 +7,7 @@ import { useClickToCall } from '../shared/hooks/useClickToCall';
 import { useGlobalOverlays } from '../shared/context/GlobalOverlaysContext';
 import { useAuth } from '../app/providers/AuthProvider';
 import { Role } from '../shared/constants/roles';
+import { SanCtiProvider, CallControlBar, PostCallDispositionModal } from '../shared/components/cti';
 
 export const DashboardLayout: React.FC = () => {
   const { triggerCall } = useClickToCall();
@@ -14,6 +15,7 @@ export const DashboardLayout: React.FC = () => {
   const { user } = useAuth();
 
   const isThDrilldown = user?.role === Role.TH && window.location.pathname.startsWith('/tl/');
+  const isCtiRole = user?.role === Role.DW || user?.role === Role.WCT || user?.role === Role.MM || user?.role === Role.SC;
 
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
@@ -26,7 +28,10 @@ export const DashboardLayout: React.FC = () => {
         const href = telLink.getAttribute('href') || '';
         const phone = href.replace('tel:', '').trim();
         const name = telLink.getAttribute('data-lead-name') || telLink.textContent?.trim() || 'Outbound Lead';
-        triggerCall(name, phone);
+        
+        // Find if data-lead-id or similar is available
+        const leadId = telLink.getAttribute('data-lead-id') || 'LD-' + Math.floor(1000 + Math.random() * 9000);
+        triggerCall(name, phone, undefined, leadId);
         return;
       }
 
@@ -35,7 +40,8 @@ export const DashboardLayout: React.FC = () => {
       if (callableElem) {
         const phone = callableElem.textContent?.trim() || '';
         const name = callableElem.getAttribute('data-lead-name') || 'Outbound Lead';
-        triggerCall(name, phone);
+        const leadId = callableElem.getAttribute('data-lead-id') || 'LD-' + Math.floor(1000 + Math.random() * 9000);
+        triggerCall(name, phone, undefined, leadId);
         return;
       }
 
@@ -64,7 +70,12 @@ export const DashboardLayout: React.FC = () => {
     return () => document.removeEventListener('click', handleGlobalClick);
   }, [triggerCall, openWhatsApp]);
 
-  return (
+  const handleDispositionComplete = (result: any) => {
+    // Dispatch global event for Active Call Focus screens to refresh and load next lead
+    window.dispatchEvent(new CustomEvent('san-disposition-complete', { detail: result }));
+  };
+
+  const layoutContent = (
     <div className="h-screen w-screen overflow-hidden bg-background relative">
       {/* Sidebar Navigation */}
       <Sidebar />
@@ -94,7 +105,25 @@ export const DashboardLayout: React.FC = () => {
 
       {/* Global Floating Dialer */}
       <FloatingDialer />
+
+      {/* CTI Floating Elements */}
+      {isCtiRole && (
+        <>
+          <CallControlBar />
+          <PostCallDispositionModal onDispositionComplete={handleDispositionComplete} />
+        </>
+      )}
     </div>
   );
+
+  if (isCtiRole) {
+    return (
+      <SanCtiProvider>
+        {layoutContent}
+      </SanCtiProvider>
+    );
+  }
+
+  return layoutContent;
 };
 export default DashboardLayout;

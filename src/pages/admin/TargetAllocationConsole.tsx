@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useGetTargetQuery, useSetTargetMutation } from '../../services/api/webCrmApi';
 
 interface Targets {
   salesTarget: number;
@@ -7,6 +8,9 @@ interface Targets {
 }
 
 export const TargetAllocationConsole: React.FC = () => {
+  const { data: targetData } = useGetTargetQuery('tm_admin_th_targets');
+  const [saveTarget] = useSetTargetMutation();
+
   const [salesInput, setSalesInput] = useState('1000000');
   const [campaignInput, setCampaignInput] = useState('5000');
   const [currentTargets, setCurrentTargets] = useState<Targets>({
@@ -16,20 +20,14 @@ export const TargetAllocationConsole: React.FC = () => {
   });
 
   useEffect(() => {
-    const saved = localStorage.getItem('tm_admin_th_targets');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setCurrentTargets(parsed);
-        setSalesInput(parsed.salesTarget.toString());
-        setCampaignInput(parsed.campaignTarget.toString());
-      } catch (e) {
-        console.error('Error loading admin to th targets', e);
-      }
+    if (targetData?.value) {
+      setCurrentTargets(targetData.value);
+      setSalesInput(targetData.value.salesTarget.toString());
+      setCampaignInput(targetData.value.campaignTarget.toString());
     }
-  }, []);
+  }, [targetData]);
 
-  const handleSaveTargets = (e: React.FormEvent) => {
+  const handleSaveTargets = async (e: React.FormEvent) => {
     e.preventDefault();
     const salesVal = parseFloat(salesInput);
     const campVal = parseInt(campaignInput);
@@ -44,23 +42,31 @@ export const TargetAllocationConsole: React.FC = () => {
       lastUpdated: new Date().toLocaleString()
     };
 
-    localStorage.setItem('tm_admin_th_targets', JSON.stringify(updated));
-    setCurrentTargets(updated);
-
-    // Initialise TH allocation pool when admin sets the target
-    localStorage.setItem('tm_th_allocated_pool', JSON.stringify({
-      totalSales: salesVal,
-      totalCampaign: campVal,
-      allocatedSales: 0,
-      allocatedCampaign: 0,
-      tldwSales: 0,
-      tldwCampaign: 0,
-      tlwctSales: 0,
-      tlwctCampaign: 0,
-      lastUpdated: new Date().toLocaleString()
-    }));
-
-    alert('Targets successfully set for Telecalling Head (TH)!');
+    try {
+      await saveTarget({ key: 'tm_admin_th_targets', value: updated }).unwrap();
+      
+      const pool = {
+        totalSales: salesVal,
+        totalCampaign: campVal,
+        allocatedSales: 0,
+        allocatedCampaign: 0,
+        tldwSales: 0,
+        tldwCampaign: 0,
+        tlwctSales: 0,
+        tlwctCampaign: 0,
+        lastUpdated: new Date().toLocaleString()
+      };
+      await saveTarget({ key: 'tm_th_allocated_pool', value: pool }).unwrap();
+      
+      localStorage.setItem('tm_admin_th_targets', JSON.stringify(updated));
+      localStorage.setItem('tm_th_allocated_pool', JSON.stringify(pool));
+      setCurrentTargets(updated);
+      alert('Targets successfully set for Telecalling Head (TH)!');
+    } catch (err) {
+      alert('Failed to save targets on backend. Storing locally instead.');
+      localStorage.setItem('tm_admin_th_targets', JSON.stringify(updated));
+      setCurrentTargets(updated);
+    }
   };
 
   return (

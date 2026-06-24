@@ -1,6 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useGetThLeadsQuery } from '../../services/api/teleheadApi';
 
 export const ThLeadManagementConsole: React.FC = () => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const { data: leadsData, isLoading } = useGetThLeadsQuery({ page: currentPage, per_page: 50 });
+  const leads = leadsData?.data || [];
+  const pagination = leadsData?.pagination || { total: 0, current_page: 1, last_page: 1, per_page: 50 };
+
   return (
     <main className=" flex flex-col ">
 
@@ -60,120 +66,48 @@ export const ThLeadManagementConsole: React.FC = () => {
 </thead>
 <tbody className="divide-y divide-outline-variant">
 
-<tr className="lead-row hover:bg-surface-container-low transition-colors group cursor-pointer">
-<td className="px-sm py-1"><input className="lead-checkbox rounded border-outline text-primary focus:ring-primary w-4 h-4" type="checkbox"/></td>
-<td className="px-sm py-1 font-data-mono text-data-mono text-primary">TM-78291</td>
-<td className="px-sm py-1 font-body-sm font-semibold">Rajesh Logistics Pvt Ltd</td>
-<td className="px-sm py-1 font-data-mono text-body-sm">+91 98765-43210</td>
-<td className="px-sm py-1 text-center">
-<span className="px-1.5 py-0.5 bg-tertiary-fixed text-on-tertiary-fixed text-[10px] font-bold rounded">FM</span>
-</td>
-<td className="px-sm py-1">
-<span className="px-2 py-0.5 bg-red-100 text-red-700 text-[11px] font-bold rounded flex items-center w-fit gap-1">
-<span className="w-1.5 h-1.5 bg-red-600 rounded-full"></span> HOT
-                                    </span>
-</td>
-<td className="px-sm py-1 font-body-sm">Animesh Roy</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">Vendor Onboarding</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">12 Oct, 2023</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">2h ago</td>
-<td className="px-sm py-1 text-right">
-<button className="text-outline hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
-<span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-</button>
-</td>
-</tr>
+{isLoading ? (
+  <tr>
+    <td colSpan={11} className="text-center py-8 font-bold text-outline">Loading Leads...</td>
+  </tr>
+) : leads.map((lead: any) => (
+  <tr key={lead.id} className="lead-row hover:bg-surface-container-low transition-colors group cursor-pointer">
+    <td className="px-sm py-2"><input className="lead-checkbox rounded border-outline text-primary focus:ring-primary w-4 h-4" type="checkbox"/></td>
+    <td className="px-sm py-2 font-data-mono text-data-mono text-primary">{lead.unique_id}</td>
+    <td className="px-sm py-2 font-body-sm font-semibold">{lead.name}</td>
+    <td className="px-sm py-2 font-data-mono text-body-sm">{lead.mobile}</td>
+    <td className="px-sm py-2 text-center">
+      <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
+        lead.role === 'driver' ? 'bg-secondary-fixed text-on-secondary-fixed' : 'bg-outline-variant text-on-surface-variant'
+      }`}>
+        {lead.role === 'driver' ? 'DR' : 'TR'}
+      </span>
+    </td>
+    <td className="px-sm py-2">
+      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[11px] font-bold rounded flex items-center w-fit gap-1">
+        <span className="w-1.5 h-1.5 bg-blue-600 rounded-full"></span> FRESH
+      </span>
+    </td>
+    <td className="px-sm py-2 font-body-sm">{lead.assigned_admin?.name || 'Unassigned'}</td>
+    <td className="px-sm py-2 font-body-sm text-on-surface-variant">{lead.assigned_admin?.tc_for || 'Welcome Call'}</td>
+    <td className="px-sm py-2 font-body-sm text-on-surface-variant">{lead.created_at ? lead.created_at.split(' ')[0] : '—'}</td>
+    <td className="px-sm py-2 font-body-sm text-on-surface-variant">{lead.updated_at ? lead.updated_at.split(' ')[0] : '—'}</td>
+    <td className="px-sm py-2 text-right">
+      <button className="text-outline hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+        <span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+      </button>
+    </td>
+  </tr>
+))}
 
-<tr className="lead-row hover:bg-surface-container-low transition-colors group cursor-pointer bg-surface-container-lowest">
-<td className="px-sm py-1"><input className="lead-checkbox rounded border-outline text-primary focus:ring-primary w-4 h-4" type="checkbox"/></td>
-<td className="px-sm py-1 font-data-mono text-data-mono text-primary">TM-78292</td>
-<td className="px-sm py-1 font-body-sm font-semibold">Gagan Deep Transport</td>
-<td className="px-sm py-1 font-data-mono text-body-sm">+91 88221-11002</td>
-<td className="px-sm py-1 text-center">
-<span className="px-1.5 py-0.5 bg-secondary-fixed text-on-secondary-fixed text-[10px] font-bold rounded">DR</span>
-</td>
-<td className="px-sm py-1">
-<span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[11px] font-bold rounded flex items-center w-fit gap-1">
-<span className="w-1.5 h-1.5 bg-blue-600 rounded-full"></span> WARM
-                                    </span>
-</td>
-<td className="px-sm py-1 font-body-sm">Sunita Sharma</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">KYC Verification</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">12 Oct, 2023</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">Yesterday</td>
-<td className="px-sm py-1 text-right">
-<button className="text-outline hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
-<span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-</button>
-</td>
-</tr>
-
-<tr className="lead-row hover:bg-surface-container-low transition-colors group cursor-pointer bg-surface-container-lowest">
-<td className="px-sm py-1"><input className="lead-checkbox rounded border-outline text-primary focus:ring-primary w-4 h-4" type="checkbox"/></td>
-<td className="px-sm py-1 font-data-mono text-data-mono text-primary">TM-78293</td>
-<td className="px-sm py-1 font-body-sm font-semibold">Pacific Express</td>
-<td className="px-sm py-1 font-data-mono text-body-sm">+91 77665-54433</td>
-<td className="px-sm py-1 text-center">
-<span className="px-1.5 py-0.5 bg-outline-variant text-on-surface-variant text-[10px] font-bold rounded">TR</span>
-</td>
-<td className="px-sm py-1">
-<span className="px-2 py-0.5 bg-surface-variant text-outline text-[11px] font-bold rounded flex items-center w-fit gap-1">
-<span className="w-1.5 h-1.5 bg-outline rounded-full"></span> COLD
-                                    </span>
-</td>
-<td className="px-sm py-1 font-body-sm">Unassigned</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">RTO Check</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">11 Oct, 2023</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">5 days ago</td>
-<td className="px-sm py-1 text-right">
-<button className="text-outline hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
-<span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-</button>
-</td>
-</tr>
-
-<tr className="lead-row hover:bg-surface-container-low transition-colors group cursor-pointer">
-<td className="px-sm py-1"><input className="lead-checkbox rounded border-outline text-primary focus:ring-primary w-4 h-4" type="checkbox"/></td>
-<td className="px-sm py-1 font-data-mono text-data-mono text-primary">TM-78294</td>
-<td className="px-sm py-1 font-body-sm font-semibold">Vikas Transporter Hub</td>
-<td className="px-sm py-1 font-data-mono text-body-sm">+91 99887-76655</td>
-<td className="px-sm py-1 text-center"><span className="px-1.5 py-0.5 bg-tertiary-fixed text-on-tertiary-fixed text-[10px] font-bold rounded">FM</span></td>
-<td className="px-sm py-1"><span className="px-2 py-0.5 bg-red-100 text-red-700 text-[11px] font-bold rounded flex items-center w-fit gap-1"><span className="w-1.5 h-1.5 bg-red-600 rounded-full"></span> HOT</span></td>
-<td className="px-sm py-1 font-body-sm">Animesh Roy</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">Direct Load Booking</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">10 Oct, 2023</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">10m ago</td>
-<td className="px-sm py-1 text-right">
-<button className="text-outline hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
-<span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-</button>
-</td>
-</tr>
-<tr className="lead-row hover:bg-surface-container-low transition-colors group cursor-pointer">
-<td className="px-sm py-1"><input className="lead-checkbox rounded border-outline text-primary focus:ring-primary w-4 h-4" type="checkbox"/></td>
-<td className="px-sm py-1 font-data-mono text-data-mono text-primary">TM-78295</td>
-<td className="px-sm py-1 font-body-sm font-semibold">Swift Cargo Movers</td>
-<td className="px-sm py-1 font-data-mono text-body-sm">+91 91234-56789</td>
-<td className="px-sm py-1 text-center"><span className="px-1.5 py-0.5 bg-primary-fixed text-on-primary-fixed text-[10px] font-bold rounded">EC</span></td>
-<td className="px-sm py-1"><span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[11px] font-bold rounded flex items-center w-fit gap-1"><span className="w-1.5 h-1.5 bg-blue-600 rounded-full"></span> WARM</span></td>
-<td className="px-sm py-1 font-body-sm">Preeti Jain</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">Account Setup</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">09 Oct, 2023</td>
-<td className="px-sm py-1 font-body-sm text-on-surface-variant">4h ago</td>
-<td className="px-sm py-1 text-right">
-<button className="text-outline hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
-<span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-</button>
-</td>
-</tr>
 </tbody>
 </table>
 </div>
 
 <div className="h-10 bg-[#F0F2F5] border-t border-outline-variant flex items-center justify-between px-md shrink-0">
 <div className="text-label-caps text-on-surface-variant">
-                        Showing <span className="font-bold">1-10</span> of <span className="font-bold">1,284</span> Leads
-                    </div>
+  Showing <span className="font-bold">{(pagination.current_page - 1) * pagination.per_page + 1}-{Math.min(pagination.total, pagination.current_page * pagination.per_page)}</span> of <span className="font-bold">{pagination.total.toLocaleString()}</span> Leads
+</div>
 <div className="flex items-center gap-4">
 <div className="flex items-center gap-1">
 <span className="text-label-caps text-on-surface-variant">Rows per page:</span>
@@ -183,10 +117,18 @@ export const ThLeadManagementConsole: React.FC = () => {
 </select>
 </div>
 <div className="flex items-center gap-2">
-<button className="w-7 h-7 flex items-center justify-center rounded border border-outline-variant bg-surface hover:bg-surface-container-high disabled:opacity-50" disabled>
+<button 
+  className="w-7 h-7 flex items-center justify-center rounded border border-outline-variant bg-surface hover:bg-surface-container-high disabled:opacity-50" 
+  disabled={pagination.current_page <= 1}
+  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+>
 <span className="material-symbols-outlined text-[18px]" data-icon="chevron_left">chevron_left</span>
 </button>
-<button className="w-7 h-7 flex items-center justify-center rounded border border-outline-variant bg-surface hover:bg-surface-container-high">
+<button 
+  className="w-7 h-7 flex items-center justify-center rounded border border-outline-variant bg-surface hover:bg-surface-container-high disabled:opacity-50"
+  disabled={pagination.current_page >= pagination.last_page}
+  onClick={() => setCurrentPage(prev => Math.min(pagination.last_page, prev + 1))}
+>
 <span className="material-symbols-outlined text-[18px]" data-icon="chevron_right">chevron_right</span>
 </button>
 </div>

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGetTlDashboardQuery, useGetTlRosterQuery } from '../../services/api/webCrmApi';
+import { useGetTlDashboardQuery, useGetTlRosterQuery, useGetTargetQuery, useSetTargetMutation } from '../../services/api/webCrmApi';
 
 interface TeamMember {
   name: string;
@@ -33,8 +33,66 @@ export const TlOverviewDashboard: React.FC = () => {
   
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Targets states
+  const [thTargets, setThTargets] = useState<{
+    tldwSalesTarget: number;
+    tldwCampaignTarget: number;
+    tlwctSalesTarget: number;
+    tlwctCampaignTarget: number;
+  }>({
+    tldwSalesTarget: 200000,
+    tldwCampaignTarget: 1000,
+    tlwctSalesTarget: 550000,
+    tlwctCampaignTarget: 2500
+  });
+
+  const [allocationMode, setAllocationMode] = useState<'equal' | 'manual'>('equal');
+  const [manualTargets, setManualTargets] = useState<Record<string, { sales: string; campaign: string }>>({});
+
   const { data: realDashboard } = useGetTlDashboardQuery();
   const { data: realRosterData } = useGetTlRosterQuery();
+
+  // Backend target sync
+  const { data: thTargetsData } = useGetTargetQuery('tm_th_tl_targets');
+  const { data: callerTargetsData } = useGetTargetQuery(`tm_tl_caller_targets_${tlMode}`);
+  const [saveTarget] = useSetTargetMutation();
+
+  useEffect(() => {
+    if (thTargetsData?.value) {
+      setThTargets({
+        tldwSalesTarget: thTargetsData.value.tldwSalesTarget || 200000,
+        tldwCampaignTarget: thTargetsData.value.tldwCampaignTarget || 1000,
+        tlwctSalesTarget: thTargetsData.value.tlwctSalesTarget || 550000,
+        tlwctCampaignTarget: thTargetsData.value.tlwctCampaignTarget || 2500
+      });
+    }
+  }, [thTargetsData]);
+
+  useEffect(() => {
+    if (callerTargetsData?.value) {
+      const parsed = callerTargetsData.value;
+      const formatted: Record<string, { sales: string; campaign: string }> = {};
+      Object.keys(parsed).forEach(name => {
+        formatted[name] = {
+          sales: parsed[name].sales.toString(),
+          campaign: parsed[name].campaign.toString()
+        };
+      });
+      setManualTargets(formatted);
+    } else {
+      setManualTargets({});
+    }
+  }, [callerTargetsData]);
+
+  useEffect(() => {
+    // Load saved allocation mode
+    const savedMode = localStorage.getItem(`tm_tl_allocation_mode_${tlMode}`);
+    if (savedMode === 'manual' || savedMode === 'equal') {
+      setAllocationMode(savedMode as 'equal' | 'manual');
+    } else {
+      setAllocationMode('equal');
+    }
+  }, [tlMode]);
 
   const kpis = realDashboard?.data?.kpis;
   const activeCallersCount = kpis?.activeCallers ?? 7;
@@ -102,6 +160,71 @@ export const TlOverviewDashboard: React.FC = () => {
   ];
 
   const currentTeam = tlMode === 'dw' ? dwTeam : trMmTeam;
+
+  const tlSalesTarget = tlMode === 'dw' ? thTargets.tldwSalesTarget : thTargets.tlwctSalesTarget;
+  const tlCampaignTarget = tlMode === 'dw' ? thTargets.tldwCampaignTarget : thTargets.tlwctCampaignTarget;
+
+  const sumSales = currentTeam.reduce((acc, member) => {
+    if (member.status === 'Offline') return acc;
+    if (allocationMode === 'equal') {
+      const activeCount = currentTeam.filter(c => c.status !== 'Offline').length || 1;
+      return acc + Math.round(tlSalesTarget / activeCount);
+    } else {
+      const val = manualTargets[member.name]?.sales;
+      return acc + (val ? (parseFloat(val) || 0) : 0);
+    }
+  }, 0);
+
+  const sumCampaign = currentTeam.reduce((acc, member) => {
+    if (member.status === 'Offline') return acc;
+    if (allocationMode === 'equal') {
+      const activeCount = currentTeam.filter(c => c.status !== 'Offline').length || 1;
+      return acc + Math.round(tlCampaignTarget / activeCount);
+    } else {
+      const val = manualTargets[member.name]?.campaign;
+      return acc + (val ? (parseInt(val) || 0) : 0);
+    }
+  }, 0);
+
+  const achievedSales = tlMode === 'dw' ? 124000 : 312000;
+  const salesPct = Math.min(100, Math.round((achievedSales / tlSalesTarget) * 100));
+
+  const getCallerTargets = (member: TeamMember) => {
+    if (member.status === 'Offline') {
+      return { sales: 0, campaign: 0 };
+    }
+    
+    if (allocationMode === 'equal') {
+      const activeCount = currentTeam.filter(c => c.status !== 'Offline').length || 1;
+      return {
+        sales: Math.round(tlSalesTarget / activeCount),
+        campaign: Math.round(tlCampaignTarget / activeCount)
+      };
+    } else {
+      // manual mode
+      const key = `tm_tl_caller_targets_${tlMode}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed[member.name]) {
+            return {
+              sales: parsed[member.name].sales || 0,
+              campaign: parsed[member.name].campaign || 0
+            };
+          }
+        } catch (e) {}
+      }
+      
+      // Fallback to manualTargets state or split
+      const inState = manualTargets[member.name];
+      const activeCount = currentTeam.filter(c => c.status !== 'Offline').length || 1;
+      return {
+        sales: inState ? (parseFloat(inState.sales) || 0) : Math.round(tlSalesTarget / activeCount),
+        campaign: inState ? (parseInt(inState.campaign) || 0) : Math.round(tlCampaignTarget / activeCount)
+      };
+    }
+  };
 
   const handleCallerClick = (member: TeamMember) => {
     navigate('/tl/tl-caller-profile-detail', {
@@ -263,19 +386,19 @@ export const TlOverviewDashboard: React.FC = () => {
           <div>
             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Team Revenue Progress</span>
             <div className="text-xl font-extrabold text-gray-800 mt-1">
-              {tlMode === 'dw' ? '₹1,24,000' : '₹3,12,000'}
-              <span className="text-xs font-normal text-gray-400"> / {tlMode === 'dw' ? '₹2,00,000' : '₹5,50,000'}</span>
+              ₹{achievedSales.toLocaleString()}
+              <span className="text-xs font-normal text-gray-400"> / ₹{tlSalesTarget.toLocaleString()}</span>
             </div>
           </div>
           <div className="mt-3">
             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-[#F39C12] rounded-full" 
-                style={{ width: tlMode === 'dw' ? '62%' : '56.7%' }}
+                style={{ width: `${salesPct}%` }}
               ></div>
             </div>
             <div className="flex justify-between text-[10px] text-gray-400 font-semibold mt-1">
-              <span>{tlMode === 'dw' ? '62% achieved' : '56.7% achieved'}</span>
+              <span>{salesPct}% achieved</span>
               <span>11 days remaining</span>
             </div>
           </div>
@@ -473,6 +596,29 @@ export const TlOverviewDashboard: React.FC = () => {
                     <span className="font-semibold text-gray-700">{member.calls} calls · ₹{member.revenue}</span>
                   </div>
 
+                  {/* Caller dynamic targets */}
+                  {(() => {
+                    const targets = getCallerTargets(member);
+                    return (
+                      <div className="bg-gray-50 p-2 rounded text-[9px] border border-gray-100 space-y-1 mt-1.5">
+                        <div className="flex justify-between text-gray-600">
+                          <span>Sales Target:</span>
+                          <span className="font-bold text-gray-850">₹{targets.sales.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-650">
+                          <span>Campaign Target:</span>
+                          <span className="font-bold text-gray-850">{targets.campaign} Leads</span>
+                        </div>
+                        {targets.sales > 0 && (
+                          <div className="flex justify-between text-gray-400 border-t border-dashed border-gray-255 pt-1 mt-1">
+                            <span>Sales Progress:</span>
+                            <span className="font-bold text-[#F39C12]">{Math.round((member.revenue / targets.sales) * 100)}%</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   <div className="space-y-0.5">
                     <div className="flex justify-between font-semibold">
                       <span>{member.roleType === 'matchmaker' ? 'Jobs Assigned:' : 'Queue Depth:'}</span>
@@ -493,6 +639,241 @@ export const TlOverviewDashboard: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* TEAM TARGETS ALLOCATION CENTER */}
+      <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4">
+        <div className="flex justify-between items-center pb-2 border-b border-gray-150">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#F39C12] text-lg font-bold">track_changes</span>
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+              Team Targets Allocation Center ({tlMode === 'dw' ? 'Driver Welcome' : 'Transporter Welcome'})
+            </h3>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setAllocationMode('equal');
+                localStorage.setItem(`tm_tl_allocation_mode_${tlMode}`, 'equal');
+                // Automatically save equal splits in localStorage to update dashboard/roster
+                const activeCount = currentTeam.filter(c => c.status !== 'Offline').length || 1;
+                const eqSales = Math.round(tlSalesTarget / activeCount);
+                const eqCampaign = Math.round(tlCampaignTarget / activeCount);
+                const targetObj: Record<string, { sales: number; campaign: number }> = {};
+                currentTeam.forEach(member => {
+                  targetObj[member.name] = member.status === 'Offline' ? { sales: 0, campaign: 0 } : { sales: eqSales, campaign: eqCampaign };
+                });
+                localStorage.setItem(`tm_tl_caller_targets_${tlMode}`, JSON.stringify(targetObj));
+                triggerToast('Targets allocated equally among active callers!');
+              }}
+              className={`px-3 py-1 rounded text-[11px] font-bold transition-all ${
+                allocationMode === 'equal'
+                  ? 'bg-[#F39C12] text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Allocate Equally
+            </button>
+            <button
+              onClick={() => {
+                setAllocationMode('manual');
+                localStorage.setItem(`tm_tl_allocation_mode_${tlMode}`, 'manual');
+                // If manualTargets is empty, initialize it with the equal splits
+                const activeCount = currentTeam.filter(c => c.status !== 'Offline').length || 1;
+                const eqSales = Math.round(tlSalesTarget / activeCount);
+                const eqCampaign = Math.round(tlCampaignTarget / activeCount);
+                const initialManual: Record<string, { sales: string; campaign: string }> = {};
+                currentTeam.forEach(member => {
+                  if (!manualTargets[member.name]) {
+                    initialManual[member.name] = {
+                      sales: member.status === 'Offline' ? '0' : eqSales.toString(),
+                      campaign: member.status === 'Offline' ? '0' : eqCampaign.toString()
+                    };
+                  } else {
+                    initialManual[member.name] = manualTargets[member.name];
+                  }
+                });
+                setManualTargets(initialManual);
+              }}
+              className={`px-3 py-1 rounded text-[11px] font-bold transition-all ${
+                allocationMode === 'manual'
+                  ? 'bg-[#F39C12] text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Allocate Manually
+            </button>
+          </div>
+        </div>
+
+        {/* Master Pool Overview info banner */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-gray-50 p-3 rounded-lg border border-gray-150 text-xs">
+          <div>
+            <span className="text-gray-400 font-semibold block">My Master Targets (set by TH)</span>
+            <div className="font-bold text-gray-700 mt-0.5">
+              Sales: <span className="text-[#F39C12]">₹{tlSalesTarget.toLocaleString()}</span> | Campaign: <span className="text-[#F39C12]">{tlCampaignTarget.toLocaleString()} Leads</span>
+            </div>
+          </div>
+          <div>
+            <span className="text-gray-400 font-semibold block">Total Allocated to Callers</span>
+            <div className="font-bold mt-0.5">
+              Sales: <span className={sumSales > tlSalesTarget ? 'text-red-650' : 'text-gray-700'}>₹{sumSales.toLocaleString()}</span> | Campaign: <span className={sumCampaign > tlCampaignTarget ? 'text-red-650' : 'text-gray-700'}>{sumCampaign.toLocaleString()} Leads</span>
+            </div>
+          </div>
+          <div className="flex items-center md:justify-end">
+            {sumSales > tlSalesTarget || sumCampaign > tlCampaignTarget ? (
+              <span className="bg-red-50 text-red-700 border border-red-200 px-2 py-1 rounded text-[10px] font-extrabold flex items-center gap-1 animate-pulse">
+                <span className="material-symbols-outlined text-[14px]">warning</span> Over-Allocated! Exceeds Pool Limit
+              </span>
+            ) : (
+              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded text-[10px] font-extrabold flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">check_circle</span> Allocation Status: Valid
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Roster Inputs / Split display */}
+        {allocationMode === 'equal' ? (
+          <div className="bg-orange-50/20 border border-orange-100 rounded-lg p-3 text-xs space-y-1.5">
+            <p className="font-semibold text-gray-650">
+              💡 <strong>Equally Split Mode Active</strong>: Master targets are evenly distributed among all non-offline team members.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1.5">
+              {currentTeam.map((member, i) => {
+                const targets = getCallerTargets(member);
+                return (
+                  <div key={i} className="bg-white border border-gray-150 p-2 rounded flex flex-col justify-between">
+                    <div>
+                      <span className="font-bold text-gray-700 block">{member.name}</span>
+                      <span className="text-[10px] text-gray-450">{member.roleLabel} ({member.status})</span>
+                    </div>
+                    <div className="mt-2 text-[10px] font-semibold text-gray-500">
+                      <div>Sales: ₹{targets.sales.toLocaleString()}</div>
+                      <div>Campaign: {targets.campaign} Leads</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="border-b border-gray-150 text-gray-400 font-bold uppercase text-[9px]">
+                  <th className="py-2">Caller Name</th>
+                  <th className="py-2">Role & Status</th>
+                  <th className="py-2">Sales Target (₹)</th>
+                  <th className="py-2">Campaign Target (Leads)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-gray-700">
+                {currentTeam.map((member, i) => {
+                  const isOffline = member.status === 'Offline';
+                  const rowSales = manualTargets[member.name]?.sales ?? '0';
+                  const rowCampaign = manualTargets[member.name]?.campaign ?? '0';
+
+                  return (
+                    <tr key={i} className="hover:bg-gray-50/30">
+                      <td className="py-2 font-bold">{member.name}</td>
+                      <td className="py-2">
+                        <span className="text-[10px] text-gray-450 block">{member.roleLabel}</span>
+                        <span className={`text-[9px] font-bold ${isOffline ? 'text-red-500' : 'text-emerald-600'}`}>{member.status}</span>
+                      </td>
+                      <td className="py-2">
+                        <input
+                          type="number"
+                          disabled={isOffline}
+                          value={isOffline ? '0' : rowSales}
+                          onChange={(e) => {
+                            setManualTargets(prev => ({
+                              ...prev,
+                              [member.name]: {
+                                ...prev[member.name],
+                                sales: e.target.value
+                              }
+                            }));
+                          }}
+                          placeholder="e.g. 50000"
+                          className="w-28 bg-white border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#F39C12] disabled:bg-gray-100 font-mono"
+                        />
+                      </td>
+                      <td className="py-2">
+                        <input
+                          type="number"
+                          disabled={isOffline}
+                          value={isOffline ? '0' : rowCampaign}
+                          onChange={(e) => {
+                            setManualTargets(prev => ({
+                              ...prev,
+                              [member.name]: {
+                                ...prev[member.name],
+                                campaign: e.target.value
+                              }
+                            }));
+                          }}
+                          placeholder="e.g. 200"
+                          className="w-28 bg-white border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#F39C12] disabled:bg-gray-100 font-mono"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={() => {
+              if (sumSales > tlSalesTarget) {
+                alert(`Cannot publish targets: Total allocated sales target (₹${sumSales.toLocaleString()}) exceeds the Team Leader master limit of ₹${tlSalesTarget.toLocaleString()} set by Telecalling Head!`);
+                return;
+              }
+              if (sumCampaign > tlCampaignTarget) {
+                alert(`Cannot publish targets: Total allocated campaign target (${sumCampaign.toLocaleString()}) exceeds the Team Leader master limit of ${tlCampaignTarget.toLocaleString()} leads set by Telecalling Head!`);
+                return;
+              }
+
+              // Compile and save targets
+              const targetObj: Record<string, { sales: number; campaign: number }> = {};
+              currentTeam.forEach(member => {
+                if (member.status === 'Offline') {
+                  targetObj[member.name] = { sales: 0, campaign: 0 };
+                } else if (allocationMode === 'equal') {
+                  const activeCount = currentTeam.filter(c => c.status !== 'Offline').length || 1;
+                  targetObj[member.name] = {
+                    sales: Math.round(tlSalesTarget / activeCount),
+                    campaign: Math.round(tlCampaignTarget / activeCount)
+                  };
+                } else {
+                  const inState = manualTargets[member.name];
+                  targetObj[member.name] = {
+                    sales: inState ? (parseFloat(inState.sales) || 0) : 0,
+                    campaign: inState ? (parseInt(inState.campaign) || 0) : 0
+                  };
+                }
+              });
+
+              saveTarget({ key: `tm_tl_caller_targets_${tlMode}`, value: targetObj })
+                .unwrap()
+                .then(() => {
+                  localStorage.setItem(`tm_tl_caller_targets_${tlMode}`, JSON.stringify(targetObj));
+                  triggerToast('Team targets successfully published to the operational queue roster!');
+                })
+                .catch(() => {
+                  localStorage.setItem(`tm_tl_caller_targets_${tlMode}`, JSON.stringify(targetObj));
+                  triggerToast('Saved locally as fallback.');
+                });
+            }}
+            className="bg-[#F39C12] hover:bg-[#e08e0b] text-white px-4 py-2 rounded font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
+          >
+            <span className="material-symbols-outlined text-[16px]">publish</span>
+            <span>Publish Team Targets</span>
+          </button>
         </div>
       </section>
 

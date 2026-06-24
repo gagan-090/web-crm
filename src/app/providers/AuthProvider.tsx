@@ -4,17 +4,21 @@ import { API_BASE_URL } from '../../shared/constants/config';
 
 
 export interface User {
+  id?: number;
   name: string;
   email: string;
   role: Role;
   sub_role?: string | null;
   token?: string;
+  san_username?: string | null;
+  san_password?: string | null;
+  san_extension?: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, role: Role) => Promise<boolean>;
+  login: (email: string, role?: Role, password?: string) => Promise<User | null>;
   logout: () => void;
   switchRole: (role: Role) => void;
 }
@@ -40,7 +44,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, role: Role): Promise<boolean> => {
+  const login = async (email: string, role?: Role, password?: string): Promise<User | null> => {
     setIsLoading(true);
     try {
       const response = await fetch(`${API_BASE}/web-crm/login`, {
@@ -51,42 +55,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         body: JSON.stringify({
           email: email,
-          password: 'password123',
+          password: password || 'password123',
         })
       });
 
       if (response.ok) {
         const json = await response.json();
         if (json.status && json.token) {
+          const userRole = (json.user.role as Role) || role || Role.TH;
           const userSession: User = {
+            id: json.user.id,
             name: json.user.name,
             email: json.user.email,
-            role: json.user.role as Role,
+            role: userRole,
             sub_role: json.user.sub_role || null,
-            token: json.token
+            token: json.token,
+            san_username: json.user.san_username || null,
+            san_password: json.user.san_password || null,
+            san_extension: json.user.san_extension || null,
           };
           setUser(userSession);
           localStorage.setItem('tm_connect_user', JSON.stringify(userSession));
           setIsLoading(false);
-          return true;
+          return userSession;
         }
       }
+      setIsLoading(false);
+      return null;
     } catch (err) {
-      console.warn('[AUTH] Backend offline or login failed. Using simulated session:', err);
+      console.warn('[AUTH] Backend offline. Using simulated session:', err);
+      // Fallback to simulated login ONLY if backend is completely offline
+      const mockRole = role || Role.TH;
+      const mockUser: User = {
+        name: `Demo User (${mockRole})`,
+        email: email,
+        role: mockRole,
+        sub_role: mockRole === Role.TL ? 'Driver Welcome' : null,
+        token: 'mock_sanctum_token_12345'
+      };
+      setUser(mockUser);
+      localStorage.setItem('tm_connect_user', JSON.stringify(mockUser));
+      setIsLoading(false);
+      return mockUser;
     }
-
-    // Fallback to simulated login
-    const mockUser: User = {
-      name: `Demo User (${role})`,
-      email: email,
-      role: role,
-      sub_role: role === Role.TL ? 'Driver Welcome' : null,
-      token: 'mock_sanctum_token_12345'
-    };
-    setUser(mockUser);
-    localStorage.setItem('tm_connect_user', JSON.stringify(mockUser));
-    setIsLoading(false);
-    return true;
   };
 
   const logout = () => {

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useGetTargetQuery, useSetTargetMutation } from '../../services/api/webCrmApi';
 
 interface Campaign {
   id: string;
@@ -15,6 +16,11 @@ interface Campaign {
 export const ThGlobalCampaignConsole: React.FC = () => {
   const [consoleTab, setConsoleTab] = useState<'CAMPAIGNS' | 'QUEUE' | 'ANALYTICS' | 'QUALITY' | 'SPEND_ROI' | 'OVERRIDE_LOG' | 'TARGETS'>('CAMPAIGNS');
 
+  // Backend target sync
+  const { data: adminTargetsData } = useGetTargetQuery('tm_admin_th_targets');
+  const { data: tlTargetsData } = useGetTargetQuery('tm_th_tl_targets');
+  const [saveTarget] = useSetTargetMutation();
+
   // Target delegation states
   const [adminSalesTarget, setAdminSalesTarget] = useState(1000000);
   const [adminCampaignTarget, setAdminCampaignTarget] = useState(5000);
@@ -25,30 +31,22 @@ export const ThGlobalCampaignConsole: React.FC = () => {
   const [tlwctCampaignInput, setTlwctCampaignInput] = useState('2500');
 
   useEffect(() => {
-    // Load admin to TH targets
-    const adminSaved = localStorage.getItem('tm_admin_th_targets');
-    if (adminSaved) {
-      try {
-        const parsed = JSON.parse(adminSaved);
-        setAdminSalesTarget(parsed.salesTarget || 1000000);
-        setAdminCampaignTarget(parsed.campaignTarget || 5000);
-      } catch (e) {}
+    if (adminTargetsData?.value) {
+      setAdminSalesTarget(adminTargetsData.value.salesTarget || 1000000);
+      setAdminCampaignTarget(adminTargetsData.value.campaignTarget || 5000);
     }
+  }, [adminTargetsData]);
 
-    // Load TH to TL targets
-    const tlSaved = localStorage.getItem('tm_th_tl_targets');
-    if (tlSaved) {
-      try {
-        const parsed = JSON.parse(tlSaved);
-        setTldwSalesInput(parsed.tldwSalesTarget.toString());
-        setTldwCampaignInput(parsed.tldwCampaignTarget.toString());
-        setTlwctSalesInput(parsed.tlwctSalesTarget.toString());
-        setTlwctCampaignInput(parsed.tlwctCampaignTarget.toString());
-      } catch (e) {}
+  useEffect(() => {
+    if (tlTargetsData?.value) {
+      setTldwSalesInput(tlTargetsData.value.tldwSalesTarget.toString());
+      setTldwCampaignInput(tlTargetsData.value.tldwCampaignTarget.toString());
+      setTlwctSalesInput(tlTargetsData.value.tlwctSalesTarget.toString());
+      setTlwctCampaignInput(tlTargetsData.value.tlwctCampaignTarget.toString());
     }
-  }, [consoleTab]);
+  }, [tlTargetsData]);
 
-  const handlePublishTlTargets = (e: React.FormEvent) => {
+  const handlePublishTlTargets = async (e: React.FormEvent) => {
     e.preventDefault();
     const tldwS = parseFloat(tldwSalesInput);
     const tldwC = parseInt(tldwCampaignInput);
@@ -77,9 +75,7 @@ export const ThGlobalCampaignConsole: React.FC = () => {
       lastUpdated: new Date().toLocaleString()
     };
 
-    localStorage.setItem('tm_th_tl_targets', JSON.stringify(delegated));
-    
-    localStorage.setItem('tm_th_allocated_pool', JSON.stringify({
+    const pool = {
       totalSales: adminSalesTarget,
       totalCampaign: adminCampaignTarget,
       allocatedSales: tldwS + tlwctS,
@@ -89,9 +85,20 @@ export const ThGlobalCampaignConsole: React.FC = () => {
       tlwctSales: tlwctS,
       tlwctCampaign: tlwctC,
       lastUpdated: new Date().toLocaleString()
-    }));
+    };
 
-    alert('Delegated targets published successfully to DW & WCT Team Leaders!');
+    try {
+      await saveTarget({ key: 'tm_th_tl_targets', value: delegated }).unwrap();
+      await saveTarget({ key: 'tm_th_allocated_pool', value: pool }).unwrap();
+      
+      localStorage.setItem('tm_th_tl_targets', JSON.stringify(delegated));
+      localStorage.setItem('tm_th_allocated_pool', JSON.stringify(pool));
+      alert('Delegated targets published successfully to DW & WCT Team Leaders!');
+    } catch (err) {
+      alert('Failed to save targets on backend. Storing locally instead.');
+      localStorage.setItem('tm_th_tl_targets', JSON.stringify(delegated));
+      localStorage.setItem('tm_th_allocated_pool', JSON.stringify(pool));
+    }
   };
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([

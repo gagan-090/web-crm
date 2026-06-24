@@ -1,125 +1,128 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useGetThCallLogQuery, useGetThSocialChatLogQuery } from '../../services/api/teleheadApi';
 
-interface CallRecord {
-  id: string;
-  dateTime: string;
-  caller: string;
-  process: 'DW' | 'TR' | 'MM' | 'SC';
-  context: string;
-  tmid: string;
-  duration: string;
-  outcome: 'Connected' | 'NR' | 'Busy' | 'Switch Off' | 'Converted';
-  disposition: string;
-  qcAudited: boolean;
-  qcScore: number | null;
-  recordingUrl: string;
-  leadSource?: string;
+// ── Types ──────────────────────────────────────────────────────────────────────
+interface LiveCallRecord {
+  id: number;
+  user_tm_id: string;
+  user_name: string;
+  user_mobile: string;
+  assigned_name: string;
+  process: string;
+  process_code: 'DW' | 'TR' | 'MM' | 'SC';
+  call_status: string | null;
+  outcome_label: string;
+  call_feedback: string;
+  call_remarks: string;
+  call_recording: string | null;
+  call_type: string;
+  match_status: string;
+  job_id: string | null;
+  created_at: string;
+  date_display: string;
 }
 
 interface ChatRecord {
-  id: string;
-  date: string;
-  caller: string;
-  process: 'DW' | 'TR' | 'MM' | 'SC';
-  contactName: string;
-  tmid: string;
-  lastMessage: string;
-  messageCount: number;
-  channel: 'WhatsApp' | 'SMS';
-  leadSource?: string;
+  id: number;
+  assigned_id: number;
+  name: string;
+  mobile: string;
+  source: string;
+  role: string;
+  lead_remarks: string;
+  call_status: string;
+  call_feedbacks: string;
+  call_duration: number;
+  created_at: string;
+  updated_at: string;
 }
 
-interface ChatMessage {
-  sender: 'caller' | 'lead';
-  text: string;
-  timestamp: string;
-}
+// ── Process badge colour ───────────────────────────────────────────────────────
+const processBadgeClass = (code: string) => {
+  switch (code) {
+    case 'DW': return 'bg-green-500';
+    case 'TR': return 'bg-orange-500';
+    case 'MM': return 'bg-purple-500';
+    default:   return 'bg-teal-500';
+  }
+};
 
+// ── Outcome badge colour ───────────────────────────────────────────────────────
+const outcomeBadgeClass = (label: string) => {
+  switch (label) {
+    case 'Converted': return 'bg-green-100 text-green-800';
+    case 'Connected': return 'bg-blue-100 text-blue-800';
+    case 'Callback':  return 'bg-yellow-100 text-yellow-800';
+    default:          return 'bg-gray-100 text-gray-800';
+  }
+};
+
+
+
+
+// ══════════════════════════════════════════════════════════════════════════════
 export const ThGlobalCallChatLog: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'CALL' | 'CHAT'>('CALL');
-  const [playingCallId, setPlayingCallId] = useState<string | null>(null);
-  const [viewingChat, setViewingChat] = useState<ChatRecord | null>(null);
-  
-  // Filters state
+
+  // ── Filter state ─────────────────────────────────────────────────────────
   const [processFilter, setProcessFilter] = useState('ALL');
-  const [callerFilter, setCallerFilter] = useState('ALL');
+  const [callerFilter,  setCallerFilter]  = useState('ALL');
   const [outcomeFilter, setOutcomeFilter] = useState('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSources, setSelectedSources] = useState<string[]>([]);
-  const [showSourceDropdown, setShowSourceDropdown] = useState(false);
+  const [searchQuery,   setSearchQuery]   = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
 
-  // Selected lead slideout
-  const [selectedLead, setSelectedLead] = useState<CallRecord | null>(null);
+  // Debounce search — update after user stops typing 400ms
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    clearTimeout((window as any).__searchTimer);
+    (window as any).__searchTimer = setTimeout(() => {
+      setDebouncedSearch(val);
+      setPage(1);
+    }, 400);
+  };
 
-  // Mock call recordings
-  const calls: CallRecord[] = [
-    { id: 'c-1', dateTime: '2026-06-20 11:30', caller: 'Sonam', process: 'DW', context: 'Rajesh Kumar', tmid: 'DR-48291', duration: '03:12', outcome: 'Converted', disposition: 'Job Ready Pack Sold', qcAudited: true, qcScore: 88, recordingUrl: 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg', leadSource: 'META ADS' },
-    { id: 'c-2', dateTime: '2026-06-20 11:15', caller: 'Ravi', process: 'TR', context: 'Balaji Freight', tmid: 'TR-12098', duration: '05:40', outcome: 'Connected', disposition: 'Callback Scheduled', qcAudited: false, qcScore: null, recordingUrl: 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg', leadSource: 'GOOGLE ADS' },
-    { id: 'c-3', dateTime: '2026-06-20 10:45', caller: 'Rohit K.', process: 'MM', context: 'Swift Carriers Match', tmid: 'DR-50112', duration: '07:22', outcome: 'Converted', disposition: 'Placement Confirmed', qcAudited: true, qcScore: 94, recordingUrl: 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg', leadSource: 'ORGANIC' },
-    { id: 'c-4', dateTime: '2026-06-20 10:12', caller: 'Akash Thakur', process: 'SC', context: 'Om Transport Puncture Sathi', tmid: 'FM-00231', duration: '04:15', outcome: 'Connected', disposition: 'Interested', qcAudited: true, qcScore: 82, recordingUrl: 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg', leadSource: 'IG COMMENT' },
-    { id: 'c-5', dateTime: '2026-06-20 09:30', caller: 'Ankit Singh', process: 'DW', context: 'Suresh Yadav', tmid: 'DR-48190', duration: '01:10', outcome: 'NR', disposition: 'No Response', qcAudited: false, qcScore: null, recordingUrl: '', leadSource: 'FB COMMENT' },
-  ];
+  // ── Playing / slideout state ──────────────────────────────────────────────
+  const [playingId,    setPlayingId]    = useState<number | null>(null);
+  const [selectedCall, setSelectedCall] = useState<LiveCallRecord | null>(null);
 
-  // Mock chat records
-  const chats: ChatRecord[] = [
-    { id: 'ch-1', date: '2026-06-20 11:42', caller: 'Sonam', process: 'DW', contactName: 'Rajesh Kumar', tmid: 'DR-48291', lastMessage: 'Thank you, I have uploaded my Driving License screenshot.', messageCount: 8, channel: 'WhatsApp', leadSource: 'META ADS' },
-    { id: 'ch-2', date: '2026-06-20 11:28', caller: 'Ravi', process: 'TR', contactName: 'Garg Logistics', tmid: 'TR-12098', lastMessage: 'Please share the GST verification link again.', messageCount: 14, channel: 'WhatsApp', leadSource: 'GOOGLE ADS' },
-    { id: 'ch-3', date: '2026-06-20 10:50', caller: 'Pooja Pal', process: 'MM', contactName: 'Balaji Freight (Manoj)', tmid: 'JD-12034', lastMessage: 'Driver details shared. Checking availability.', messageCount: 5, channel: 'WhatsApp', leadSource: 'ORGANIC' },
-    { id: 'ch-4', date: '2026-06-20 09:15', caller: 'Akash Thakur', process: 'SC', contactName: 'Sharma Dhaba & Rest', tmid: 'FM-00231', lastMessage: 'Commission slab approved. Awaiting registration.', messageCount: 22, channel: 'WhatsApp', leadSource: 'IG COMMENT' },
-  ];
+  // ── Live API fetch ────────────────────────────────────────────────────────
+  const callParams = useMemo(() => ({
+    per_page: 25,
+    page,
+    process:  processFilter !== 'ALL' ? processFilter : undefined,
+    caller:   callerFilter  !== 'ALL' ? callerFilter  : undefined,
+    outcome:  outcomeFilter !== 'ALL' ? outcomeFilter : undefined,
+    search:   debouncedSearch || undefined,
+  }), [processFilter, callerFilter, outcomeFilter, debouncedSearch, page]);
 
-  // Mock chat conversation messages
-  const chatMessages: ChatMessage[] = [
-    { sender: 'caller', text: 'Hello, welcome to TruckMitr. Let me help you complete your driver onboarding.', timestamp: '10:05 AM' },
-    { sender: 'lead', text: 'Ji, what documents do I need to send?', timestamp: '10:12 AM' },
-    { sender: 'caller', text: 'Please send your DL and Aadhaar card images here.', timestamp: '10:14 AM' },
-    { sender: 'lead', text: 'I am sending DL now.', timestamp: '10:20 AM' },
-    { sender: 'lead', text: 'Thank you, I have uploaded my Driving License screenshot.', timestamp: '10:22 AM' },
-  ];
+  const { data: callLogData, isLoading, isFetching, isError, refetch } =
+    useGetThCallLogQuery(callParams, { pollingInterval: 60000 });
 
-  // Filtering Call Records
-  const filteredCalls = calls.filter(c => {
-    if (processFilter !== 'ALL' && c.process !== processFilter) return false;
-    if (callerFilter !== 'ALL' && c.caller !== callerFilter) return false;
-    if (outcomeFilter !== 'ALL' && c.outcome !== outcomeFilter) return false;
-    if (selectedSources.length > 0 && !selectedSources.includes(c.leadSource || 'ORGANIC')) return false;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        c.context.toLowerCase().includes(query) ||
-        c.tmid.toLowerCase().includes(query) ||
-        c.caller.toLowerCase().includes(query)
-      );
-    }
-    return true;
-  });
+  const { data: chatData, isLoading: chatLoading } =
+    useGetThSocialChatLogQuery({}, { skip: activeTab !== 'CHAT' });
 
-  // Filtering Chat Records
-  const filteredChats = chats.filter(ch => {
-    if (processFilter !== 'ALL' && ch.process !== processFilter) return false;
-    if (callerFilter !== 'ALL' && ch.caller !== callerFilter) return false;
-    if (selectedSources.length > 0 && !selectedSources.includes(ch.leadSource || 'ORGANIC')) return false;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        ch.contactName.toLowerCase().includes(query) ||
-        ch.tmid.toLowerCase().includes(query) ||
-        ch.caller.toLowerCase().includes(query)
-      );
-    }
-    return true;
-  });
+  const calls: LiveCallRecord[] = callLogData?.data ?? [];
+  const pagination = callLogData?.pagination ?? null;
+  const callers: string[] = callLogData?.callers ?? [];
+  const chats: ChatRecord[] = Array.isArray(chatData) ? chatData : [];
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const totalPages = pagination?.last_page ?? 1;
 
   return (
     <main className="bg-background p-md space-y-lg text-xs font-sans max-w-[1440px] mx-auto relative min-h-[600px]">
-      {/* Top Title & Navigation Tabs */}
+
+      {/* ── Title + Tabs ──────────────────────────────────────────────────── */}
       <section className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-md border-b border-outline-variant pb-xs">
         <div>
-          <h2 className="text-lg font-extrabold text-on-surface">Global Call & Chat Audit Log</h2>
-          <p className="text-[10px] text-outline font-semibold">System-wide monitoring with zero scope boundaries</p>
+          <h2 className="text-lg font-extrabold text-on-surface">Global Call &amp; Chat Audit Log</h2>
+          <p className="text-[10px] text-outline font-semibold">
+            System-wide monitoring with zero scope boundaries
+            {isFetching && <span className="ml-2 text-primary animate-pulse">↻ Refreshing…</span>}
+          </p>
         </div>
-        
-        {/* Navigation Tabs */}
+
         <div className="flex border border-outline-variant rounded-sm overflow-hidden select-none">
           <button
             onClick={() => setActiveTab('CALL')}
@@ -142,213 +145,244 @@ export const ThGlobalCallChatLog: React.FC = () => {
         </div>
       </section>
 
-      {/* Shared Filter Bar */}
-      <section className="bg-white p-sm border border-outline-variant rounded-sm flipkart-shadow grid grid-cols-1 sm:grid-cols-6 gap-sm items-center">
+      {/* ── Filter Bar ────────────────────────────────────────────────────── */}
+      <section className="bg-white p-sm border border-outline-variant rounded-sm flipkart-shadow grid grid-cols-1 sm:grid-cols-5 gap-sm items-end">
+        {/* Process */}
         <div>
           <label className="text-[9px] text-outline font-bold uppercase block mb-1">Process</label>
           <select
             value={processFilter}
-            onChange={(e) => setProcessFilter(e.target.value)}
+            onChange={(e) => { setProcessFilter(e.target.value); setPage(1); }}
             className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none"
           >
             <option value="ALL">All Processes</option>
-            <option value="DW">Driver Welcome</option>
-            <option value="TR">Transporter Welcome</option>
-            <option value="MM">Matchmaking</option>
+            <option value="DW">Driver Onboarding</option>
+            <option value="TR">Transporter Onboarding</option>
+            <option value="MM">Job Matching</option>
             <option value="SC">Special Categories</option>
           </select>
         </div>
 
+        {/* Caller Agent — populated from API */}
         <div>
-          <label className="text-[9px] text-outline font-bold uppercase block mb-1">Caller Agent</label>
+          <label className="text-[9px] text-outline font-bold uppercase block mb-1">
+            Caller Agent {callers.length > 0 && `(${callers.length})`}
+          </label>
           <select
             value={callerFilter}
-            onChange={(e) => setCallerFilter(e.target.value)}
+            onChange={(e) => { setCallerFilter(e.target.value); setPage(1); }}
             className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none"
           >
-            <option value="ALL">All Callers (19)</option>
-            <option value="Sonam">Sonam</option>
-            <option value="Ankit Singh">Ankit Singh</option>
-            <option value="Ravi">Ravi</option>
-            <option value="Rohit K.">Rohit K.</option>
-            <option value="Akash Thakur">Akash Thakur</option>
+            <option value="ALL">All Callers</option>
+            {callers.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </div>
 
+        {/* Outcome */}
         <div>
           <label className="text-[9px] text-outline font-bold uppercase block mb-1">Outcome</label>
           <select
             value={outcomeFilter}
-            onChange={(e) => setOutcomeFilter(e.target.value)}
+            onChange={(e) => { setOutcomeFilter(e.target.value); setPage(1); }}
             className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none"
           >
             <option value="ALL">All Outcomes</option>
-            <option value="Connected">Connected</option>
-            <option value="NR">No Response</option>
-            <option value="Busy">Busy</option>
-            <option value="Converted">Converted</option>
+            <option value="connected">Connected</option>
+            <option value="not_connected">NR / Not Connected</option>
+            <option value="callback_later">Callback Later</option>
           </select>
         </div>
 
-        {/* Lead Source Multi-Select Filter */}
-        <div className="relative">
-          <label className="text-[9px] text-outline font-bold uppercase block mb-1">Lead Source</label>
-          <button
-            type="button"
-            onClick={() => setShowSourceDropdown(!showSourceDropdown)}
-            className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none text-left flex justify-between items-center text-[11px]"
-          >
-            <span className="truncate">
-              {selectedSources.length === 0
-                ? 'All Sources'
-                : selectedSources.join(', ')}
-            </span>
-            <span className="material-symbols-outlined text-xs">arrow_drop_down</span>
-          </button>
-          
-          {showSourceDropdown && (
-            <div className="absolute left-0 right-0 mt-1 bg-white border border-outline-variant rounded-sm shadow-lg z-20 p-2 space-y-1 max-h-48 overflow-y-auto">
-              {['ORGANIC', 'META ADS', 'GOOGLE ADS', 'INSTAGRAM', 'FACEBOOK', 'FB COMMENT', 'IG COMMENT', 'MANUAL'].map(src => {
-                const checked = selectedSources.includes(src);
-                return (
-                  <label key={src} className="flex items-center gap-2 cursor-pointer hover:bg-surface-container-low p-1 rounded-sm select-none">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        if (checked) {
-                          setSelectedSources(prev => prev.filter(s => s !== src));
-                        } else {
-                          setSelectedSources(prev => [...prev, src]);
-                        }
-                      }}
-                      className="accent-primary"
-                    />
-                    <span className="font-semibold text-[10px]">{src}</span>
-                  </label>
-                );
-              })}
-              {selectedSources.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedSources([])}
-                  className="w-full text-center text-primary text-[10px] font-bold border-t border-outline-variant pt-1.5 mt-1 hover:underline"
-                >
-                  Clear All
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
+        {/* Global Search */}
         <div className="sm:col-span-2">
           <label className="text-[9px] text-outline font-bold uppercase block mb-1">Global Search</label>
           <input
             type="text"
-            placeholder="Search by TMID, Lead Name, or Phone..."
+            placeholder="Search by TMID, Lead Name, or Phone…"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none"
           />
         </div>
       </section>
 
-      {/* Tab 1: Call Log */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* TAB 1: CALL LOG                                                    */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'CALL' && (
         <section className="bg-white border border-outline-variant rounded-sm flipkart-shadow overflow-hidden">
+          {/* Header bar */}
           <div className="px-md py-sm bg-surface-container-low border-b border-outline-variant flex justify-between items-center">
-            <span className="font-bold text-outline text-[10px] uppercase">Recordings database</span>
-            <button className="text-primary font-bold hover:underline">Export call log (CSV)</button>
+            <div className="flex items-center gap-md">
+              <span className="font-bold text-outline text-[10px] uppercase">Recordings Database</span>
+              {pagination && (
+                <span className="text-[10px] text-outline">
+                  {pagination.total.toLocaleString()} records · Page {pagination.current_page} of {pagination.last_page}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => refetch()}
+              className="text-primary font-bold hover:underline flex items-center gap-xs text-[11px]"
+            >
+              <span className="material-symbols-outlined text-[14px]">refresh</span>
+              Refresh
+            </button>
           </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead className="bg-surface-container text-outline text-[10px] uppercase font-extrabold border-b border-outline-variant">
                 <tr>
                   <th className="px-md py-3 w-10"></th>
-                  <th className="px-md py-3">Date/Time</th>
-                  <th className="px-md py-3">Caller</th>
+                  <th className="px-md py-3">Date / Time</th>
+                  <th className="px-md py-3">Caller Agent</th>
                   <th className="px-md py-3">Process</th>
-                  <th className="px-md py-3">Lead / Context</th>
-                  <th className="px-md py-3">Duration</th>
-                  <th className="px-md py-3">Outcome</th>
-                  <th className="px-md py-3">Disposition</th>
-                  <th className="px-md py-3 text-center">QC Audited</th>
+                  <th className="px-md py-3">Lead / TMID</th>
+                  <th className="px-md py-3">Status</th>
+                  <th className="px-md py-3">Feedback</th>
+                  <th className="px-md py-3">Remarks</th>
+                  <th className="px-md py-3 text-center">Recording</th>
                 </tr>
               </thead>
+
               <tbody className="divide-y divide-outline-variant font-medium text-on-surface">
-                {filteredCalls.map(call => (
+                {/* Loading skeleton */}
+                {(isLoading || isFetching) && calls.length === 0 && (
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      {Array.from({ length: 9 }).map((_, j) => (
+                        <td key={j} className="px-md py-3">
+                          <div className="h-3 bg-surface-container rounded w-full" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+
+                {/* Error state */}
+                {isError && (
+                  <tr>
+                    <td colSpan={9} className="text-center py-xl">
+                      <div className="text-red-600 font-bold">Failed to load call log. Check backend connection.</div>
+                      <button onClick={() => refetch()} className="mt-sm text-primary underline font-bold">Retry</button>
+                    </td>
+                  </tr>
+                )}
+
+                {/* Data rows */}
+                {!isLoading && calls.map((call) => (
                   <React.Fragment key={call.id}>
                     <tr
-                      onClick={() => setSelectedLead(call)}
+                      onClick={() => setSelectedCall(call)}
                       className="hover:bg-surface-container transition-colors cursor-pointer"
                     >
+                      {/* Play button */}
                       <td className="px-md py-3" onClick={(e) => e.stopPropagation()}>
-                        {call.recordingUrl ? (
+                        {call.call_recording ? (
                           <button
-                            onClick={() => setPlayingCallId(playingCallId === call.id ? null : call.id)}
-                            className="material-symbols-outlined text-primary text-[18px] hover:scale-115 active:scale-95 transition-transform"
+                            title="Play recording"
+                            onClick={() => setPlayingId(playingId === call.id ? null : call.id)}
+                            className="material-symbols-outlined text-primary text-[20px] hover:scale-110 active:scale-95 transition-transform"
                           >
-                            {playingCallId === call.id ? 'pause_circle' : 'play_circle'}
+                            {playingId === call.id ? 'pause_circle' : 'play_circle'}
                           </button>
                         ) : (
-                          <span className="material-symbols-outlined text-outline opacity-40 text-[18px]">block</span>
+                          <span
+                            title="No recording"
+                            className="material-symbols-outlined text-outline opacity-30 text-[18px]"
+                          >
+                            mic_off
+                          </span>
                         )}
                       </td>
-                      <td className="px-md py-3 font-data-mono">{call.dateTime}</td>
-                      <td className="px-md py-3 font-bold">{call.caller}</td>
+
+                      {/* Date/Time — shifted to current */}
+                      <td className="px-md py-3 font-data-mono whitespace-nowrap">
+                        <span className="font-bold text-on-surface">{call.date_display}</span>
+                      </td>
+
+                      {/* Caller Agent */}
+                      <td className="px-md py-3 font-bold whitespace-nowrap">{call.assigned_name}</td>
+
+                      {/* Process badge */}
                       <td className="px-md py-3">
-                        <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-extrabold text-white ${
-                          call.process === 'DW' ? 'bg-green-500' :
-                          call.process === 'TR' ? 'bg-orange-500' :
-                          call.process === 'MM' ? 'bg-purple-500' : 'bg-teal-500'
-                        }`}>
-                          {call.process}
-                        </span>
-                      </td>
-                      <td className="px-md py-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold">{call.context}</span>
-                          {call.leadSource && call.leadSource !== 'ORGANIC' && (
-                            <span className="bg-red-50 text-red-700 text-[8px] font-extrabold px-1 py-0.2 rounded border border-red-200">
-                              {call.leadSource}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-outline font-data-mono">{call.tmid}</div>
-                      </td>
-                      <td className="px-md py-3 font-data-mono">{call.duration}</td>
-                      <td className="px-md py-3">
-                        <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-extrabold ${
-                          call.outcome === 'Converted' ? 'bg-green-100 text-green-800' :
-                          call.outcome === 'Connected' ? 'bg-blue-100 text-blue-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {call.outcome}
-                        </span>
-                      </td>
-                      <td className="px-md py-3 truncate max-w-[120px]" title={call.disposition}>
-                        {call.disposition}
-                      </td>
-                      <td className="px-md py-3 text-center">
-                        {call.qcAudited ? (
-                          <span className="text-green-600 font-extrabold flex items-center justify-center gap-xs">
-                            ✓ {call.qcScore}/100
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[9px] font-extrabold text-white ${processBadgeClass(call.process_code)}`}>
+                            {call.process_code}
                           </span>
+                          <span className="text-[9px] text-outline">{call.process}</span>
+                        </div>
+                      </td>
+
+                      {/* Lead / TMID */}
+                      <td className="px-md py-3">
+                        <div className="font-bold text-on-surface">{call.user_name}</div>
+                        <div className="font-data-mono text-[10px] text-primary">{call.user_tm_id}</div>
+                        {call.user_mobile && (
+                          <div className="text-[9px] text-outline">{call.user_mobile}</div>
+                        )}
+                      </td>
+
+                      {/* Outcome */}
+                      <td className="px-md py-3">
+                        <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-extrabold ${outcomeBadgeClass(call.outcome_label)}`}>
+                          {call.outcome_label}
+                        </span>
+                      </td>
+
+                      {/* Feedback */}
+                      <td className="px-md py-3 max-w-[130px]">
+                        <span className="block truncate" title={call.call_feedback}>
+                          {call.call_feedback || <span className="text-outline italic">—</span>}
+                        </span>
+                      </td>
+
+                      {/* Remarks */}
+                      <td className="px-md py-3 max-w-[150px]">
+                        <span className="block truncate text-on-surface-variant" title={call.call_remarks}>
+                          {call.call_remarks || <span className="text-outline italic">—</span>}
+                        </span>
+                      </td>
+
+                      {/* Recording link/icon */}
+                      <td className="px-md py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        {call.call_recording ? (
+                          <a
+                            href={call.call_recording}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary hover:underline font-bold text-[10px] flex items-center justify-center gap-0.5"
+                            title="Open recording"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">headphones</span>
+                            Listen
+                          </a>
                         ) : (
-                          <span className="text-outline italic">—</span>
+                          <span className="text-outline italic text-[10px]">No file</span>
                         )}
                       </td>
                     </tr>
-                    {/* Inline player drawer */}
-                    {playingCallId === call.id && (
+
+                    {/* Inline audio player */}
+                    {playingId === call.id && call.call_recording && (
                       <tr>
                         <td colSpan={9} className="bg-primary/5 px-md py-sm border-b border-outline-variant">
                           <div className="flex items-center gap-md">
-                            <span className="font-bold text-primary font-data-mono text-[10px]">INLINE AUDIO PLAYBACK:</span>
-                            <audio src={call.recordingUrl} controls autoPlay className="h-8 max-w-md w-full" />
+                            <span className="font-bold text-primary font-data-mono text-[10px] whitespace-nowrap">
+                              🎙 PLAYBACK — {call.user_name} ({call.user_tm_id})
+                            </span>
+                            <audio
+                              src={call.call_recording}
+                              controls
+                              autoPlay
+                              className="h-8 max-w-md w-full"
+                            />
                             <button
-                              onClick={() => setPlayingCallId(null)}
-                              className="text-[10px] font-bold text-red-600 underline"
+                              onClick={() => setPlayingId(null)}
+                              className="text-[10px] font-bold text-red-600 underline whitespace-nowrap"
                             >
                               Close Player
                             </button>
@@ -358,76 +392,118 @@ export const ThGlobalCallChatLog: React.FC = () => {
                     )}
                   </React.Fragment>
                 ))}
-                {filteredCalls.length === 0 && (
+
+                {/* Empty state */}
+                {!isLoading && !isFetching && !isError && calls.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="text-center text-outline py-xl font-bold">No calls match your filters.</td>
+                    <td colSpan={9} className="text-center text-outline py-xl font-bold">
+                      No call records match your filters.
+                    </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+
+          {/* ── Pagination ─────────────────────────────────────────────────── */}
+          {pagination && totalPages > 1 && (
+            <div className="px-md py-sm border-t border-outline-variant flex items-center justify-between bg-surface-container-low">
+              <span className="text-[10px] text-outline">
+                Showing {((page - 1) * pagination.per_page) + 1}–{Math.min(page * pagination.per_page, pagination.total)} of {pagination.total.toLocaleString()} records
+              </span>
+              <div className="flex items-center gap-xs">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => p - 1)}
+                  className="px-sm py-1 border border-outline-variant rounded-sm text-[10px] font-bold disabled:opacity-40 hover:bg-surface-container disabled:cursor-not-allowed"
+                >
+                  ← Prev
+                </button>
+                <span className="text-[10px] font-bold px-sm">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                  className="px-sm py-1 border border-outline-variant rounded-sm text-[10px] font-bold disabled:opacity-40 hover:bg-surface-container disabled:cursor-not-allowed"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
-      {/* Tab 2: Chat Log */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* TAB 2: CHAT LOG (Social Media)                                     */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'CHAT' && (
         <section className="bg-white border border-outline-variant rounded-sm flipkart-shadow overflow-hidden">
           <div className="px-md py-sm bg-surface-container-low border-b border-outline-variant">
-            <span className="font-bold text-outline text-[10px] uppercase">WhatsApp Conversation Archive</span>
+            <span className="font-bold text-outline text-[10px] uppercase">WhatsApp / Social Chat Archive</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead className="bg-surface-container text-outline text-[10px] uppercase font-extrabold border-b border-outline-variant">
                 <tr>
-                  <th className="px-md py-3">Date</th>
-                  <th className="px-md py-3">Caller</th>
-                  <th className="px-md py-3">Process</th>
-                  <th className="px-md py-3">Contact Name</th>
-                  <th className="px-md py-3">TMID</th>
-                  <th className="px-md py-3 w-96">Last Message</th>
-                  <th className="px-md py-3 text-center">Msgs</th>
-                  <th className="px-md py-3 text-right">Channel</th>
+                  <th className="px-md py-3">Date / Time</th>
+                  <th className="px-md py-3">Lead Name</th>
+                  <th className="px-md py-3">Mobile</th>
+                  <th className="px-md py-3">Source</th>
+                  <th className="px-md py-3">Role</th>
+                  <th className="px-md py-3 w-80">Last Remark</th>
+                  <th className="px-md py-3">Status</th>
+                  <th className="px-md py-3">Feedback</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant font-medium text-on-surface">
-                {filteredChats.map(chat => (
-                  <tr
-                    key={chat.id}
-                    onClick={() => setViewingChat(chat)}
-                    className="hover:bg-surface-container transition-colors cursor-pointer"
-                  >
-                    <td className="px-md py-3 font-data-mono">{chat.date}</td>
-                    <td className="px-md py-3 font-bold">{chat.caller}</td>
+                {chatLoading && (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      {Array.from({ length: 8 }).map((_, j) => (
+                        <td key={j} className="px-md py-3">
+                          <div className="h-3 bg-surface-container rounded w-full" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+                {!chatLoading && chats.map((chat) => (
+                  <tr key={chat.id} className="hover:bg-surface-container transition-colors">
+                    <td className="px-md py-3 font-data-mono whitespace-nowrap">
+                      {chat.created_at ? new Date(chat.created_at).toLocaleString('en-IN', {
+                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                      }) : '—'}
+                    </td>
+                    <td className="px-md py-3 font-bold">{chat.name}</td>
+                    <td className="px-md py-3 font-data-mono text-outline">{chat.mobile}</td>
                     <td className="px-md py-3">
-                      <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-extrabold text-white ${
-                        chat.process === 'DW' ? 'bg-green-500' :
-                        chat.process === 'TR' ? 'bg-orange-500' :
-                        chat.process === 'MM' ? 'bg-purple-500' : 'bg-teal-500'
-                      }`}>
-                        {chat.process}
+                      <span className="bg-red-50 text-red-700 text-[8px] font-extrabold px-1 py-0.5 rounded border border-red-200 uppercase">
+                        {chat.source?.replace('_', ' ') ?? '—'}
                       </span>
                     </td>
+                    <td className="px-md py-3 capitalize">{chat.role}</td>
+                    <td className="px-md py-3 max-w-xs truncate text-on-surface-variant" title={chat.lead_remarks}>
+                      {chat.lead_remarks || '—'}
+                    </td>
                     <td className="px-md py-3">
-                      <div className="flex items-center gap-1.5 font-bold">
-                        <span>{chat.contactName}</span>
-                        {chat.leadSource && chat.leadSource !== 'ORGANIC' && (
-                          <span className="bg-red-50 text-red-700 text-[8px] font-extrabold px-1 py-0.2 rounded border border-red-200">
-                            {chat.leadSource}
-                          </span>
-                        )}
-                      </div>
+                      <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-extrabold ${outcomeBadgeClass(
+                        chat.call_status === 'connected' ? 'Connected' : 'NR'
+                      )}`}>
+                        {chat.call_status?.replace('_', ' ') ?? '—'}
+                      </span>
                     </td>
-                    <td className="px-md py-3 font-data-mono text-outline">{chat.tmid}</td>
-                    <td className="px-md py-3 truncate max-w-xs font-normal text-on-surface-variant">
-                      {chat.lastMessage}
+                    <td className="px-md py-3 truncate max-w-[120px]" title={chat.call_feedbacks}>
+                      {chat.call_feedbacks || '—'}
                     </td>
-                    <td className="px-md py-3 text-center font-data-mono font-bold">{chat.messageCount}</td>
-                    <td className="px-md py-3 text-right font-bold text-green-600">{chat.channel}</td>
                   </tr>
                 ))}
-                {filteredChats.length === 0 && (
+                {!chatLoading && chats.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="text-center text-outline py-xl font-bold">No chats match your filters.</td>
+                    <td colSpan={8} className="text-center text-outline py-xl font-bold">
+                      No social chat records found.
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -436,105 +512,112 @@ export const ThGlobalCallChatLog: React.FC = () => {
         </section>
       )}
 
-      {/* Floating Read-Only Chat Modal */}
-      {viewingChat && (
-        <div className="fixed bottom-6 right-6 z-50 w-[380px] h-[520px] bg-white border border-outline-variant flipkart-shadow rounded-sm flex flex-col overflow-hidden">
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* CALL DETAIL SLIDE-OUT PANEL                                        */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {selectedCall && (
+        <div className="fixed inset-y-0 right-0 z-50 w-[420px] bg-white border-l border-outline-variant shadow-2xl flex flex-col">
           {/* Header */}
-          <div className="bg-primary p-md text-white flex justify-between items-center select-none">
+          <div className="bg-primary px-md py-sm text-white flex justify-between items-start">
             <div>
-              <h4 className="font-bold text-xs">{viewingChat.contactName}</h4>
-              <p className="text-[10px] opacity-80">{viewingChat.tmid} · Thread Owner: {viewingChat.caller}</p>
+              <h3 className="font-bold text-sm">{selectedCall.user_name}</h3>
+              <p className="text-[10px] opacity-80 font-data-mono">{selectedCall.user_tm_id}</p>
+              {selectedCall.user_mobile && (
+                <p className="text-[10px] opacity-70">{selectedCall.user_mobile}</p>
+              )}
             </div>
             <button
-              onClick={() => setViewingChat(null)}
-              className="material-symbols-outlined text-[18px] text-white hover:opacity-80"
+              onClick={() => setSelectedCall(null)}
+              className="material-symbols-outlined text-[20px] text-white hover:opacity-80"
             >
               close
             </button>
           </div>
 
-          {/* Messages body */}
-          <div className="flex-1 p-md space-y-sm overflow-y-auto bg-surface-container-lowest custom-scrollbar">
-            {chatMessages.map((msg, index) => (
-              <div
-                key={index}
-                className={`max-w-[80%] p-sm rounded-sm text-xs ${
-                  msg.sender === 'caller'
-                    ? 'bg-primary/10 text-on-surface ml-auto border-l-2 border-primary'
-                    : 'bg-surface-container text-on-surface border-l-2 border-outline'
-                }`}
-              >
-                <p className="font-medium">{msg.text}</p>
-                <span className="text-[8px] text-outline mt-xs block text-right font-data-mono">{msg.timestamp}</span>
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-md space-y-md">
+
+            {/* Meta grid */}
+            <div className="grid grid-cols-2 gap-xs text-xs">
+              {[
+                ['Date / Time',   selectedCall.date_display],
+                ['Caller Agent',  selectedCall.assigned_name],
+                ['Process Code',  selectedCall.process_code],
+                ['Process',       selectedCall.process],
+                ['Call Status',   selectedCall.call_status ?? '—'],
+                ['Outcome',       selectedCall.outcome_label],
+                ['Call Type',     selectedCall.call_type || '—'],
+                ['Match Status',  selectedCall.match_status || '—'],
+                ['Job ID',        selectedCall.job_id || '—'],
+              ].map(([label, value]) => (
+                <React.Fragment key={label}>
+                  <span className="text-outline font-semibold py-1 border-b border-outline-variant/30">{label}</span>
+                  <span className="font-bold text-on-surface py-1 border-b border-outline-variant/30 break-words">{value}</span>
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* Feedback */}
+            <div>
+              <p className="text-[9px] font-bold text-outline uppercase mb-1">Call Feedback</p>
+              <div className="bg-surface-container-low p-sm rounded-sm text-xs font-medium text-on-surface min-h-[40px]">
+                {selectedCall.call_feedback || <span className="text-outline italic">No feedback recorded.</span>}
               </div>
-            ))}
+            </div>
+
+            {/* Remarks */}
+            <div>
+              <p className="text-[9px] font-bold text-outline uppercase mb-1">Agent Remarks</p>
+              <div className="bg-surface-container-low p-sm rounded-sm text-xs font-medium text-on-surface min-h-[40px]">
+                {selectedCall.call_remarks || <span className="text-outline italic">No remarks recorded.</span>}
+              </div>
+            </div>
+
+            {/* Recording */}
+            <div>
+              <p className="text-[9px] font-bold text-outline uppercase mb-1">Call Recording</p>
+              {selectedCall.call_recording ? (
+                <div className="space-y-xs">
+                  <audio
+                    src={selectedCall.call_recording}
+                    controls
+                    className="w-full h-9"
+                  />
+                  <a
+                    href={selectedCall.call_recording}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary text-[10px] font-bold underline"
+                  >
+                    Open recording file ↗
+                  </a>
+                </div>
+              ) : (
+                <div className="bg-surface-container-low p-sm rounded-sm text-[10px] text-outline italic">
+                  No recording file available for this call.
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Footer: Read-only warning */}
-          <div className="p-sm bg-surface-container border-t border-outline-variant text-center select-none">
-            <p className="text-[10px] text-red-600 font-extrabold uppercase">
-              ⚠ Viewing as Telecalling Head — read-only
-            </p>
+          {/* Footer */}
+          <div className="p-md border-t border-outline-variant">
+            <button
+              onClick={() => setSelectedCall(null)}
+              className="w-full bg-primary text-white py-sm font-bold rounded-sm uppercase tracking-wider hover:opacity-90 transition-opacity"
+            >
+              Close Panel
+            </button>
           </div>
         </div>
       )}
 
-      {/* Lead Detail Slide-Out */}
-      {selectedLead && (
-        <div className="fixed inset-y-0 right-0 z-50 w-96 bg-white border-l border-outline-variant flipkart-shadow p-md flex flex-col justify-between">
-          <div className="space-y-md">
-            <div className="flex justify-between items-start border-b pb-xs border-outline-variant">
-              <div>
-                <h3 className="font-bold text-sm text-on-surface">{selectedLead.context}</h3>
-                <p className="font-data-mono text-outline text-[10px]">{selectedLead.tmid}</p>
-              </div>
-              <button
-                onClick={() => setSelectedLead(null)}
-                className="material-symbols-outlined text-outline hover:text-black"
-              >
-                close
-              </button>
-            </div>
-
-            <div className="space-y-sm text-xs">
-              <div className="grid grid-cols-2 py-xs border-b border-outline-variant/30">
-                <span className="text-outline font-semibold">Agent Caller:</span>
-                <span className="font-bold text-on-surface">{selectedLead.caller}</span>
-              </div>
-              <div className="grid grid-cols-2 py-xs border-b border-outline-variant/30">
-                <span className="text-outline font-semibold">Process:</span>
-                <span className="font-bold text-on-surface uppercase">{selectedLead.process}</span>
-              </div>
-              <div className="grid grid-cols-2 py-xs border-b border-outline-variant/30">
-                <span className="text-outline font-semibold">Call Duration:</span>
-                <span className="font-bold font-data-mono text-on-surface">{selectedLead.duration}</span>
-              </div>
-              <div className="grid grid-cols-2 py-xs border-b border-outline-variant/30">
-                <span className="text-outline font-semibold">Outcome Status:</span>
-                <span className="font-bold text-on-surface">{selectedLead.outcome}</span>
-              </div>
-              <div className="grid grid-cols-2 py-xs border-b border-outline-variant/30">
-                <span className="text-outline font-semibold">Call Disposition:</span>
-                <span className="font-bold text-on-surface">{selectedLead.disposition}</span>
-              </div>
-              <div className="py-xs">
-                <span className="text-outline font-semibold block mb-1">Interaction Notes:</span>
-                <p className="bg-surface-container-low p-sm rounded-sm font-medium text-on-surface-variant">
-                  Lead requested callback tomorrow to confirm pricing. Indicated standard plans are too expensive but welcomed upsell options.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t pt-md border-outline-variant select-none">
-            <button
-              onClick={() => setSelectedLead(null)}
-              className="w-full bg-primary text-white py-sm font-bold rounded-sm uppercase tracking-wider hover:opacity-90 active:scale-98 transition-transform"
-            >
-              Close Detail Panel
-            </button>
-          </div>
-        </div>
+      {/* Overlay when slideout open */}
+      {selectedCall && (
+        <div
+          className="fixed inset-0 z-40 bg-black/20"
+          onClick={() => setSelectedCall(null)}
+        />
       )}
     </main>
   );

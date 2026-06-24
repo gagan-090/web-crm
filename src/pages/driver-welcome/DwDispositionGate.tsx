@@ -1,38 +1,41 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { 
+  useGetDwLeadDetailQuery,
+  useGetDwDispositionOptionsQuery,
+  useSubmitDwFeedbackMutation,
+  useScheduleDwCallbackMutation
+} from '../../services/api/webCrmApi';
 
 export const DwDispositionGate: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
   const stateLead = location.state || {};
-  const isCampaign = stateLead.isCampaign || false;
-  const campaignContext = stateLead.campaignContext || null;
+  const userId = stateLead.userId || '';
 
   // Form States
-  const [outcome, setOutcome] = useState<'connected' | 'nr' | 'busy' | 'wrong' | 'off' | ''>('');
+  const [outcome, setOutcome] = useState<'connected' | 'not_connected' | 'callback_later' | ''>('');
   const [disposition, setDisposition] = useState<'interested' | 'not_interested' | 'callback' | 'already_subs' | ''>('');
   
   // Specific detail states
   const [selectedPlan, setSelectedPlan] = useState<'ready' | 'verified' | 'trusted' | ''>('');
   const [linkSentToggle, setLinkSentToggle] = useState<'yes' | 'no'>('no');
   const [rejectionReason, setRejectionReason] = useState('');
-  const [callbackDate, setCallbackDate] = useState('2026-06-20');
-  const [callbackTime, setCallbackTime] = useState('11:30');
+  const [callbackDate, setCallbackDate] = useState(new Date().toISOString().split('T')[0]);
+  const [callbackTime, setCallbackTime] = useState('12:00');
   const [finalNotes, setFinalNotes] = useState('');
-  const [escalateChoice, setEscalateChoice] = useState<'yes' | 'no' | ''>('');
-
-  // Campaign specific feedback states
-  const [tempUpdate, setTempUpdate] = useState<'HOT' | 'WARM' | 'COLD' | ''>('');
-  const [starRating, setStarRating] = useState<number>(0);
-
-  React.useEffect(() => {
-    if (campaignContext?.temperature) {
-      setTempUpdate(campaignContext.temperature);
-    }
-  }, [campaignContext]);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const { data: detailResponse } = useGetDwLeadDetailQuery(userId, { skip: !userId });
+  const { data: dispositionOptions } = useGetDwDispositionOptionsQuery();
+  const [submitFeedback] = useSubmitDwFeedbackMutation();
+  const [scheduleDwCallback] = useScheduleDwCallbackMutation();
+
+  const driverProfile = detailResponse?.data?.profile;
+  const leadName = driverProfile?.name || stateLead.name || 'Driver Lead';
+  const leadTmid = driverProfile?.tmid || stateLead.tmid || 'DR-48291';
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
@@ -41,23 +44,47 @@ export const DwDispositionGate: React.FC = () => {
     }, 3000);
   };
 
-  // Block exit check
   const handleExitBlocked = () => {
     triggerToast('⚠️ Exit blocked. You must save call disposition details before leaving.');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (outcome === 'connected' && disposition === 'interested' && selectedPlan) {
-      triggerToast('Marked as Converted ✓');
-    } else {
-      triggerToast('Disposition logged successfully');
+    if (!userId) return;
+
+    let dbFeedback = 'Ringing - No Answer';
+    if (outcome === 'connected') {
+      if (disposition === 'interested') dbFeedback = 'Agree for Subscription';
+      else if (disposition === 'not_interested') dbFeedback = rejectionReason || 'Not Interested';
+      else if (disposition === 'callback') dbFeedback = 'Busy Right Now';
+      else if (disposition === 'already_subs') dbFeedback = 'Already Subscribed';
+    } else if (outcome === 'not_connected') {
+      dbFeedback = 'Ringing - No Answer';
     }
-    
-    // Frictionless loop: reload queue or campaign queue
-    setTimeout(() => {
-      navigate(isCampaign ? '/dw/dw-campaign-leads' : '/dw/dw-call-queue');
-    }, 800);
+
+    try {
+      await submitFeedback({
+        user_id: Number(userId),
+        call_status: outcome,
+        call_feedback: dbFeedback,
+        call_remarks: finalNotes || 'Disposition submitted from Gated Screen',
+        call_duration: 0
+      }).unwrap();
+
+      if (disposition === 'callback' || outcome === 'callback_later') {
+        await scheduleDwCallback({
+          user_id: Number(userId),
+          reason: `Callback scheduled for ${callbackDate} ${callbackTime}. Notes: ${finalNotes}`
+        }).unwrap();
+      }
+
+      triggerToast('Disposition logged successfully ✓');
+      setTimeout(() => {
+        navigate('/dw/dw-call-queue');
+      }, 800);
+    } catch (err) {
+      triggerToast('Failed to save disposition.');
+    }
   };
 
   return (
@@ -79,7 +106,7 @@ export const DwDispositionGate: React.FC = () => {
           </span>
         </div>
         <p className="text-xs text-gray-500 mt-1">
-          Active Lead: <span className="text-gray-800 font-semibold">Suresh Yadav</span> · Monospace DR-48291
+          Active Lead: <span className="text-gray-800 font-semibold">{leadName}</span> · {leadTmid}
         </p>
       </div>
 
@@ -88,13 +115,11 @@ export const DwDispositionGate: React.FC = () => {
         {/* Step 1: Call Outcome */}
         <section className="space-y-3">
           <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">Step 1 — Call Outcome *</label>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {[
               { id: 'connected', label: 'Connected', icon: 'check_circle' },
-              { id: 'nr', label: 'No Response', icon: 'phone_disabled' },
-              { id: 'busy', label: 'Busy', icon: 'timer' },
-              { id: 'wrong', label: 'Wrong Num', icon: 'person_off' },
-              { id: 'off', label: 'Switch Off', icon: 'power_off' }
+              { id: 'not_connected', label: 'No Answer / NR', icon: 'phone_disabled' },
+              { id: 'callback_later', label: 'Callback Later', icon: 'timer' }
             ].map(o => {
               const isSelected = outcome === o.id;
               return (
@@ -119,7 +144,7 @@ export const DwDispositionGate: React.FC = () => {
           </div>
         </section>
 
-        {/* Step 2: Disposition (Visible only if outcome is connected) */}
+        {/* Step 2: Client Response */}
         {outcome === 'connected' && (
           <section className="space-y-3 animate-in fade-in duration-300">
             <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">Step 2 — Client Response *</label>
@@ -150,7 +175,7 @@ export const DwDispositionGate: React.FC = () => {
           </section>
         )}
 
-        {/* Detail Input Panels */}
+        {/* Interested Subscription Details */}
         {outcome === 'connected' && disposition === 'interested' && (
           <section className="bg-gray-50 p-4 border border-gray-200 rounded-xl space-y-4 text-xs animate-in fade-in duration-300">
             <div className="font-bold text-gray-700 uppercase tracking-wider">Subscription Selection *</div>
@@ -197,28 +222,25 @@ export const DwDispositionGate: React.FC = () => {
           </section>
         )}
 
+        {/* Not Interested Details */}
         {outcome === 'connected' && disposition === 'not_interested' && (
           <section className="bg-gray-50 p-4 border border-gray-200 rounded-xl space-y-3 text-xs animate-in fade-in duration-300">
             <label className="font-bold text-gray-700 block mb-1">Reason for Rejection *</label>
             <select 
               value={rejectionReason} 
               onChange={(e) => setRejectionReason(e.target.value)}
-              className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg outline-none text-xs"
+              className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg outline-none text-xs text-gray-800"
             >
               <option value="">Select a reason...</option>
-              <option value="expensive">Pricing feels too high</option>
-              <option value="competitor">Happy with competitor systems</option>
-              <option value="no_interest">Not interested in jobs right now</option>
-              <option value="no_smartphone">No smartphone access</option>
-              <option value="other">Other reason</option>
+              {dispositionOptions?.data?.feedbacks.map(f => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
             </select>
-            <div className="text-[11px] text-blue-700 bg-blue-50 border border-blue-100 p-2 rounded">
-              💡 Follow-up reminder will be scheduled on D+3 automatically.
-            </div>
           </section>
         )}
 
-        {outcome === 'connected' && disposition === 'callback' && (
+        {/* Callback Date/Time */}
+        {(disposition === 'callback' || outcome === 'callback_later') && (
           <section className="bg-gray-50 p-4 border border-gray-200 rounded-xl space-y-3 text-xs animate-in fade-in duration-300">
             <label className="font-bold text-gray-700 block">Schedule Follow-up Call *</label>
             <div className="grid grid-cols-2 gap-3">
@@ -244,76 +266,10 @@ export const DwDispositionGate: React.FC = () => {
           </section>
         )}
 
-        {/* Campaign Specific — Temperature & Rating */}
-        {isCampaign && outcome && (
-          <section className="space-y-4 bg-red-50/30 p-4 rounded-xl border border-red-100 text-xs animate-in fade-in duration-300">
-            <div className="font-bold text-red-800 uppercase tracking-wider flex items-center gap-1">
-              <span className="material-symbols-outlined text-[16px]">campaign</span>
-              Campaign Disposition Details
-            </div>
-            
-            <div className="space-y-2">
-              <label className="font-bold text-gray-700 block">Temperature Update *</label>
-              <div className="flex gap-2">
-                {[
-                  { id: 'HOT', label: '🔥 Keep HOT' },
-                  { id: 'WARM', label: '~ Downgrade WARM' },
-                  { id: 'COLD', label: '❄ Downgrade COLD' }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setTempUpdate(t.id as any)}
-                    className={`flex-1 py-2 border rounded-lg font-bold text-center transition-all ${
-                      tempUpdate === t.id 
-                        ? 'bg-red-500 text-white border-red-500' 
-                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="font-bold text-gray-700 block">Lead Quality Rating (Optional)</label>
-              <div className="flex items-center gap-1.5">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    onClick={() => setStarRating(star)}
-                    className="text-lg transition-transform active:scale-125 focus:outline-none"
-                  >
-                    <span className={`material-symbols-outlined text-[24px] ${
-                      star <= starRating ? 'text-yellow-500 fill-current' : 'text-gray-300'
-                    }`}>
-                      star
-                    </span>
-                  </button>
-                ))}
-                {starRating > 0 && (
-                  <span className="text-[11px] font-bold text-gray-500 ml-2">({starRating} Star{starRating > 1 ? 's' : ''})</span>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Step 4: Remarks (Optional, All Paths) */}
+        {/* Step 4: Remarks */}
         {outcome && (
           <section className="space-y-2 text-xs">
-            <div className="flex justify-between items-center">
-              <label className="font-bold text-gray-700 block">General Remarks / Notes</label>
-              <button 
-                type="button"
-                onClick={() => { setFinalNotes('Client agreed to verify registration profile tonight.'); triggerToast('Mock Speech Recognition active'); }}
-                className="text-[10px] font-bold text-[#27AE60] flex items-center gap-0.5 hover:underline"
-              >
-                🎙️ Voice Input
-              </button>
-            </div>
+            <label className="font-bold text-gray-700 block">General Remarks / Notes</label>
             <textarea 
               value={finalNotes}
               onChange={(e) => setFinalNotes(e.target.value)}
@@ -321,30 +277,6 @@ export const DwDispositionGate: React.FC = () => {
               placeholder="Add call remarks..."
             />
           </section>
-        )}
-
-        {/* Funnel Escalation Alert */}
-        {outcome === 'nr' && (
-          <div className="bg-[#FFF9E6] border border-[#F2C94C] p-3 rounded-lg text-xs text-[#D35400] space-y-2">
-            <div className="font-bold">⚠️ Funnel Escalation Check</div>
-            <p className="text-[11px] leading-tight">This lead qualifies for funnel escalation (3 consecutive NR attempts). Escalate?</p>
-            <div className="flex gap-2">
-              <button 
-                type="button" 
-                onClick={() => setEscalateChoice('yes')}
-                className={`px-3 py-1 rounded text-[10px] font-bold ${escalateChoice === 'yes' ? 'bg-[#FB641B] text-white' : 'bg-white border border-gray-200'}`}
-              >
-                Yes, Escalate
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setEscalateChoice('no')}
-                className={`px-3 py-1 rounded text-[10px] font-bold ${escalateChoice === 'no' ? 'bg-gray-600 text-white' : 'bg-white border border-gray-200'}`}
-              >
-                No, Keep
-              </button>
-            </div>
-          </div>
         )}
 
         {/* Submit Actions */}
@@ -362,17 +294,13 @@ export const DwDispositionGate: React.FC = () => {
               !outcome || 
               (outcome === 'connected' && !disposition) ||
               (outcome === 'connected' && disposition === 'interested' && !selectedPlan) ||
-              (outcome === 'connected' && disposition === 'not_interested' && !rejectionReason) ||
-              (outcome === 'nr' && !escalateChoice) ||
-              (isCampaign && !tempUpdate)
+              (outcome === 'connected' && disposition === 'not_interested' && !rejectionReason)
             }
             className={`flex-grow h-12 font-bold text-xs rounded-lg flex items-center justify-center gap-1 shadow-md uppercase transition-all ${
               (!outcome || 
                (outcome === 'connected' && !disposition) ||
                (outcome === 'connected' && disposition === 'interested' && !selectedPlan) ||
-               (outcome === 'connected' && disposition === 'not_interested' && !rejectionReason) ||
-               (outcome === 'nr' && !escalateChoice) ||
-               (isCampaign && !tempUpdate))
+               (outcome === 'connected' && disposition === 'not_interested' && !rejectionReason))
                 ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
                 : 'bg-[#27AE60] hover:bg-[#219653] text-white'
             }`}

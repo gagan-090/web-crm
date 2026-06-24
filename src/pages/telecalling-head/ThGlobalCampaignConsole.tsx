@@ -343,7 +343,7 @@ export const ThGlobalCampaignConsole: React.FC = () => {
   ).toFixed(1);
 
   return (
-    <main className="flex flex-col h-full bg-background relative">
+    <main className="flex flex-col min-h-screen bg-background relative">
       {/* Page Header */}
       <section className="px-lg py-md bg-white border-b border-outline-variant flex justify-between items-center shrink-0">
         <div>
@@ -385,7 +385,7 @@ export const ThGlobalCampaignConsole: React.FC = () => {
 
       {/* 1. CAMPAIGNS TAB */}
       {consoleTab === 'CAMPAIGNS' && (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col">
           {/* KPI Summary Banner */}
           <section className="p-md grid grid-cols-1 md:grid-cols-4 gap-md shrink-0">
             <div className="admin-border bg-white p-lg shadow-sm rounded-sm flex items-center justify-between">
@@ -446,9 +446,9 @@ export const ThGlobalCampaignConsole: React.FC = () => {
           </section>
 
           {/* Main Console Layout */}
-          <section className="flex-1 overflow-hidden p-md grid grid-cols-1 lg:grid-cols-12 gap-md min-h-[400px]">
+          <section className="flex-1 p-md grid grid-cols-1 lg:grid-cols-12 gap-md min-h-[400px]">
             {/* Left Column: Campaigns List (8-cols) */}
-            <div className="lg:col-span-8 flex flex-col bg-white admin-border rounded-sm shadow-sm overflow-hidden">
+            <div className="lg:col-span-8 flex flex-col bg-white admin-border rounded-sm shadow-sm">
               {/* List Headers and Filters */}
               <div className="p-md admin-border-b bg-surface-container-low/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-sm">
                 <div className="flex border border-outline-variant rounded-sm overflow-hidden bg-white">

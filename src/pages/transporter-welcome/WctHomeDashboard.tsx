@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGetWctDashboardQuery } from '../../services/api/webCrmApi';
+import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
+import { useGetGateProgressQuery, useTriggerMockConversionMutation } from '../../services/api/incentiveApi';
 
 interface SLARow {
   id: string;
@@ -14,9 +16,9 @@ export const WctHomeDashboard: React.FC = () => {
   const navigate = useNavigate();
 
   const { data: realData } = useGetWctDashboardQuery();
+  const { data: progress } = useGetGateProgressQuery('twc');
+  const [triggerMockConversion] = useTriggerMockConversionMutation();
 
-  // Dashboard state for premium interactivity
-  const [monthlyRevenue, setMonthlyRevenue] = useState(11200);
   const [slaList, setSlaList] = useState<SLARow[]>([
     { id: '1', company: 'Sharma Logistics', tmid: 'TR-12094', registeredMinutesAgo: 107, slaMinutesLeft: 133 },
     { id: '2', company: 'Anand Transport Co', tmid: 'TR-12098', registeredMinutesAgo: 178, slaMinutesLeft: 62 }
@@ -34,11 +36,20 @@ export const WctHomeDashboard: React.FC = () => {
     }
   }, [realData]);
 
-  const baseSalary = 14000;
-  const gateThreshold = baseSalary * 2; // ₹28,000
-  const isGateCrossed = monthlyRevenue >= gateThreshold;
-  const remainingToGate = Math.max(0, gateThreshold - monthlyRevenue);
-  const gateProgressPercent = Math.min(100, Math.round((monthlyRevenue / gateThreshold) * 100));
+  // Fetch real gate progress from reactive incentive engine
+  const monthlyRevenue = progress?.accruedIncentive ?? 0;
+
+  // Base Salary Gate
+  const salaryGateThreshold = progress?.salaryGateThreshold ?? 19000;
+  const isSalaryGateCrossed = progress?.isSalaryGateUnlocked ?? false;
+  const remainingToSalaryGate = progress?.salaryGateRemaining ?? Math.max(0, salaryGateThreshold - monthlyRevenue);
+  const salaryGatePercent = progress?.salaryGatePercentage ?? 0;
+
+  // Incentive Gate
+  const incentiveGateThreshold = progress?.incentiveGateThreshold ?? 28000;
+  const isIncentiveGateCrossed = progress?.isIncentiveGateUnlocked ?? false;
+  const remainingToIncentiveGate = progress?.incentiveGateRemaining ?? Math.max(0, incentiveGateThreshold - monthlyRevenue);
+  const incentiveGatePercent = progress?.incentiveGatePercentage ?? 0;
 
   // Ticking SLA countdown
   useEffect(() => {
@@ -102,10 +113,10 @@ export const WctHomeDashboard: React.FC = () => {
         <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 p-2 rounded-lg text-xs select-none">
           <span className="font-bold text-gray-600">Simulate:</span>
           <button 
-            onClick={() => setMonthlyRevenue(prev => prev === 11200 ? 29500 : 11200)}
+            onClick={() => triggerMockConversion({ role: 'twc', planName: 'sp_posting' })}
             className="px-2.5 py-1 bg-white border rounded hover:bg-gray-100 transition-colors"
           >
-            Gate Status ({isGateCrossed ? 'Crossed' : 'Not Crossed'})
+            Simulate Conversion (+₹500 / ₹2,999 Value)
           </button>
           <button 
             onClick={() => {
@@ -173,46 +184,63 @@ export const WctHomeDashboard: React.FC = () => {
       {/* KPI Cards Row (4 cards) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         
-        {/* Card 1 — Monthly Revenue */}
+        {/* Card 1 — Base Salary Gate */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[150px]">
           <div>
-            <span className="text-xs text-gray-500 uppercase font-semibold">Monthly Revenue</span>
-            <div className="text-2xl font-bold text-gray-800 mt-1">
-              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹67,000</span>
+            <div className="flex justify-between items-start">
+              <span className={`text-xs uppercase font-semibold ${isSalaryGateCrossed ? 'text-[#27AE60]' : 'text-gray-500'}`}>
+                {isSalaryGateCrossed ? '✓ Salary Gate' : 'Base Salary Gate'}
+              </span>
+              {isSalaryGateCrossed && (
+                <span className="bg-[#EAFAF1] text-[#27AE60] text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">Secured</span>
+              )}
             </div>
-            <div className="text-xs text-gray-500 mt-1">26 days remaining this month</div>
+            <div className="text-2xl font-bold text-gray-800 mt-1">
+              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹{salaryGateThreshold.toLocaleString()}</span>
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {isSalaryGateCrossed 
+                ? 'Base salary secured for the cycle' 
+                : `₹${remainingToSalaryGate.toLocaleString()} more to secure base salary`
+              }
+            </div>
           </div>
           <div className="mt-3">
             <div className="w-full h-2 bg-gray-150 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-[#FB641B] rounded-full transition-all duration-500" 
-                style={{ width: `${(monthlyRevenue / 67000) * 100}%` }}
+                className={`h-full rounded-full transition-all duration-500 ${isSalaryGateCrossed ? 'bg-[#27AE60]' : 'bg-[#FB641B]'}`} 
+                style={{ width: `${salaryGatePercent}%` }}
               ></div>
             </div>
           </div>
         </div>
 
-        {/* Card 2 — 2× Salary Gate */}
+        {/* Card 2 — Incentives Gate */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[150px]">
           <div>
-            <span className={`text-xs uppercase font-semibold ${isGateCrossed ? 'text-[#27AE60]' : 'text-gray-500'}`}>
-              {isGateCrossed ? '✓ Gate Crossed' : '2× Salary Gate'}
-            </span>
+            <div className="flex justify-between items-start">
+              <span className={`text-xs uppercase font-semibold ${isIncentiveGateCrossed ? 'text-[#27AE60]' : 'text-gray-500'}`}>
+                {isIncentiveGateCrossed ? '✓ Incentives Active' : 'Incentives Gate'}
+              </span>
+              {isIncentiveGateCrossed && (
+                <span className="bg-[#EAFAF1] text-[#27AE60] text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">Active</span>
+              )}
+            </div>
             <div className="text-2xl font-bold text-gray-800 mt-1">
-              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹{gateThreshold.toLocaleString()}</span>
+              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹{incentiveGateThreshold.toLocaleString()}</span>
             </div>
             <div className="text-xs text-gray-500 mt-1">
-              {isGateCrossed 
-                ? 'Incentives active — every conversion now pays out' 
-                : `₹${remainingToGate.toLocaleString()} to unlock incentives`
+              {isIncentiveGateCrossed 
+                ? 'Payout active — conversions now earn incentives' 
+                : `₹${remainingToIncentiveGate.toLocaleString()} more to activate incentives (2x sale)`
               }
             </div>
           </div>
           <div className="mt-3">
             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
               <div 
-                className={`h-full rounded-full transition-all duration-500 ${isGateCrossed ? 'bg-[#27AE60]' : 'bg-[#FB641B]'}`} 
-                style={{ width: `${gateProgressPercent}%` }}
+                className={`h-full rounded-full transition-all duration-500 ${isIncentiveGateCrossed ? 'bg-[#27AE60]' : 'bg-[#FB641B]'}`} 
+                style={{ width: `${incentiveGatePercent}%` }}
               ></div>
             </div>
           </div>
@@ -240,6 +268,9 @@ export const WctHomeDashboard: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Incentive Gate Progress Widget */}
+      <GateProgressWidget />
 
       {/* Secondary Dashboard Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">

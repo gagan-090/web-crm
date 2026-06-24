@@ -108,11 +108,27 @@ export interface DwLeadDetailResponse {
       vehicle_type: string;
       license_number: string | null;
       license_type: string | null;
+      license_expiry: string | null;
       experience: string | null;
       profile_complete: boolean;
       registered_at: string;
       language: string;
       referral_code: string | null;
+      // Extended profile fields
+      dob: string | null;
+      sex: string | null;
+      father_name: string | null;
+      marital_status: string | null;
+      education: string | null;
+      email: string | null;
+      address: string | null;
+      pincode: string | null;
+      current_income: number | null;
+      expected_income: number | null;
+      job_placement: string | null;
+      preferred_location: string | null;
+      routes: string | null;
+      previous_employer: string | null;
     };
     plan_card: {
       has_plan: boolean;

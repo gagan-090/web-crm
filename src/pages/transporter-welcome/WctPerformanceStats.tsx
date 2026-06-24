@@ -8,10 +8,18 @@ export const WctPerformanceStats: React.FC = () => {
   const [monthlyRevenue, setMonthlyRevenue] = useState<number>(11200); 
 
   const baseSalary = 14000;
-  const gateThreshold = baseSalary * 2; // ₹28,000
-  const isGateCrossed = monthlyRevenue >= gateThreshold;
-  const remainingToGate = Math.max(0, gateThreshold - monthlyRevenue);
-  const gateProgressPercent = Math.min(100, Math.round((monthlyRevenue / gateThreshold) * 100));
+
+  // Base Salary Gate (Salary + 5k)
+  const salaryGateThreshold = baseSalary + 5000; // ₹19,000
+  const isSalaryGateCrossed = monthlyRevenue >= salaryGateThreshold;
+  const remainingToSalaryGate = Math.max(0, salaryGateThreshold - monthlyRevenue);
+  const salaryGatePercent = Math.min(100, Math.round((monthlyRevenue / salaryGateThreshold) * 100));
+
+  // Incentive Gate (2x salary)
+  const incentiveGateThreshold = baseSalary * 2; // ₹28,000
+  const isIncentiveGateCrossed = monthlyRevenue >= incentiveGateThreshold;
+  const remainingToIncentiveGate = Math.max(0, incentiveGateThreshold - monthlyRevenue);
+  const incentiveGatePercent = Math.min(100, Math.round((monthlyRevenue / incentiveGateThreshold) * 100));
 
   // WCT Incentive calculations
   // Free Plan (pipeline): 4 qty @ ₹20 = ₹80
@@ -90,19 +98,25 @@ export const WctPerformanceStats: React.FC = () => {
 
       {/* Simulator Quick Toggles */}
       <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl flex items-center justify-between text-xs select-none">
-        <span className="font-semibold text-gray-600">Simulate Salary Gate Target:</span>
+        <span className="font-semibold text-gray-600">Simulate Salary/Incentive Gate Target:</span>
         <div className="flex gap-2">
           <button 
-            onClick={() => setMonthlyRevenue(11200)}
-            className={`px-3 py-1 rounded border transition-colors ${monthlyRevenue === 11200 ? 'bg-[#FB641B] text-white border-[#FB641B] font-bold' : 'bg-white text-gray-600 border-gray-200'}`}
+            onClick={() => setMonthlyRevenue(12000)}
+            className={`px-3 py-1 rounded border transition-colors ${monthlyRevenue === 12000 ? 'bg-[#FB641B] text-white border-[#FB641B] font-bold' : 'bg-white text-gray-600 border-gray-200'}`}
           >
-            Under Gate (₹11,200)
+            Under Gates (₹12,000)
           </button>
           <button 
-            onClick={() => setMonthlyRevenue(29500)}
-            className={`px-3 py-1 rounded border transition-colors ${monthlyRevenue === 29500 ? 'bg-[#FB641B] text-white border-[#FB641B] font-bold' : 'bg-white text-gray-600 border-gray-200'}`}
+            onClick={() => setMonthlyRevenue(22500)}
+            className={`px-3 py-1 rounded border transition-colors ${monthlyRevenue === 22500 ? 'bg-[#FB641B] text-white border-[#FB641B] font-bold' : 'bg-white text-gray-600 border-gray-200'}`}
           >
-            Crossed Gate (₹29,500)
+            Salary Gate Crossed (₹22,500)
+          </button>
+          <button 
+            onClick={() => setMonthlyRevenue(31000)}
+            className={`px-3 py-1 rounded border transition-colors ${monthlyRevenue === 31000 ? 'bg-[#FB641B] text-white border-[#FB641B] font-bold' : 'bg-white text-gray-600 border-gray-200'}`}
+          >
+            Both Gates Crossed (₹31,000)
           </button>
         </div>
       </div>
@@ -216,28 +230,47 @@ export const WctPerformanceStats: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
             {/* Gate Status Card */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between space-y-4">
               <div>
-                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Salary Incentive Gate</span>
+                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block border-b border-gray-100 pb-1.5 mb-2">Gate Status Check</span>
                 
-                {isGateCrossed ? (
-                  <div className="bg-[#EAFAF1] text-[#27AE60] text-xs font-bold p-3 rounded-lg border border-[#27AE60]/20 mt-3 select-none flex items-center gap-1">
-                    ✓ Gate Crossed on 14 June — incentives active
+                {/* Base Salary Gate */}
+                <div className="space-y-1 mb-3">
+                  <div className="flex justify-between text-xs font-semibold text-gray-700">
+                    <span className="flex items-center gap-1.5">
+                      1. Base Salary Gate
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${isSalaryGateCrossed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                        {isSalaryGateCrossed ? 'Secured' : 'Locked'}
+                      </span>
+                    </span>
+                    <span>{salaryGatePercent.toFixed(0)}%</span>
                   </div>
-                ) : (
-                  <div className="mt-3">
-                    <div className="flex justify-between text-xs mb-1 font-semibold text-gray-700">
-                      <span>₹{monthlyRevenue.toLocaleString()} / ₹28,000 (Base Salary × 2)</span>
-                      <span>{gateProgressPercent}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-gray-400" style={{ width: `${gateProgressPercent}%` }}></div>
-                    </div>
-                    <p className="text-xs text-red-500 font-semibold mt-2">
-                      ⚠️ ₹{remainingToGate.toLocaleString()} to unlock incentives
-                    </p>
+                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${isSalaryGateCrossed ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${salaryGatePercent}%` }}></div>
                   </div>
-                )}
+                  <p className="text-[10px] text-gray-500 text-left">
+                    {isSalaryGateCrossed ? '✓ Base salary secured.' : `⚠️ ₹${remainingToSalaryGate.toLocaleString()} more required.`}
+                  </p>
+                </div>
+
+                {/* Incentive Gate */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs font-semibold text-gray-700">
+                    <span className="flex items-center gap-1.5">
+                      2. Incentives Gate
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${isIncentiveGateCrossed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                        {isIncentiveGateCrossed ? 'Active' : 'Locked'}
+                      </span>
+                    </span>
+                    <span>{incentiveGatePercent.toFixed(0)}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${isIncentiveGateCrossed ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${incentiveGatePercent}%` }}></div>
+                  </div>
+                  <p className="text-[10px] text-gray-500 text-left">
+                    {isIncentiveGateCrossed ? '✓ Conversion incentives active.' : `⚠️ ₹${remainingToIncentiveGate.toLocaleString()} more to activate incentives.`}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -245,7 +278,7 @@ export const WctPerformanceStats: React.FC = () => {
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden relative">
               
               {/* Locked Overlay */}
-              {!isGateCrossed && (
+              {!isIncentiveGateCrossed && (
                 <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center text-center p-4">
                   <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shadow-sm">
                     🔒
@@ -257,7 +290,7 @@ export const WctPerformanceStats: React.FC = () => {
 
               <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider flex justify-between items-center">
                 <span>Incentive Itemization</span>
-                {isGateCrossed && <span className="text-[#27AE60]">✓ Gate Unlocked</span>}
+                {isIncentiveGateCrossed && <span className="text-[#27AE60]">✓ Gate Unlocked</span>}
               </div>
               
               <table className="w-full text-xs text-left">

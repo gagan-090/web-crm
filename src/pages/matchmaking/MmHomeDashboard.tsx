@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
 import { useNavigate } from 'react-router-dom';
 import { useGetMmDashboardQuery, useGetMmJobsQuery } from '../../services/api/webCrmApi';
 
@@ -71,6 +72,11 @@ export const MmHomeDashboard: React.FC = () => {
           {toastMessage}
         </div>
       )}
+
+      {/* Incentive Gate Progress Widget */}
+      <section className="shrink-0 px-4 pt-2 pb-0">
+        <GateProgressWidget />
+      </section>
 
       {/* TOP ALERT STRIP - SLA RISK JOBS */}
       <section className="shrink-0 p-4 pb-2">

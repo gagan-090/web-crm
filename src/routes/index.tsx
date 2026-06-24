@@ -120,6 +120,14 @@ import LoginScreen from '../pages/special-categories/LoginScreen';
 import ScHomeDashboard from '../pages/special-categories/ScHomeDashboard';
 import AbscondingProtocolTracker from '../pages/special-categories/AbscondingProtocolTracker';
 
+// Incentive Engine Pages
+import MyIncentivePage from '../pages/incentive/MyIncentivePage';
+import PodIncentiveSummary from '../pages/team-lead/PodIncentiveSummary';
+import IncentiveCommandCenter from '../pages/telecalling-head/IncentiveCommandCenter';
+import PayrollExport from '../pages/telecalling-head/PayrollExport';
+import IncentiveConfiguration from '../pages/admin/IncentiveConfiguration';
+import ParityEquityDashboard from '../pages/admin/ParityEquityDashboard';
+
 const RoleHomeRedirect: React.FC = () => {
   const { role } = usePermissions();
 
@@ -266,6 +274,17 @@ export const AppRoutes: React.FC = () => {
           <Route path="sc/login-screen" element={<RoleGuard permission="calls:dial"><LoginScreen /></RoleGuard>} />
           <Route path="sc/sc-home-dashboard" element={<RoleGuard permission="calls:dial"><ScHomeDashboard /></RoleGuard>} />
           <Route path="sc/absconding-protocol-tracker" element={<RoleGuard permission="calls:dial"><AbscondingProtocolTracker /></RoleGuard>} />
+
+          {/* ── Incentive Engine Routes ── */}
+          <Route path="dw/my-incentive" element={<RoleGuard permission="calls:dial"><MyIncentivePage /></RoleGuard>} />
+          <Route path="wct/my-incentive" element={<RoleGuard permission="calls:dial"><MyIncentivePage /></RoleGuard>} />
+          <Route path="mm/my-incentive" element={<RoleGuard permission="calls:dial"><MyIncentivePage /></RoleGuard>} />
+          <Route path="sc/my-incentive" element={<RoleGuard permission="calls:dial"><MyIncentivePage /></RoleGuard>} />
+          <Route path="tl/team-incentive" element={<RoleGuard permission="leads:view"><PodIncentiveSummary /></RoleGuard>} />
+          <Route path="th/incentive-command-center" element={<RoleGuard permission="leads:view"><IncentiveCommandCenter /></RoleGuard>} />
+          <Route path="th/payroll-export" element={<RoleGuard permission="leads:view"><PayrollExport /></RoleGuard>} />
+          <Route path="admin/incentive-config" element={<RoleGuard permission="admin:view"><IncentiveConfiguration /></RoleGuard>} />
+          <Route path="admin/parity-dashboard" element={<RoleGuard permission="admin:view"><ParityEquityDashboard /></RoleGuard>} />
         </Route>
 
         {/* Caller Layout - Focus dialer viewports */}

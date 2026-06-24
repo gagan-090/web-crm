@@ -8,6 +8,7 @@ import { useGlobalOverlays } from '../shared/context/GlobalOverlaysContext';
 import { useAuth } from '../app/providers/AuthProvider';
 import { Role } from '../shared/constants/roles';
 import { SanCtiProvider, CallControlBar, PostCallDispositionModal } from '../shared/components/cti';
+import ConversionConfirmationToast from '../shared/components/incentive/ConversionConfirmationToast';
 
 export const DashboardLayout: React.FC = () => {
   const { triggerCall } = useClickToCall();
@@ -113,6 +114,9 @@ export const DashboardLayout: React.FC = () => {
           <PostCallDispositionModal onDispositionComplete={handleDispositionComplete} />
         </>
       )}
+
+      {/* Incentive Engine — Global Conversion Toast (all roles) */}
+      <ConversionConfirmationToast />
     </div>
   );
 

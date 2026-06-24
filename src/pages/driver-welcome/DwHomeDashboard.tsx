@@ -1,10 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGetDwDashboardQuery } from '../../services/api/webCrmApi';
+import { useGetGateProgressQuery } from '../../services/api/incentiveApi';
+import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
 
 export const DwHomeDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { data: response, isLoading } = useGetDwDashboardQuery();
+  const { data: progress } = useGetGateProgressQuery('dwc');
 
   if (isLoading) {
     return (
@@ -37,13 +40,20 @@ export const DwHomeDashboard: React.FC = () => {
   const todayTarget = 1667; // target ₹50,000 / 30 days
   const todayEarningsPercent = Math.min(100, Math.round((todayEarnings / todayTarget) * 100));
 
-  // Salary Gate: base salary of ₹11,000, gate is 2x = ₹22,000
-  const baseSalary = 11000;
-  const gateThreshold = baseSalary * 2;
-  const monthlyRevenue = kpis.monthly_revenue;
-  const isGateCrossed = monthlyRevenue >= gateThreshold;
-  const remainingToGate = Math.max(0, gateThreshold - monthlyRevenue);
-  const gateProgressPercent = Math.min(100, Math.round((monthlyRevenue / gateThreshold) * 100));
+  // Fetch real gate progress from reactive incentive engine
+  const monthlyRevenue = progress?.accruedIncentive ?? 0;
+
+  // Base Salary Gate
+  const salaryGateThreshold = progress?.salaryGateThreshold ?? 24000;
+  const isSalaryGateCrossed = progress?.isSalaryGateUnlocked ?? false;
+  const remainingToSalaryGate = progress?.salaryGateRemaining ?? Math.max(0, salaryGateThreshold - monthlyRevenue);
+  const salaryGatePercent = progress?.salaryGatePercentage ?? 0;
+
+  // Incentive Gate
+  const incentiveGateThreshold = progress?.incentiveGateThreshold ?? 38000;
+  const isIncentiveGateCrossed = progress?.isIncentiveGateUnlocked ?? false;
+  const remainingToIncentiveGate = progress?.incentiveGateRemaining ?? Math.max(0, incentiveGateThreshold - monthlyRevenue);
+  const incentiveGatePercent = progress?.incentiveGatePercentage ?? 0;
 
   // Today progress bar color
   const getTodayBarColor = (pct: number) => {
@@ -106,55 +116,64 @@ export const DwHomeDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 2 — 2× Salary Gate */}
+        {/* Card 2 — Base Salary Gate */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px]">
           <div>
             <div className="flex justify-between items-start">
-              <span className={`text-xs uppercase font-semibold ${isGateCrossed ? 'text-[#27AE60]' : 'text-gray-500'}`}>
-                {isGateCrossed ? '✓ Gate Crossed' : '2× Salary Gate'}
+              <span className={`text-xs uppercase font-semibold ${isSalaryGateCrossed ? 'text-[#27AE60]' : 'text-gray-500'}`}>
+                {isSalaryGateCrossed ? '✓ Salary Gate' : 'Base Salary Gate'}
               </span>
-              {isGateCrossed && (
-                <span className="bg-[#EAFAF1] text-[#27AE60] text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">Active</span>
+              {isSalaryGateCrossed && (
+                <span className="bg-[#EAFAF1] text-[#27AE60] text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">Secured</span>
               )}
             </div>
             <div className="text-2xl font-bold text-gray-800 mt-1">
-              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹{gateThreshold.toLocaleString()}</span>
+              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹{salaryGateThreshold.toLocaleString()}</span>
             </div>
             <div className="text-xs text-gray-500 mt-1">
-              {isGateCrossed 
-                ? 'Incentives active — every conversion now pays out' 
-                : `₹${remainingToGate.toLocaleString()} to unlock incentives`
+              {isSalaryGateCrossed 
+                ? 'Base salary secured for the cycle' 
+                : `₹${remainingToSalaryGate.toLocaleString()} more to secure base salary`
               }
             </div>
           </div>
           <div className="mt-3">
             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
               <div 
-                className={`h-full rounded-full transition-all duration-500 ${isGateCrossed ? 'bg-[#27AE60]' : 'bg-[#828282]'}`} 
-                style={{ width: `${gateProgressPercent}%` }}
+                className={`h-full rounded-full transition-all duration-500 ${isSalaryGateCrossed ? 'bg-[#27AE60]' : 'bg-[#828282]'}`} 
+                style={{ width: `${salaryGatePercent}%` }}
               ></div>
             </div>
           </div>
         </div>
 
-        {/* Card 3 — Monthly Revenue */}
+        {/* Card 3 — Incentives Gate */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px]">
           <div>
-            <span className="text-xs text-gray-500 uppercase font-semibold">Monthly Revenue</span>
-            <div className="text-2xl font-bold text-gray-800 mt-1">
-              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹50,000</span>
+            <div className="flex justify-between items-start">
+              <span className={`text-xs uppercase font-semibold ${isIncentiveGateCrossed ? 'text-[#27AE60]' : 'text-gray-500'}`}>
+                {isIncentiveGateCrossed ? '✓ Incentives Active' : 'Incentives Gate'}
+              </span>
+              {isIncentiveGateCrossed && (
+                <span className="bg-[#EAFAF1] text-[#27AE60] text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">Active</span>
+              )}
             </div>
-            <div className="text-xs text-gray-500 mt-1">SLA target count and incentive wrap-up</div>
+            <div className="text-2xl font-bold text-gray-800 mt-1">
+              ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹{incentiveGateThreshold.toLocaleString()}</span>
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {isIncentiveGateCrossed 
+                ? 'Payout active — conversions now earn incentives' 
+                : `₹${remainingToIncentiveGate.toLocaleString()} more to activate incentives (2x sale)`
+              }
+            </div>
           </div>
           <div className="mt-3">
-            <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden relative flex items-center justify-center">
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-[#27AE60] rounded-full transition-all duration-500 absolute left-0 top-0" 
-                style={{ width: `${(monthlyRevenue / 50000) * 100}%` }}
+                className={`h-full rounded-full transition-all duration-500 ${isIncentiveGateCrossed ? 'bg-[#27AE60]' : 'bg-[#828282]'}`} 
+                style={{ width: `${incentiveGatePercent}%` }}
               ></div>
-              <span className="z-10 text-[10px] font-bold text-gray-700">
-                {((monthlyRevenue / 50000) * 100).toFixed(1)}%
-              </span>
             </div>
           </div>
         </div>
@@ -178,6 +197,9 @@ export const DwHomeDashboard: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Incentive Gate Progress Widget */}
+      <GateProgressWidget />
 
       {/* Secondary Dashboard Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">

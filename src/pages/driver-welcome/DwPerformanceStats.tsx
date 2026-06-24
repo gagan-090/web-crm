@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useGetDwPerformanceQuery } from '../../services/api/webCrmApi';
+import { useGetGateProgressQuery } from '../../services/api/incentiveApi';
 
 export const DwPerformanceStats: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'today' | 'this_week' | 'this_month'>('this_month');
@@ -29,16 +30,20 @@ export const DwPerformanceStats: React.FC = () => {
   const dispositions = data?.dispositions || [];
   const dailyTrend = data?.daily_trend || [];
   const monthly = data?.monthly || { revenue: 0, target: 50000, pct: 0 };
-  const salaryGate = data?.salary_gate || {
-    base_salary: 11000,
-    threshold: 22000,
-    achieved: 0,
-    cleared: false,
-    gap: 22000
-  };
+  const { data: progress } = useGetGateProgressQuery('dwc');
+  const monthlyRevenue = progress?.accruedIncentive ?? 0;
 
-  const isGateCrossed = salaryGate.cleared;
-  const gateProgressPercent = Math.min(100, Math.round((salaryGate.achieved / salaryGate.threshold) * 100));
+  // Base Salary Gate
+  const salaryGateThreshold = progress?.salaryGateThreshold ?? 24000;
+  const isSalaryGateCrossed = progress?.isSalaryGateUnlocked ?? false;
+  const remainingToSalaryGate = progress?.salaryGateRemaining ?? Math.max(0, salaryGateThreshold - monthlyRevenue);
+  const salaryGatePercent = progress?.salaryGatePercentage ?? 0;
+
+  // Incentive Gate
+  const incentiveGateThreshold = progress?.incentiveGateThreshold ?? 38000;
+  const isIncentiveGateCrossed = progress?.isIncentiveGateUnlocked ?? false;
+  const remainingToIncentiveGate = progress?.incentiveGateRemaining ?? Math.max(0, incentiveGateThreshold - monthlyRevenue);
+  const incentiveGatePercent = progress?.incentiveGatePercentage ?? 0;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
@@ -130,28 +135,47 @@ export const DwPerformanceStats: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           
           {/* Gate Status Card */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between space-y-4">
             <div>
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Salary Incentive Gate</span>
+              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block border-b border-gray-100 pb-1.5 mb-2">Gate Status Check</span>
               
-              {isGateCrossed ? (
-                <div className="bg-[#EAFAF1] text-[#27AE60] text-xs font-bold p-3 rounded-lg border border-[#27AE60]/20 mt-3 select-none flex items-center gap-1">
-                  ✓ Gate Crossed — incentives active
+              {/* Base Salary Gate */}
+              <div className="space-y-1 mb-3">
+                <div className="flex justify-between text-xs font-semibold text-gray-700">
+                  <span className="flex items-center gap-1.5">
+                    1. Base Salary Gate
+                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${isSalaryGateCrossed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                      {isSalaryGateCrossed ? 'Secured' : 'Locked'}
+                    </span>
+                  </span>
+                  <span>{salaryGatePercent.toFixed(0)}%</span>
                 </div>
-              ) : (
-                <div className="mt-3">
-                  <div className="flex justify-between text-xs mb-1 font-semibold text-gray-700">
-                    <span>₹{salaryGate.achieved.toLocaleString()} / ₹{salaryGate.threshold.toLocaleString()} (Salary × 2)</span>
-                    <span>{gateProgressPercent}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-gray-400" style={{ width: `${gateProgressPercent}%` }}></div>
-                  </div>
-                  <p className="text-xs text-red-500 font-semibold mt-2">
-                    ⚠️ ₹{salaryGate.gap.toLocaleString()} to unlock incentives
-                  </p>
+                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${isSalaryGateCrossed ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${salaryGatePercent}%` }}></div>
                 </div>
-              )}
+                <p className="text-[10px] text-gray-500 text-left">
+                  {isSalaryGateCrossed ? '✓ Base salary secured.' : `⚠️ ₹${remainingToSalaryGate.toLocaleString()} more required.`}
+                </p>
+              </div>
+
+              {/* Incentive Gate */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs font-semibold text-gray-700">
+                  <span className="flex items-center gap-1.5">
+                    2. Incentives Gate
+                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${isIncentiveGateCrossed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                      {isIncentiveGateCrossed ? 'Active' : 'Locked'}
+                    </span>
+                  </span>
+                  <span>{incentiveGatePercent.toFixed(0)}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${isIncentiveGateCrossed ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${incentiveGatePercent}%` }}></div>
+                </div>
+                <p className="text-[10px] text-gray-500 text-left">
+                  {isIncentiveGateCrossed ? '✓ Conversion incentives active.' : `⚠️ ₹${remainingToIncentiveGate.toLocaleString()} more to activate incentives.`}
+                </p>
+              </div>
             </div>
           </div>
 

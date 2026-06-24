@@ -4,6 +4,7 @@ import { useSubmitCtiFeedbackMutation } from '../../services/api/ctiApi';
 import { 
   useGetDwLeadDetailQuery, 
   useGetDwNextLeadQuery, 
+  useGetDwQueueQuery,
   useGetDwDispositionOptionsQuery,
   useSubmitDwFeedbackMutation,
   useScheduleDwCallbackMutation,
@@ -99,19 +100,38 @@ export const DwActiveCallFocus: React.FC = () => {
   const [dispositionNotes, setDispositionNotes] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Fetch queue list for the right sidebar
+  const { data: queueResponse } = useGetDwQueueQuery({ per_page: 15, filter: 'all' });
+  const nextLeads = queueResponse?.data?.leads || [];
+
+  // Ref to prevent dialing the same user during transition states
+  const lastDialedUserId = React.useRef<string | number | null>(null);
+
   // Listen for global disposition modal completion
   useEffect(() => {
-    const handleComplete = () => {
-      setUserId(''); // Clears userId to fetch the next lead from the queue
-      setSeconds(0);
+    const handleComplete = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const loadNext = customEvent.detail?.loadNext ?? true;
+      if (loadNext) {
+        setUserId(''); // Clears userId to fetch the next lead from the queue
+        setSeconds(0);
+      } else {
+        setTimeout(() => {
+          navigate('/dw/dw-call-queue');
+        }, 500);
+      }
     };
     window.addEventListener('san-disposition-complete', handleComplete);
     return () => window.removeEventListener('san-disposition-complete', handleComplete);
-  }, []);
+  }, [navigate]);
 
   // Auto-dial when lead details are loaded and CTI is idle
   useEffect(() => {
     if (leadPhone && leadPhone !== '00000 00000' && userId && callState === 'idle') {
+      if (lastDialedUserId.current === userId) {
+        return; // Skip auto-dialing since we already dialed this lead
+      }
+      lastDialedUserId.current = userId;
       dial(leadPhone, userId, leadName, leadTmid);
     }
   }, [userId, leadPhone, callState, dial, leadName, leadTmid]);
@@ -163,7 +183,7 @@ export const DwActiveCallFocus: React.FC = () => {
   };
 
   // Submit post call disposition
-  const handleDispositionSubmit = async () => {
+  const handleDispositionSubmit = async (loadNext: boolean) => {
     if (!userId) return;
 
     let ctiStatus = 'FAILED';
@@ -211,9 +231,16 @@ export const DwActiveCallFocus: React.FC = () => {
       }
 
       triggerToast('Call disposition saved successfully ✓');
-      setTimeout(() => {
-        navigate('/dw/dw-call-queue');
-      }, 800);
+      setShowPostCallModal(false);
+
+      if (loadNext) {
+        setUserId(''); // Clear active lead so the next lead in the queue is loaded
+        setSeconds(0);
+      } else {
+        setTimeout(() => {
+          navigate('/dw/dw-call-queue');
+        }, 500);
+      }
 
     } catch (err) {
       console.error('[API] Failed to submit disposition:', err);
@@ -798,14 +825,34 @@ export const DwActiveCallFocus: React.FC = () => {
               </button>
               
               <button
-                onClick={handleDispositionSubmit}
+                onClick={() => handleDispositionSubmit(false)}
                 disabled={
                   !outcome || 
                   (outcome === 'connected' && !connectedSubStatus) ||
                   (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
                   (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason)
                 }
-                className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                  (!outcome || 
+                   (outcome === 'connected' && !connectedSubStatus) ||
+                   (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
+                   (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason))
+                    ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                    : 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold'
+                }`}
+              >
+                Save & Close
+              </button>
+
+              <button
+                onClick={() => handleDispositionSubmit(true)}
+                disabled={
+                  !outcome || 
+                  (outcome === 'connected' && !connectedSubStatus) ||
+                  (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
+                  (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason)
+                }
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm ${
                   (!outcome || 
                    (outcome === 'connected' && !connectedSubStatus) ||
                    (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
@@ -814,13 +861,64 @@ export const DwActiveCallFocus: React.FC = () => {
                     : 'bg-[#27AE60] hover:bg-[#219653] text-white font-bold'
                 }`}
               >
-                Submit & Log Disposition
+                Save & Load Next Lead
               </button>
             </div>
 
           </div>
         </div>
       )}
+      {/* RIGHT COLUMN: Queue / Next Leads */}
+      <section className="w-[280px] border-l border-gray-200 flex flex-col bg-gray-50/50 shrink-0 overflow-y-auto p-4 select-none">
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+          Queue (Next Leads)
+        </h3>
+        
+        {nextLeads.length > 0 ? (
+          <div className="space-y-2">
+            {nextLeads.map((lead: any) => {
+              const isActive = userId === lead.id;
+              return (
+                <div 
+                  key={lead.id}
+                  onClick={() => {
+                    if (!isActive && callState === 'idle') {
+                      setUserId(lead.id);
+                      setSeconds(0);
+                    }
+                  }}
+                  className={`p-3 rounded-lg border text-xs transition-all cursor-pointer ${
+                    isActive 
+                      ? 'border-[#27AE60] bg-[#EAFAF1] font-bold text-[#27AE60] shadow-sm' 
+                      : 'border-gray-200 bg-white hover:bg-gray-50 text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="font-semibold truncate max-w-[140px]">{lead.name || 'Unknown'}</span>
+                    <span className="font-mono text-[9px] bg-gray-100 text-gray-500 px-1 py-0.5 rounded ml-1">
+                      {lead.tmid}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-1 flex justify-between">
+                    <span>{lead.mobile}</span>
+                    <span className="font-semibold text-gray-400 capitalize">{lead.last_status || 'Fresh'}</span>
+                  </div>
+                  {isActive && (
+                    <div className="text-[9px] text-[#27AE60] font-bold mt-1.5 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60] animate-pulse"></span>
+                      Currently Active
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center text-gray-400 italic text-xs py-8">
+            Queue is empty
+          </div>
+        )}
+      </section>
 
     </main>
   );

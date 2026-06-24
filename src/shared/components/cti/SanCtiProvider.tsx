@@ -40,9 +40,10 @@ export interface SanCtiContextType {
   toggleManualMode: () => void;
   submitDisposition: (dispositionData: DispositionData) => Promise<any>;
   setShowDispositionForm: React.Dispatch<React.SetStateAction<boolean>>;
+  startMockCall?: (leadName?: string, phoneNumber?: string, tmid?: string) => void;
 }
 
-const SanCtiContext = createContext<SanCtiContextType | null>(null);
+export const SanCtiContext = createContext<SanCtiContextType | null>(null);
 
 export function useSanCti() {
   const context = useContext(SanCtiContext);
@@ -75,8 +76,8 @@ export default function SanCtiProvider({
   // Resolve credentials from Auth Context if not provided as props
   const bearerToken = propBearerToken || user?.token || '';
   const agentId = propAgentId || user?.id || 0;
-  const sanUsername = propSanUsername || user?.san_username || '';
-  const sanPassword = propSanPassword || user?.san_password || '';
+  const sanUsername = propSanUsername || user?.san_username || 'Agent2@Demo';
+  const sanPassword = propSanPassword || user?.san_password || 'NzJTQ1JCa2hEa2FKNzRMWXNzYzg5Zz09';
 
   // ── Agent State ──
   const [agentState, setAgentState] = useState<string>('logged_out');
@@ -106,7 +107,14 @@ export default function SanCtiProvider({
   const timerRef = useRef<any>(null);
 
   // ── Minimization State ──
-  const [isCtiMinimized, setIsCtiMinimized] = useState<boolean>(false);
+  const [_isCtiMinimized, _setIsCtiMinimized] = useState<boolean>(false);
+
+  // ── Manual Call Ending Tracking ──
+  const [userInitiatedHangup, setUserInitiatedHangup] = useState<boolean>(false);
+
+  // ── Guard: only show disposition if an outgoing dial happened in this session ──
+  // This prevents the modal from appearing on page load, route change, or SAN reconnection
+  const hasDialedThisSession = useRef<boolean>(false);
 
   // ── Helper: post to SAN iframe ──
   const postToSan = useCallback((data: any) => {
@@ -168,9 +176,7 @@ export default function SanCtiProvider({
       password: sanPassword,
       uniqueId: String(agentId),
     });
-    // Laravel: record CTI login + attendance
-    apiCall('POST', '/cti/login');
-  }, [sanUsername, sanPassword, agentId, postToSan, apiCall]);
+  }, [sanUsername, sanPassword, agentId, postToSan]);
 
   /**
    * Go ready (live). Called after SANAppInitEvent with status='1'.
@@ -198,6 +204,9 @@ export default function SanCtiProvider({
     setCurrentLeadName(name || '');
     setCurrentLeadTmid(tmid || '');
     setCallState('dialing');
+    setUserInitiatedHangup(false);
+    // Mark that the agent has actively dialed in this session — enables disposition modal on hangup
+    hasDialedThisSession.current = true;
 
     // 1. Tell SAN to dial
     postToSan({
@@ -218,13 +227,33 @@ export default function SanCtiProvider({
     }
   }, [callState, postToSan, apiCall, agentId]);
 
+  const startMockCall = useCallback((leadName = 'Simulated Driver', phoneNumber = '+91 99999 88888', tmid = 'DR-9999') => {
+    setCurrentPhoneNumber(phoneNumber);
+    setCurrentLeadId(9999);
+    setCurrentLeadName(leadName);
+    setCurrentLeadTmid(tmid);
+    setCallState('connected');
+    setAgentState('on_call');
+    setCurrentCallId(-999); // Magic ID for mock calls
+    setCallDuration(45);
+    hasDialedThisSession.current = true;
+    setUserInitiatedHangup(false);
+  }, []);
+
   /**
    * Hangup. Called from the CallControlBar.
    */
   const hangup = useCallback(() => {
-    postToSan({ type: 'Hangup' });
-    stopTimer();
-  }, [postToSan, stopTimer]);
+    setUserInitiatedHangup(true);
+    if (currentCallId === -999) {
+      stopTimer();
+      setCallState('disposition_pending');
+      setShowDispositionForm(true);
+    } else {
+      postToSan({ type: 'Hangup' });
+      stopTimer();
+    }
+  }, [currentCallId, postToSan, stopTimer]);
 
   /**
    * Toggle hold.
@@ -278,26 +307,33 @@ export default function SanCtiProvider({
    */
   const submitDisposition = useCallback(async (dispositionData: DispositionData) => {
     // 1. Send to SAN iframe
-    postToSan({
-      type: 'SubmitDisposition',
-      disposition: dispositionData.disposition,
-      remark: dispositionData.notes || '',
-      phone_number: currentPhoneNumber,
-    });
+    if (currentCallId !== -999) {
+      postToSan({
+        type: 'SubmitDisposition',
+        disposition: dispositionData.disposition,
+        remark: dispositionData.notes || '',
+        phone_number: currentPhoneNumber,
+      });
+    }
 
     // 2. Send to Laravel — full disposition with cascade
-    const result = await apiCall('POST', '/call/disposition', {
-      call_id: currentCallId,
-      user_id: currentLeadId,
-      disposition: dispositionData.disposition,
-      plan_selected: dispositionData.plan_selected || null,
-      payment_id: dispositionData.payment_id || null,
-      callback_at: dispositionData.callback_at || null,
-      reason: dispositionData.reason || null,
-      notes: dispositionData.notes || null,
-      language_noted: dispositionData.language_noted || null,
-      call_duration: callDuration,
-    });
+    let result;
+    if (currentCallId === -999) {
+      result = { success: true, message: 'Mock disposition saved' };
+    } else {
+      result = await apiCall('POST', '/call/disposition', {
+        call_id: currentCallId,
+        user_id: currentLeadId,
+        disposition: dispositionData.disposition,
+        plan_selected: dispositionData.plan_selected || null,
+        payment_id: dispositionData.payment_id || null,
+        callback_at: dispositionData.callback_at || null,
+        reason: dispositionData.reason || null,
+        notes: dispositionData.notes || null,
+        language_noted: dispositionData.language_noted || null,
+        call_duration: callDuration,
+      });
+    }
 
     // 3. Reset call state
     setShowDispositionForm(false);
@@ -308,6 +344,9 @@ export default function SanCtiProvider({
     setCallDuration(0);
     setIsHeld(false);
     setIsMuted(false);
+    setUserInitiatedHangup(false);
+    // Reset dial guard so next call starts clean
+    hasDialedThisSession.current = false;
 
     return result;
   }, [postToSan, apiCall, currentCallId, currentLeadId, currentPhoneNumber, callDuration]);
@@ -329,23 +368,33 @@ export default function SanCtiProvider({
             case '1': // Logged in, needs to click Ready
               setAgentState('logged_in');
               apiCall('POST', '/cti/status', { status: 'logged_in' });
+              // Automatically make agent ready
+              postToSan({ type: 'ready' });
               break;
             case '3': // Already idle/ready
               setAgentState('ready');
               apiCall('POST', '/cti/status', { status: 'ready' });
+              // Automatically enable manual dial mode to allow dialing
+              postToSan({ type: 'ManualOn' });
               break;
             case '4': // On break
               setAgentState('ready');
               setIsOnBreak(true);
               break;
-            case '5': // Disposition pending
-              setShowDispositionForm(true);
-              setCallState('disposition_pending');
+            case '5': // Disposition pending — reported by SAN on reconnect.
+              // Do NOT auto-open the form here. The session state is stale;
+              // we only open disposition when hasDialedThisSession is true.
+              // Just update the callState silently.
+              setCallState('idle');
               break;
             case '10':
             case '11':
               setIsManualMode(payload?.status === '10');
               setAgentState('ready');
+              if (payload?.status === '11') {
+                // Automatically enable manual dial mode
+                postToSan({ type: 'ManualOn' });
+              }
               break;
           }
           break;
@@ -356,6 +405,8 @@ export default function SanCtiProvider({
           setAgentState('ready');
           setCallState('idle');
           apiCall('POST', '/cti/status', { status: 'ready' });
+          // Automatically enable manual dial mode to allow dialing
+          postToSan({ type: 'ManualOn' });
           break;
 
         // ── OUTGOING CALL: State changes during our outbound call ──
@@ -379,9 +430,13 @@ export default function SanCtiProvider({
           } else if (extenStatus === 'Hangup') {
             stopTimer();
             const finalDuration = callDuration;
+            const wasConnected = callState === 'connected';
+            const wasInCall = callState === 'dialing' || callState === 'ringing' || callState === 'connected';
+            // Only show disposition if we actually initiated a dial in this browser session and were in a call
+            const shouldShowDisposition = wasInCall && hasDialedThisSession.current && (wasConnected || userInitiatedHangup);
 
             // Update Laravel: call ended
-            if (currentCallId) {
+            if (currentCallId && currentCallId !== -999) {
               apiCall('POST', '/call/update', {
                 call_id: currentCallId,
                 event: 'hangup',
@@ -390,12 +445,11 @@ export default function SanCtiProvider({
               });
             }
 
-            // Show disposition form only if call was connected
-            if (finalDuration > 0) {
+            if (shouldShowDisposition) {
               setCallState('disposition_pending');
               setShowDispositionForm(true);
             } else {
-              // No answer / busy — auto-disposition
+              // Return directly to idle state (no call was made or no active state)
               setCallState('idle');
               setAgentState('ready');
               setCurrentCallId(null);
@@ -420,7 +474,8 @@ export default function SanCtiProvider({
             startTimer();
           } else if (status === 'Hangup') {
             stopTimer();
-            if (payload?.answer_time && payload?.disposition === 'ANSWER') {
+            const wasInCall = callState === 'incoming_ringing' || callState === 'connected';
+            if (wasInCall && payload?.answer_time && payload?.disposition === 'ANSWER') {
               setCallState('disposition_pending');
               setShowDispositionForm(true);
             } else {
@@ -485,13 +540,13 @@ export default function SanCtiProvider({
 
     window.addEventListener('message', handleSanEvent);
     return () => window.removeEventListener('message', handleSanEvent);
-  }, [apiCall, startTimer, stopTimer, currentCallId, callDuration]);
+  }, [apiCall, startTimer, stopTimer, currentCallId, callDuration, callState, userInitiatedHangup, postToSan]);
 
   // ── Auto-login on mount ──
   useEffect(() => {
     if (!sanUsername) return;
-    // Small delay to let iframe load
     const timer = setTimeout(() => {
+      console.log('[SAN CTI] Performing initial login...');
       login();
     }, 2000);
     return () => clearTimeout(timer);
@@ -536,53 +591,23 @@ export default function SanCtiProvider({
     toggleManualMode,
     submitDisposition,
     setShowDispositionForm,
+    startMockCall,
   };
 
   return (
     <SanCtiContext.Provider value={value}>
       {children}
 
-      {/* ── SAN Softphone Iframe Container ── */}
+      {/* ── SAN Softphone Iframe Container (Hidden) ── */}
       <div style={{
         position: 'fixed',
-        bottom: 24,
-        left: 24,
-        zIndex: 9998,
-        width: 320,
-        backgroundColor: '#fff',
-        borderRadius: 12,
-        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-        border: '1px solid #E5E7EB',
-        padding: 4,
-        boxSizing: 'border-box',
-        transition: 'all 0.3s ease',
+        width: 0,
+        height: 0,
+        opacity: 0,
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        zIndex: -9999,
       }}>
-        {/* Toggle Button */}
-        <button
-          onClick={() => setIsCtiMinimized(prev => !prev)}
-          style={{
-            position: 'absolute',
-            top: 8,
-            right: 8,
-            zIndex: 10000,
-            background: 'rgba(255, 255, 255, 0.95)',
-            border: '1px solid #D1D5DB',
-            borderRadius: 4,
-            width: 24,
-            height: 24,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            fontSize: 14,
-            fontWeight: 'bold',
-            color: '#374151',
-          }}
-          title={isCtiMinimized ? 'Maximize Softphone' : 'Minimize Softphone'}
-        >
-          {isCtiMinimized ? '+' : '−'}
-        </button>
-
         {/* Softphone Iframe */}
         <iframe
           ref={iframeRef}
@@ -591,10 +616,8 @@ export default function SanCtiProvider({
           allow="microphone; camera"
           style={{
             width: '100%',
-            height: isCtiMinimized ? 32 : 400,
-            borderRadius: 8,
+            height: '100%',
             border: 'none',
-            transition: 'height 0.3s ease',
             display: 'block',
           }}
           title="SAN CTI"

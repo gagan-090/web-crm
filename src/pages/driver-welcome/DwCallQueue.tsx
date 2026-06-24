@@ -300,24 +300,109 @@ export const DwCallQueue: React.FC = () => {
             </div>
 
             {/* Profile Card key-value grid */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Driver Profile</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                <div>
-                  <span className="text-gray-400 block uppercase text-[10px]">Vehicle Type</span>
-                  <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.vehicle_type || 'N/A'}</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Personal Info */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px]">person</span> Personal Details
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Father's Name</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block truncate" title={driverProfile.father_name || 'N/A'}>{driverProfile.father_name || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Date of Birth</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.dob || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Gender</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block capitalize">{driverProfile.sex || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Marital Status</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.marital_status || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Education</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.education || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Email</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block truncate" title={driverProfile.email || 'N/A'}>{driverProfile.email || 'N/A'}</span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-gray-400 block uppercase text-[9px]">Full Address</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block truncate" title={driverProfile.address || 'N/A'}>
+                      {driverProfile.address || 'N/A'} {driverProfile.pincode ? `(${driverProfile.pincode})` : ''}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-gray-400 block uppercase text-[10px]">License Type</span>
-                  <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.license_type || 'N/A'}</span>
+              </div>
+
+              {/* License & Professional */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px]">badge</span> Professional Info
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Vehicle Type</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.vehicle_type || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Experience</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.experience || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">License Type</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.license_type || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">License Number</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block font-mono">{driverProfile.license_number || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">License Expiry</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.license_expiry || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Prev Employer</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block truncate" title={driverProfile.previous_employer || 'N/A'}>{driverProfile.previous_employer || 'N/A'}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-gray-400 block uppercase text-[10px]">Experience</span>
-                  <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.experience || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400 block uppercase text-[10px]">Referral Code</span>
-                  <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.referral_code || 'None'}</span>
+              </div>
+
+              {/* Preferences & Earnings */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px]">settings_suggest</span> Preference & Earnings
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Current Income</span>
+                    <span className="font-bold text-[#27AE60] mt-0.5 block">{driverProfile.current_income ? `₹${driverProfile.current_income}` : 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Expected Income</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.expected_income ? `₹${driverProfile.expected_income}` : 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Placement Status</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block capitalize">{driverProfile.job_placement || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Referral Code</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block font-mono">{driverProfile.referral_code || 'None'}</span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-gray-400 block uppercase text-[9px]">Preferred Location</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block truncate" title={driverProfile.preferred_location || 'N/A'}>{driverProfile.preferred_location || 'N/A'}</span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-gray-400 block uppercase text-[9px]">Routes</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block truncate" title={driverProfile.routes || 'N/A'}>{driverProfile.routes || 'N/A'}</span>
+                  </div>
                 </div>
               </div>
             </div>

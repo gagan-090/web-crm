@@ -110,7 +110,7 @@ export const DwCallHistory: React.FC = () => {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border uppercase tracking-wide ${getStatusBadgeClass(r.call_status)}`}>
-                        {r.call_status.replace('_', ' ')}
+                        {r.call_status?.replace('_', ' ') || '—'}
                       </span>
                     </td>
                     <td className="px-6 py-4 font-medium text-gray-900">
@@ -156,7 +156,7 @@ export const DwCallHistory: React.FC = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {r.user_id ? (
+                      {r.id ? (
                         <button
                           onClick={() => handleCallNow(r)}
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#27AE60] hover:bg-[#219653] text-white text-xs font-bold rounded-lg shadow-sm active:scale-95 transition-transform"

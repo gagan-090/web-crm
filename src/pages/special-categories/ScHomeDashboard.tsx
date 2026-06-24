@@ -1,4 +1,5 @@
 import React from 'react';
+import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
 
 export const ScHomeDashboard: React.FC = () => {
   return (
@@ -17,6 +18,8 @@ export const ScHomeDashboard: React.FC = () => {
                     </div>
 </div>
 </div>
+
+<GateProgressWidget />
 
 <div className="grid grid-cols-1 md:grid-cols-12 gap-gutter">
 

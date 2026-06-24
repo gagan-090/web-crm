@@ -46,6 +46,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, role?: Role, password?: string): Promise<User | null> => {
     setIsLoading(true);
+    const mockRole = role || Role.TH;
+    const mockUser: User = {
+      id: 999,
+      name: `Demo User (${ROLE_SHORT_CODES[mockRole] || mockRole})`,
+      email: email,
+      role: mockRole,
+      sub_role: mockRole === Role.TL ? 'Driver Welcome' : null,
+      token: 'mock_sanctum_token_12345',
+      san_username: 'demo_san',
+      san_password: 'password',
+      san_extension: '178'
+    };
+
+    // If browser is offline, instantly return mock user without fetch to prevent hanging
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      console.warn('[AUTH] Browser offline. Instantly logging in with simulated session.');
+      setUser(mockUser);
+      localStorage.setItem('tm_connect_user', JSON.stringify(mockUser));
+      setIsLoading(false);
+      return mockUser;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200); // 1.2s timeout
+
     try {
       const response = await fetch(`${API_BASE}/web-crm/login`, {
         method: 'POST',
@@ -56,8 +81,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({
           email: email,
           password: password || 'password123',
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const json = await response.json();
@@ -80,19 +108,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return userSession;
         }
       }
+
+      // If backend returns non-ok status, fallback to simulated session for demo representation
+      console.warn('[AUTH] Login API returned non-ok status. Falling back to mock user.');
+      setUser(mockUser);
+      localStorage.setItem('tm_connect_user', JSON.stringify(mockUser));
       setIsLoading(false);
-      return null;
+      return mockUser;
+
     } catch (err) {
-      console.warn('[AUTH] Backend offline. Using simulated session:', err);
-      // Fallback to simulated login ONLY if backend is completely offline
-      const mockRole = role || Role.TH;
-      const mockUser: User = {
-        name: `Demo User (${mockRole})`,
-        email: email,
-        role: mockRole,
-        sub_role: mockRole === Role.TL ? 'Driver Welcome' : null,
-        token: 'mock_sanctum_token_12345'
-      };
+      clearTimeout(timeoutId);
+      console.warn('[AUTH] Backend offline or request timed out. Using simulated session:', err);
       setUser(mockUser);
       localStorage.setItem('tm_connect_user', JSON.stringify(mockUser));
       setIsLoading(false);

@@ -1049,6 +1049,89 @@ export const dynamicRoutes: RouteItem[] = [
     layout: 'dashboard',
     icon: 'badge',
     showInMenu: false
+  },
+
+  // ==================== INCENTIVE ENGINE (All Caller Roles) ====================
+  {
+    path: '/dw/my-incentive',
+    name: 'My Incentives',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'monetization_on',
+    showInMenu: true
+  },
+  {
+    path: '/wct/my-incentive',
+    name: 'My Incentives',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'monetization_on',
+    showInMenu: true
+  },
+  {
+    path: '/mm/my-incentive',
+    name: 'My Incentives',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'monetization_on',
+    showInMenu: true
+  },
+  {
+    path: '/sc/my-incentive',
+    name: 'My Incentives',
+    role: 'Special Categories',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'monetization_on',
+    showInMenu: true
+  },
+  {
+    path: '/tl/team-incentive',
+    name: 'Team Incentive',
+    role: 'Team Leader',
+    permission: 'leads:view',
+    layout: 'dashboard',
+    icon: 'group_work',
+    showInMenu: true
+  },
+  {
+    path: '/th/incentive-command-center',
+    name: 'Incentive Command Center',
+    role: 'Telecalling Head',
+    permission: 'leads:view',
+    layout: 'dashboard',
+    icon: 'hub',
+    showInMenu: true
+  },
+  {
+    path: '/th/payroll-export',
+    name: 'Payroll Export',
+    role: 'Telecalling Head',
+    permission: 'leads:view',
+    layout: 'dashboard',
+    icon: 'download',
+    showInMenu: true
+  },
+  {
+    path: '/admin/incentive-config',
+    name: 'Incentive Configuration',
+    role: 'System Admin',
+    permission: 'admin:view',
+    layout: 'dashboard',
+    icon: 'tune',
+    showInMenu: true
+  },
+  {
+    path: '/admin/parity-dashboard',
+    name: 'Parity & Equity Dashboard',
+    role: 'System Admin',
+    permission: 'admin:view',
+    layout: 'dashboard',
+    icon: 'balance',
+    showInMenu: true
   }
 ];
 

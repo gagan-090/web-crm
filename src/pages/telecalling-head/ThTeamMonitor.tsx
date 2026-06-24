@@ -130,7 +130,7 @@ export const ThTeamMonitor: React.FC = () => {
         <div className="lg:col-span-8 bg-white border border-outline-variant p-md rounded-sm flipkart-shadow">
           <div className="flex justify-between items-center mb-md border-b border-outline-variant pb-xs">
             <h3 className="font-headline-md text-xs font-extrabold uppercase text-on-surface">
-              Live Queue Depth by Region
+              Live Queue Depth by Process
             </h3>
             <button
               onClick={() => setIsRebalanceOpen(true)}
@@ -141,13 +141,13 @@ export const ThTeamMonitor: React.FC = () => {
           </div>
           <div className="space-y-sm">
             {[
-              { name: 'Linehaul North (DW)', pct: 45, count: 22, color: 'bg-green-500' },
-              { name: 'Market West (TR)', pct: 82, count: 41, color: 'bg-orange-500' },
-              { name: 'Contracted (MM)', pct: 30, count: 15, color: 'bg-purple-500' },
-              { name: 'Express Hub (SC)', pct: 75, count: 37, color: 'bg-teal-500' },
+              { name: 'Driver Welcome (DW)', pct: 45, count: 22, color: 'bg-green-500' },
+              { name: 'Transport Welcome (TR)', pct: 82, count: 41, color: 'bg-orange-500' },
+              { name: 'Match Making (MM)', pct: 30, count: 15, color: 'bg-purple-500' },
+              { name: 'Special Categories (SC)', pct: 75, count: 37, color: 'bg-teal-500' },
             ].map(queue => (
               <div key={queue.name} className="flex items-center gap-md">
-                <span className="w-32 font-bold truncate text-on-surface">{queue.name}</span>
+                <span className="w-48 font-bold text-on-surface shrink-0">{queue.name}</span>
                 <div className="flex-1 bg-surface-container h-4 rounded-sm relative overflow-hidden">
                   <div
                     className={`${queue.color} h-full transition-all duration-1000`}

@@ -198,10 +198,10 @@ export const ThHomeDashboard: React.FC = () => {
           </div>
           {selectedSegment && (
             <button
-              onClick={() => setSelectedSegment(null)}
+              onClick={() => { setSelectedSegment(null); setFeedFilter('ALL'); }}
               className="text-xs text-primary font-bold hover:underline"
             >
-              Clear Filter [Showing: {selectedSegment}]
+              ✕ Clear Filter [Showing: {selectedSegment}]
             </button>
           )}
         </div>
@@ -209,7 +209,7 @@ export const ThHomeDashboard: React.FC = () => {
         {/* Segmented Horizontal Progress Bar */}
         <div className="h-6 w-full bg-surface-container rounded-sm overflow-hidden flex cursor-pointer select-none">
           <div
-            onClick={() => setSelectedSegment('DW')}
+            onClick={() => { setSelectedSegment('DW'); setFeedFilter('DW'); }}
             className={`h-full bg-green-500 flex items-center justify-center text-white font-extrabold transition-all duration-300 ${selectedSegment === 'DW' ? 'opacity-100 ring-2 ring-inset ring-black scale-y-110' : selectedSegment ? 'opacity-40' : 'hover:opacity-90'
               }`}
             style={{ width: '25.7%' }} // ₹1,24,000 / ₹4,82,000
@@ -218,7 +218,7 @@ export const ThHomeDashboard: React.FC = () => {
             DW (₹1.24L)
           </div>
           <div
-            onClick={() => setSelectedSegment('TR')}
+            onClick={() => { setSelectedSegment('TR'); setFeedFilter('TR'); }}
             className={`h-full bg-orange-500 flex items-center justify-center text-white font-extrabold transition-all duration-300 ${selectedSegment === 'TR' ? 'opacity-100 ring-2 ring-inset ring-black scale-y-110' : selectedSegment ? 'opacity-40' : 'hover:opacity-90'
               }`}
             style={{ width: '45.2%' }} // ₹2,18,000 / ₹4,82,000
@@ -227,7 +227,7 @@ export const ThHomeDashboard: React.FC = () => {
             TR (₹2.18L)
           </div>
           <div
-            onClick={() => setSelectedSegment('SC')}
+            onClick={() => { setSelectedSegment('SC'); setFeedFilter('SC'); }}
             className={`h-full bg-teal-500 flex items-center justify-center text-white font-extrabold transition-all duration-300 ${selectedSegment === 'SC' ? 'opacity-100 ring-2 ring-inset ring-black scale-y-110' : selectedSegment ? 'opacity-40' : 'hover:opacity-90'
               }`}
             style={{ width: '5.8%' }} // ₹28,000 / ₹4,82,000
@@ -236,7 +236,7 @@ export const ThHomeDashboard: React.FC = () => {
             SC (₹28k)
           </div>
           <div
-            onClick={() => setSelectedSegment('MM')}
+            onClick={() => { setSelectedSegment('MM'); setFeedFilter('MM'); }}
             className={`h-full bg-purple-500 flex items-center justify-center text-white font-extrabold transition-all duration-300 ${selectedSegment === 'MM' ? 'opacity-100 ring-2 ring-inset ring-black scale-y-110' : selectedSegment ? 'opacity-40' : 'hover:opacity-90'
               }`}
             style={{ width: '23.3%' }} // ₹1,12,000 / ₹4,82,000
@@ -294,7 +294,12 @@ export const ThHomeDashboard: React.FC = () => {
       {/* 3. Four-Process Snapshot Row */}
       <section className="grid grid-cols-1 md:grid-cols-4 gap-md">
         {/* Card 1: Driver Welcome */}
-        <div className="bg-white border-t-[4px] border-t-green-500 border-x border-b border-outline-variant p-md rounded-sm flipkart-shadow flex flex-col justify-between h-[155px]">
+        <div
+          onClick={() => { setSelectedSegment(selectedSegment === 'DW' ? null : 'DW'); setFeedFilter(selectedSegment === 'DW' ? 'ALL' : 'DW'); }}
+          className={`bg-white border-t-[4px] border-t-green-500 border-x border-b border-outline-variant p-md rounded-sm flipkart-shadow flex flex-col justify-between h-[155px] cursor-pointer transition-all duration-300 ${
+            selectedSegment && selectedSegment !== 'DW' ? 'opacity-35 scale-[0.98]' : selectedSegment === 'DW' ? 'ring-2 ring-green-500 shadow-lg scale-[1.02]' : 'hover:shadow-md'
+          }`}
+        >
           <div>
             <div className="flex justify-between items-center">
               <span className="font-bold text-green-700 text-xs">Driver Welcome</span>
@@ -307,11 +312,16 @@ export const ThHomeDashboard: React.FC = () => {
             <span>Calls today: <strong className="font-bold">142</strong> · Reg: <strong className="font-bold font-data-mono">{driversRegistered}</strong></span>
             <span className="text-green-600 font-bold">14.2% Conv</span>
           </div>
-          <Link to="/tl/tl-overview-dashboard?team=dw" className="text-primary hover:underline font-bold mt-sm block text-[10px] text-right">Enter Team View →</Link>
+          <Link to="/tl/tl-overview-dashboard?team=dw" onClick={e => e.stopPropagation()} className="text-primary hover:underline font-bold mt-sm block text-[10px] text-right">Enter Team View →</Link>
         </div>
 
         {/* Card 2: Transporter Welcome */}
-        <div className="bg-white border-t-[4px] border-t-orange-500 border-x border-b border-outline-variant p-md rounded-sm flipkart-shadow flex flex-col justify-between h-[155px]">
+        <div
+          onClick={() => { setSelectedSegment(selectedSegment === 'TR' ? null : 'TR'); setFeedFilter(selectedSegment === 'TR' ? 'ALL' : 'TR'); }}
+          className={`bg-white border-t-[4px] border-t-orange-500 border-x border-b border-outline-variant p-md rounded-sm flipkart-shadow flex flex-col justify-between h-[155px] cursor-pointer transition-all duration-300 ${
+            selectedSegment && selectedSegment !== 'TR' ? 'opacity-35 scale-[0.98]' : selectedSegment === 'TR' ? 'ring-2 ring-orange-500 shadow-lg scale-[1.02]' : 'hover:shadow-md'
+          }`}
+        >
           <div>
             <div className="flex justify-between items-center">
               <span className="font-bold text-orange-700 text-xs">Transporter Welcome</span>
@@ -324,11 +334,16 @@ export const ThHomeDashboard: React.FC = () => {
             <span>Calls today: <strong className="font-bold">208</strong> · Reg: <strong className="font-bold font-data-mono">{transportersRegistered}</strong></span>
             <span className="text-green-600 font-bold">18.5% Conv</span>
           </div>
-          <Link to="/tl/tl-overview-dashboard?team=tr" className="text-primary hover:underline font-bold mt-sm block text-[10px] text-right">Enter Team View →</Link>
+          <Link to="/tl/tl-overview-dashboard?team=tr" onClick={e => e.stopPropagation()} className="text-primary hover:underline font-bold mt-sm block text-[10px] text-right">Enter Team View →</Link>
         </div>
 
         {/* Card 3: Special Categories */}
-        <div className="bg-white border-t-[4px] border-t-teal-500 border-x border-b border-outline-variant p-md rounded-sm flipkart-shadow flex flex-col justify-between h-[155px]">
+        <div
+          onClick={() => { setSelectedSegment(selectedSegment === 'SC' ? null : 'SC'); setFeedFilter(selectedSegment === 'SC' ? 'ALL' : 'SC'); }}
+          className={`bg-white border-t-[4px] border-t-teal-500 border-x border-b border-outline-variant p-md rounded-sm flipkart-shadow flex flex-col justify-between h-[155px] cursor-pointer transition-all duration-300 ${
+            selectedSegment && selectedSegment !== 'SC' ? 'opacity-35 scale-[0.98]' : selectedSegment === 'SC' ? 'ring-2 ring-teal-500 shadow-lg scale-[1.02]' : 'hover:shadow-md'
+          }`}
+        >
           <div>
             <div className="flex justify-between items-center">
               <span className="font-bold text-teal-700 text-xs">Special Categories</span>
@@ -341,11 +356,16 @@ export const ThHomeDashboard: React.FC = () => {
             <span>Calls today: <strong className="font-bold">84</strong></span>
             <span className="text-red-500 font-bold">9.2% Conv</span>
           </div>
-          <Link to="/tl/tl-overview-dashboard?team=sc" className="text-primary hover:underline font-bold mt-sm block text-[10px] text-right">Enter Team View →</Link>
+          <Link to="/tl/tl-overview-dashboard?team=sc" onClick={e => e.stopPropagation()} className="text-primary hover:underline font-bold mt-sm block text-[10px] text-right">Enter Team View →</Link>
         </div>
 
         {/* Card 4: Matchmaking */}
-        <div className="bg-white border-t-[4px] border-t-purple-500 border-x border-b border-outline-variant p-md rounded-sm flipkart-shadow flex flex-col justify-between h-[155px]">
+        <div
+          onClick={() => { setSelectedSegment(selectedSegment === 'MM' ? null : 'MM'); setFeedFilter(selectedSegment === 'MM' ? 'ALL' : 'MM'); }}
+          className={`bg-white border-t-[4px] border-t-purple-500 border-x border-b border-outline-variant p-md rounded-sm flipkart-shadow flex flex-col justify-between h-[155px] cursor-pointer transition-all duration-300 ${
+            selectedSegment && selectedSegment !== 'MM' ? 'opacity-35 scale-[0.98]' : selectedSegment === 'MM' ? 'ring-2 ring-purple-500 shadow-lg scale-[1.02]' : 'hover:shadow-md'
+          }`}
+        >
           <div>
             <div className="flex justify-between items-center">
               <span className="font-bold text-purple-700 text-xs">Matchmaking</span>
@@ -358,7 +378,7 @@ export const ThHomeDashboard: React.FC = () => {
             <span>Calls today: <strong className="font-bold">116</strong> · Jobs: <strong className="font-bold font-data-mono">{postedJobsCount}</strong></span>
             <span className="text-green-600 font-bold">12.1% Conv</span>
           </div>
-          <Link to="/tl/tl-overview-dashboard?team=mm" className="text-primary hover:underline font-bold mt-sm block text-[10px] text-right">Enter Team View →</Link>
+          <Link to="/tl/tl-overview-dashboard?team=mm" onClick={e => e.stopPropagation()} className="text-primary hover:underline font-bold mt-sm block text-[10px] text-right">Enter Team View →</Link>
         </div>
       </section>
 

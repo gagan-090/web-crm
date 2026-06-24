@@ -147,7 +147,7 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'leads:view',
     layout: 'dashboard',
     icon: 'campaign',
-    showInMenu: false
+    showInMenu: true
   },
 
   // ==================== SYSTEM ADMIN (admin) ====================

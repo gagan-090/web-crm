@@ -35,68 +35,68 @@ interface ColdLead {
 
 // ── Seed data ───────────────────────────────────────────────────────────────
 const ALL_LEADS: Lead[] = [
-  { id: 'TM-78291', name: 'Rajesh Logistics Pvt Ltd',   mobile: '+91 98765-43210', type: 'FM', status: 'HOT',  assignedCaller: 'Animesh Roy',   process: 'Vendor Onboarding',      regDate: '12 Oct, 2023', lastCalled: '2h ago'    },
-  { id: 'TM-78292', name: 'Gagan Deep Transport',        mobile: '+91 88221-11002', type: 'DR', status: 'WARM', assignedCaller: 'Sunita Sharma',  process: 'KYC Verification',       regDate: '12 Oct, 2023', lastCalled: 'Yesterday' },
-  { id: 'TM-78293', name: 'Pacific Express',             mobile: '+91 77665-54433', type: 'TR', status: 'COLD', assignedCaller: 'Unassigned',     process: 'RTO Check',              regDate: '11 Oct, 2023', lastCalled: '5 days ago'},
-  { id: 'TM-78294', name: 'Vikas Transporter Hub',       mobile: '+91 99887-76655', type: 'FM', status: 'HOT',  assignedCaller: 'Animesh Roy',   process: 'Direct Load Booking',    regDate: '10 Oct, 2023', lastCalled: '10m ago'   },
-  { id: 'TM-78295', name: 'Swift Cargo Movers',          mobile: '+91 91234-56789', type: 'EC', status: 'WARM', assignedCaller: 'Preeti Jain',    process: 'Account Setup',          regDate: '09 Oct, 2023', lastCalled: '4h ago'    },
-  { id: 'TM-78296', name: 'Bharat Road Carriers',        mobile: '+91 90001-22334', type: 'DR', status: 'HOT',  assignedCaller: 'Animesh Roy',   process: 'Driver Registration',    regDate: '09 Oct, 2023', lastCalled: '1h ago'    },
-  { id: 'TM-78297', name: 'Northern Freight Co.',        mobile: '+91 98765-00111', type: 'TR', status: 'WARM', assignedCaller: 'Sunita Sharma',  process: 'Transporter Onboarding', regDate: '08 Oct, 2023', lastCalled: '3h ago'    },
-  { id: 'TM-78298', name: 'Sunrise Logistics',           mobile: '+91 77654-99101', type: 'FM', status: 'COLD', assignedCaller: 'Unassigned',     process: 'KYC Verification',       regDate: '07 Oct, 2023', lastCalled: '8 days ago'},
-  { id: 'TM-78299', name: 'Apex Fleet Solutions',        mobile: '+91 88009-54321', type: 'EC', status: 'HOT',  assignedCaller: 'Preeti Jain',    process: 'Vendor Onboarding',      regDate: '06 Oct, 2023', lastCalled: '30m ago'   },
-  { id: 'TM-78300', name: 'Himalayan Cargo Express',     mobile: '+91 91122-33445', type: 'DR', status: 'WARM', assignedCaller: 'Animesh Roy',   process: 'Driver Registration',    regDate: '05 Oct, 2023', lastCalled: '6h ago'    },
+  { id: 'TM-78291', name: 'Rajesh Logistics Pvt Ltd', mobile: '+91 98765-43210', type: 'FM', status: 'HOT', assignedCaller: 'Animesh Roy', process: 'Vendor Onboarding', regDate: '12 Oct, 2023', lastCalled: '2h ago' },
+  { id: 'TM-78292', name: 'Gagan Deep Transport', mobile: '+91 88221-11002', type: 'DR', status: 'WARM', assignedCaller: 'Sunita Sharma', process: 'KYC Verification', regDate: '12 Oct, 2023', lastCalled: 'Yesterday' },
+  { id: 'TM-78293', name: 'Pacific Express', mobile: '+91 77665-54433', type: 'TR', status: 'COLD', assignedCaller: 'Unassigned', process: 'RTO Check', regDate: '11 Oct, 2023', lastCalled: '5 days ago' },
+  { id: 'TM-78294', name: 'Vikas Transporter Hub', mobile: '+91 99887-76655', type: 'FM', status: 'HOT', assignedCaller: 'Animesh Roy', process: 'Direct Load Booking', regDate: '10 Oct, 2023', lastCalled: '10m ago' },
+  { id: 'TM-78295', name: 'Swift Cargo Movers', mobile: '+91 91234-56789', type: 'EC', status: 'WARM', assignedCaller: 'Preeti Jain', process: 'Account Setup', regDate: '09 Oct, 2023', lastCalled: '4h ago' },
+  { id: 'TM-78296', name: 'Bharat Road Carriers', mobile: '+91 90001-22334', type: 'DR', status: 'HOT', assignedCaller: 'Animesh Roy', process: 'Driver Registration', regDate: '09 Oct, 2023', lastCalled: '1h ago' },
+  { id: 'TM-78297', name: 'Northern Freight Co.', mobile: '+91 98765-00111', type: 'TR', status: 'WARM', assignedCaller: 'Sunita Sharma', process: 'Transporter Onboarding', regDate: '08 Oct, 2023', lastCalled: '3h ago' },
+  { id: 'TM-78298', name: 'Sunrise Logistics', mobile: '+91 77654-99101', type: 'FM', status: 'COLD', assignedCaller: 'Unassigned', process: 'KYC Verification', regDate: '07 Oct, 2023', lastCalled: '8 days ago' },
+  { id: 'TM-78299', name: 'Apex Fleet Solutions', mobile: '+91 88009-54321', type: 'EC', status: 'HOT', assignedCaller: 'Preeti Jain', process: 'Vendor Onboarding', regDate: '06 Oct, 2023', lastCalled: '30m ago' },
+  { id: 'TM-78300', name: 'Himalayan Cargo Express', mobile: '+91 91122-33445', type: 'DR', status: 'WARM', assignedCaller: 'Animesh Roy', process: 'Driver Registration', regDate: '05 Oct, 2023', lastCalled: '6h ago' },
 ];
 
 const COLD_LEADS_SEED: ColdLead[] = [
-  { id: 'CL-1',  name: 'Karan Sharma',           tmId: 'TM-11029', type: 'TR', lastCalledDays: 24, selected: false },
-  { id: 'CL-2',  name: 'Meena Kumari Logistics',  tmId: 'TM-11204', type: 'FM', lastCalledDays: 41, selected: false },
-  { id: 'CL-3',  name: 'Anand Heavy Haul',        tmId: 'TM-10992', type: 'EC', lastCalledDays: 18, selected: false },
-  { id: 'CL-4',  name: 'Blue Dart Vendor 4',      tmId: 'TM-11005', type: 'TR', lastCalledDays: 30, selected: false },
-  { id: 'CL-5',  name: 'Eastern Star Transport',  tmId: 'TM-11340', type: 'DR', lastCalledDays: 52, selected: false },
-  { id: 'CL-6',  name: 'Metro Fleet Pvt Ltd',     tmId: 'TM-11567', type: 'FM', lastCalledDays: 35, selected: false },
+  { id: 'CL-1', name: 'Karan Sharma', tmId: 'TM-11029', type: 'TR', lastCalledDays: 24, selected: false },
+  { id: 'CL-2', name: 'Meena Kumari Logistics', tmId: 'TM-11204', type: 'FM', lastCalledDays: 41, selected: false },
+  { id: 'CL-3', name: 'Anand Heavy Haul', tmId: 'TM-10992', type: 'EC', lastCalledDays: 18, selected: false },
+  { id: 'CL-4', name: 'Blue Dart Vendor 4', tmId: 'TM-11005', type: 'TR', lastCalledDays: 30, selected: false },
+  { id: 'CL-5', name: 'Eastern Star Transport', tmId: 'TM-11340', type: 'DR', lastCalledDays: 52, selected: false },
+  { id: 'CL-6', name: 'Metro Fleet Pvt Ltd', tmId: 'TM-11567', type: 'FM', lastCalledDays: 35, selected: false },
   // -- hidden until "Load more" --
-  { id: 'CL-7',  name: 'Pioneer Cargo Services',  tmId: 'TM-11621', type: 'TR', lastCalledDays: 28, selected: false },
-  { id: 'CL-8',  name: 'Vijay Road Lines',        tmId: 'TM-11734', type: 'DR', lastCalledDays: 60, selected: false },
-  { id: 'CL-9',  name: 'Shree Ram Transport Co.', tmId: 'TM-11812', type: 'FM', lastCalledDays: 45, selected: false },
-  { id: 'CL-10', name: 'Deccan Freight Express',  tmId: 'TM-11899', type: 'EC', lastCalledDays: 33, selected: false },
-  { id: 'CL-11', name: 'National Carriers Ltd',   tmId: 'TM-11950', type: 'TR', lastCalledDays: 22, selected: false },
-  { id: 'CL-12', name: 'Green Valley Logistics',  tmId: 'TM-12001', type: 'DR', lastCalledDays: 57, selected: false },
+  { id: 'CL-7', name: 'Pioneer Cargo Services', tmId: 'TM-11621', type: 'TR', lastCalledDays: 28, selected: false },
+  { id: 'CL-8', name: 'Vijay Road Lines', tmId: 'TM-11734', type: 'DR', lastCalledDays: 60, selected: false },
+  { id: 'CL-9', name: 'Shree Ram Transport Co.', tmId: 'TM-11812', type: 'FM', lastCalledDays: 45, selected: false },
+  { id: 'CL-10', name: 'Deccan Freight Express', tmId: 'TM-11899', type: 'EC', lastCalledDays: 33, selected: false },
+  { id: 'CL-11', name: 'National Carriers Ltd', tmId: 'TM-11950', type: 'TR', lastCalledDays: 22, selected: false },
+  { id: 'CL-12', name: 'Green Valley Logistics', tmId: 'TM-12001', type: 'DR', lastCalledDays: 57, selected: false },
 ];
 
 const STATUS_FILTERS = ['All', 'HOT', 'WARM', 'COLD'] as const;
-const DATE_FILTERS   = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days', 'All Time'] as const;
-const CALLERS        = ['All Callers', 'Animesh Roy', 'Sunita Sharma', 'Preeti Jain', 'Unassigned'];
-const ROWS_OPTIONS   = [5, 10, 25, 50] as const;
+const DATE_FILTERS = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days', 'All Time'] as const;
+const CALLERS = ['All Callers', 'Animesh Roy', 'Sunita Sharma', 'Preeti Jain', 'Unassigned'];
+const ROWS_OPTIONS = [5, 10, 25, 50] as const;
 
 type StatusFilter = typeof STATUS_FILTERS[number];
-type DateFilter   = typeof DATE_FILTERS[number];
+type DateFilter = typeof DATE_FILTERS[number];
 
 // ── Component ───────────────────────────────────────────────────────────────
 export const ThLeadManagementConsole: React.FC = () => {
   // Filters
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
-  const [dateFilter,   setDateFilter]   = useState<DateFilter>('Last 7 Days');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('Last 7 Days');
   const [callerFilter, setCallerFilter] = useState('All Callers');
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Pagination
-  const [page,        setPage]        = useState(0);
+  const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState<number>(10);
 
   // Cold-lead drawer
-  const [drawerOpen,       setDrawerOpen]       = useState(true);
-  const [coldLeads,        setColdLeads]         = useState<ColdLead[]>(COLD_LEADS_SEED);
-  const [visibleColdCount, setVisibleColdCount]  = useState(6);
-  const [isLoadingMore,    setIsLoadingMore]     = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [coldLeads, setColdLeads] = useState<ColdLead[]>(COLD_LEADS_SEED);
+  const [visibleColdCount, setVisibleColdCount] = useState(6);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Create-lead modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [newName,    setNewName]    = useState('');
-  const [newMobile,  setNewMobile]  = useState('');
-  const [newType,    setNewType]    = useState<LeadType>('DR');
-  const [newCaller,  setNewCaller]  = useState('Animesh Roy');
+  const [newName, setNewName] = useState('');
+  const [newMobile, setNewMobile] = useState('');
+  const [newType, setNewType] = useState<LeadType>('DR');
+  const [newCaller, setNewCaller] = useState('Animesh Roy');
   const [newProcess, setNewProcess] = useState<Process>('Driver Registration');
 
   // Leads list
@@ -105,7 +105,7 @@ export const ThLeadManagementConsole: React.FC = () => {
   // ── Derived data ─────────────────────────────────────────────────────────
   const filteredLeads = useMemo(() =>
     leads.filter(l => {
-      if (statusFilter !== 'All'      && l.status          !== statusFilter) return false;
+      if (statusFilter !== 'All' && l.status !== statusFilter) return false;
       if (callerFilter !== 'All Callers' && l.assignedCaller !== callerFilter) return false;
       return true;
     }),
@@ -118,12 +118,12 @@ export const ThLeadManagementConsole: React.FC = () => {
 
   // ── Selection helpers ────────────────────────────────────────────────────
   const allPageSelected = pagedLeads.length > 0 && pagedLeads.every(l => selectedIds.has(l.id));
-  const someSelected    = selectedIds.size > 0;
+  const someSelected = selectedIds.size > 0;
 
   const toggleAll = () => {
     const next = new Set(selectedIds);
     if (allPageSelected) pagedLeads.forEach(l => next.delete(l.id));
-    else                 pagedLeads.forEach(l => next.add(l.id));
+    else pagedLeads.forEach(l => next.add(l.id));
     setSelectedIds(next);
   };
 
@@ -148,14 +148,14 @@ export const ThLeadManagementConsole: React.FC = () => {
 
   const handleExportCsv = () => {
     const rows = [
-      ['TMID','Name','Mobile','Type','Status','Caller','Process','Reg Date','Last Called'],
+      ['TMID', 'Name', 'Mobile', 'Type', 'Status', 'Caller', 'Process', 'Reg Date', 'Last Called'],
       ...leads
         .filter(l => selectedIds.has(l.id))
         .map(l => [l.id, l.name, l.mobile, l.type, l.status, l.assignedCaller, l.process, l.regDate, l.lastCalled]),
     ];
     const blob = new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
     a.href = url; a.download = 'leads_export.csv'; a.click();
     URL.revokeObjectURL(url);
   };
@@ -175,8 +175,8 @@ export const ThLeadManagementConsole: React.FC = () => {
     }, 600);
   };
 
-  const visibleColdLeads  = coldLeads.slice(0, visibleColdCount);
-  const hasMoreColdLeads  = visibleColdCount < coldLeads.length;
+  const visibleColdLeads = coldLeads.slice(0, visibleColdCount);
+  const hasMoreColdLeads = visibleColdCount < coldLeads.length;
 
   const handleAddToReactivation = () => {
     const sel = coldLeads.filter(cl => cl.selected);
@@ -202,7 +202,7 @@ export const ThLeadManagementConsole: React.FC = () => {
       id: `TM-${Math.floor(78000 + Math.random() * 2000)}`,
       name: newName, mobile: newMobile, type: newType, status: 'HOT',
       assignedCaller: newCaller, process: newProcess,
-      regDate: new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }),
+      regDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       lastCalled: 'Just now',
     }, ...prev]);
     setNewName(''); setNewMobile('');
@@ -211,8 +211,8 @@ export const ThLeadManagementConsole: React.FC = () => {
 
   // ── Badge helpers ─────────────────────────────────────────────────────────
   const statusBadge = (s: LeadStatus) => {
-    const bg  = s === 'HOT' ? 'bg-red-100 text-red-700' : s === 'WARM' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500';
-    const dot = s === 'HOT' ? 'bg-red-600'              : s === 'WARM' ? 'bg-blue-600'               : 'bg-gray-400';
+    const bg = s === 'HOT' ? 'bg-red-100 text-red-700' : s === 'WARM' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500';
+    const dot = s === 'HOT' ? 'bg-red-600' : s === 'WARM' ? 'bg-blue-600' : 'bg-gray-400';
     return (
       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${bg}`}>
         <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
@@ -224,8 +224,8 @@ export const ThLeadManagementConsole: React.FC = () => {
   const typeBadge = (t: LeadType) => {
     const cls = t === 'FM' ? 'bg-purple-100 text-purple-700'
       : t === 'DR' ? 'bg-green-100 text-green-700'
-      : t === 'EC' ? 'bg-blue-100 text-blue-700'
-      : 'bg-gray-100 text-gray-600';
+        : t === 'EC' ? 'bg-blue-100 text-blue-700'
+          : 'bg-gray-100 text-gray-600';
     return <span className={`px-1.5 py-0.5 ${cls} text-[10px] font-bold rounded`}>{t}</span>;
   };
 
@@ -315,7 +315,7 @@ export const ThLeadManagementConsole: React.FC = () => {
                     <input type="checkbox" checked={allPageSelected} onChange={toggleAll}
                       className="rounded border-gray-300 text-blue-600 w-4 h-4 cursor-pointer" />
                   </th>
-                  {['TMID','Lead Name','Mobile','Type','Status','Assigned Caller','Process','Reg Date','Last Called',''].map(h => (
+                  {['TMID', 'Lead Name', 'Mobile', 'Type', 'Status', 'Assigned Caller', 'Process', 'Reg Date', 'Last Called', ''].map(h => (
                     <th key={h} className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>

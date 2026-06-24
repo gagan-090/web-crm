@@ -1,56 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGetDwDashboardQuery } from '../../services/api/webCrmApi';
 
 export const DwHomeDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { data: response, isLoading } = useGetDwDashboardQuery();
 
-  const { data: realData } = useGetDwDashboardQuery();
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-t-primary border-outline-variant rounded-full animate-spin"></div>
+          <p className="text-sm font-semibold text-outline">Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
 
-  // Dashboard state for premium interactivity
-  const [todayEarnings, setTodayEarnings] = useState(420);
-  const [todayCalls, setTodayCalls] = useState(24);
-  const [todayConversions, setTodayConversions] = useState(3);
+  const kpis = response?.data?.kpis || {
+    calls_pending: 0,
+    assigned_total: 0,
+    calls_today: 0,
+    connected_today: 0,
+    subscriptions_today: 0,
+    feedback_missing: 0,
+    call_time: '0h 0m',
+    monthly_revenue: 0,
+  };
+
+  const overdueCallbacks = response?.data?.overdue_callbacks || [];
+  const callBreakdown = response?.data?.call_breakdown || [];
+  const leaderboard = response?.data?.leaderboard || { my_rank: 1, total_peers: 1 };
   
-  // Salary gate simulation
-  const [monthlyRevenue, setMonthlyRevenue] = useState(4200);
-  const baseSalary = 11000;
-  const gateThreshold = baseSalary * 2; // ₹22,000
-
-  // Mock data for callbacks
-  const [overdueCallbacks, setOverdueCallbacks] = useState<any[]>([
-    { id: '1', name: 'Suresh Yadav', time: '11:30 AM', tmid: 'DR-48291' },
-    { id: '2', name: 'Rajesh Kumar', time: '10:15 AM', tmid: 'DR-48294' }
-  ]);
-
-  // Sync with real data from database
-  useEffect(() => {
-    if (realData?.data?.kpis) {
-      const k = realData.data.kpis;
-      setTodayEarnings(k.todayEarnings);
-      setMonthlyRevenue(k.monthlyRevenue);
-      // derive some mock calls and conversions relative to queue
-      setTodayCalls(k.queueCount * 2 || 24);
-      setTodayConversions(Math.round(k.queueCount * 0.3) || 3);
-    }
-    if (realData?.data?.overdueCallbacks && realData.data.overdueCallbacks.length > 0) {
-      setOverdueCallbacks(realData.data.overdueCallbacks.map(c => ({
-        id: c.id.toString(),
-        name: c.name,
-        time: c.callback.replace('Today, ', ''),
-        tmid: c.tmid
-      })));
-    }
-  }, [realData]);
-
-  // Computed values
+  // Commission calculation: estimate ₹150 incentive per subscription
+  const todayEarnings = kpis.subscriptions_today * 150;
   const todayTarget = 1667; // target ₹50,000 / 30 days
   const todayEarningsPercent = Math.min(100, Math.round((todayEarnings / todayTarget) * 100));
-  
-  // Gate check
-  const gateProgressPercent = Math.min(100, Math.round((monthlyRevenue / gateThreshold) * 100));
+
+  // Salary Gate: base salary of ₹11,000, gate is 2x = ₹22,000
+  const baseSalary = 11000;
+  const gateThreshold = baseSalary * 2;
+  const monthlyRevenue = kpis.monthly_revenue;
   const isGateCrossed = monthlyRevenue >= gateThreshold;
   const remainingToGate = Math.max(0, gateThreshold - monthlyRevenue);
+  const gateProgressPercent = Math.min(100, Math.round((monthlyRevenue / gateThreshold) * 100));
 
   // Today progress bar color
   const getTodayBarColor = (pct: number) => {
@@ -60,35 +53,29 @@ export const DwHomeDashboard: React.FC = () => {
   };
 
   const handleCallbackCall = (name: string, tmid: string) => {
-    // Navigate directly to active call with search query or lead parameters
     navigate('/dw/dw-active-call-focus', { state: { name, tmid } });
   };
+
+  const formattedDate = new Date().toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
       
-      {/* Header and Simulator Banner */}
+      {/* Header and User Welcome Banner */}
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 pb-4">
         <div>
           <p className="text-[#666666] text-xs font-semibold uppercase tracking-widest">Driver Welcome Calling Process</p>
-          <h2 className="text-2xl font-bold text-gray-800">Good morning, Agent — June 19, 2026</h2>
+          <h2 className="text-2xl font-bold text-gray-800">
+            Welcome back, {response?.data?.caller?.name || 'Agent'} — {formattedDate}
+          </h2>
         </div>
-        
-        {/* Interactive Simulation Controls */}
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 p-2 rounded-lg text-xs">
-          <span className="font-bold text-gray-600">Simulate:</span>
-          <button 
-            onClick={() => setTodayEarnings(prev => prev === 420 ? 1350 : 420)}
-            className="px-2 py-1 bg-white border rounded hover:bg-gray-100 transition-colors"
-          >
-            Today's Earnings ({todayEarnings === 420 ? 'Low' : 'High'})
-          </button>
-          <button 
-            onClick={() => setMonthlyRevenue(prev => prev === 4200 ? 23500 : 4200)}
-            className="px-2 py-1 bg-white border rounded hover:bg-gray-100 transition-colors"
-          >
-            Gate Status ({isGateCrossed ? 'Crossed' : 'Not Crossed'})
-          </button>
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg text-xs">
+          <span className="w-2 h-2 rounded-full bg-[#27AE60] animate-pulse"></span>
+          <span className="font-bold text-[#27AE60]">Database Connected (Live)</span>
         </div>
       </section>
 
@@ -98,9 +85,9 @@ export const DwHomeDashboard: React.FC = () => {
         {/* Card 1 — Today's Earnings */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px]">
           <div>
-            <span className="text-xs text-gray-500 uppercase font-semibold">Today's Earnings</span>
+            <span className="text-xs text-gray-500 uppercase font-semibold">Today's Earnings (Incentives)</span>
             <div className="text-2xl font-bold text-[#27AE60] mt-1">₹{todayEarnings}</div>
-            <div className="text-xs text-gray-400 mt-1">of ₹{todayTarget} today's share</div>
+            <div className="text-xs text-gray-400 mt-1">of ₹{todayTarget} daily target share</div>
           </div>
           <div className="mt-3">
             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -110,11 +97,11 @@ export const DwHomeDashboard: React.FC = () => {
               ></div>
             </div>
             <div className="flex justify-between items-center text-[11px] text-gray-500 mt-2 pt-1 border-t border-gray-100">
-              <span>{todayCalls} calls</span>
+              <span>{kpis.calls_today} calls</span>
               <span>·</span>
-              <span>{todayConversions} converted</span>
+              <span>{kpis.subscriptions_today} conversions</span>
               <span>·</span>
-              <span>{((todayConversions / todayCalls) * 100).toFixed(1)}% rate</span>
+              <span>{kpis.calls_today > 0 ? ((kpis.subscriptions_today / kpis.calls_today) * 100).toFixed(1) : 0}% rate</span>
             </div>
           </div>
         </div>
@@ -157,7 +144,7 @@ export const DwHomeDashboard: React.FC = () => {
             <div className="text-2xl font-bold text-gray-800 mt-1">
               ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹50,000</span>
             </div>
-            <div className="text-xs text-gray-500 mt-1">26 days remaining this month</div>
+            <div className="text-xs text-gray-500 mt-1">SLA target count and incentive wrap-up</div>
           </div>
           <div className="mt-3">
             <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden relative flex items-center justify-center">
@@ -176,11 +163,10 @@ export const DwHomeDashboard: React.FC = () => {
         <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px]">
           <div>
             <span className="text-xs text-gray-500 uppercase font-semibold">My Queue</span>
-            <div className="text-3xl font-extrabold text-gray-800 mt-1">18</div>
+            <div className="text-3xl font-extrabold text-gray-800 mt-1">{kpis.calls_pending}</div>
             <div className="flex items-center gap-1 mt-1 text-[10px]">
-              <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold">14 Fresh</span>
-              <span className="bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-bold">4 Callbacks</span>
-              <span className="bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-bold">1 Overdue</span>
+              <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold">{kpis.calls_pending} Pending</span>
+              <span className="bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-bold">{overdueCallbacks.length} Overdue Callbacks</span>
             </div>
           </div>
           <button 
@@ -196,55 +182,43 @@ export const DwHomeDashboard: React.FC = () => {
       {/* Secondary Dashboard Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
         
-        {/* Streak Card (Left, 1/3 width) */}
+        {/* Call Breakdown Chart/Card */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-sm font-bold text-gray-800 flex items-center gap-1">
-              <span className="text-orange-500">🔥</span> Streak: 4 days
+              <span className="material-symbols-outlined text-[16px] text-[#27AE60]">phone_in_talk</span> Process Breakdown
             </h3>
-            <span className="text-[10px] text-gray-400">Streak Record: 6 days</span>
+            <span className="text-[10px] text-gray-400">Calls today: {kpis.calls_today}</span>
           </div>
           
-          {/* 14-day calendar grid (7x2) */}
-          <div className="grid grid-cols-7 gap-2">
-            {[
-              { day: 1, state: 'converted' },
-              { day: 2, state: 'converted' },
-              { day: 3, state: 'called' },
-              { day: 4, state: 'none' },
-              { day: 5, state: 'converted' },
-              { day: 6, state: 'converted' },
-              { day: 7, state: 'converted' },
-              { day: 8, state: 'none' },
-              { day: 9, state: 'called' },
-              { day: 10, state: 'converted' },
-              { day: 11, state: 'converted' },
-              { day: 12, state: 'converted' },
-              { day: 13, state: 'future' },
-              { day: 14, state: 'future' }
-            ].map((d, index) => {
-              let cellClass = 'border-gray-200 hover:bg-gray-50';
-              if (d.state === 'converted') cellClass = 'bg-[#EAFAF1] border-[#27AE60] text-[#27AE60] font-bold';
-              else if (d.state === 'called') cellClass = 'border-dashed border-gray-400 text-gray-400';
-              else if (d.state === 'none') cellClass = 'border-red-300 text-red-500 border';
-              else if (d.state === 'future') cellClass = 'bg-gray-50 text-gray-300 border-gray-100 border-dashed';
-
-              return (
-                <div 
-                  key={index} 
-                  className={`border rounded-lg h-9 flex flex-col items-center justify-center text-[10px] select-none transition-all ${cellClass}`}
-                  title={`Day ${d.day}: ${d.state.toUpperCase()}`}
-                >
-                  <span>D{d.day}</span>
-                  {d.state === 'converted' && <span className="text-[8px] leading-none">✓</span>}
+          <div className="space-y-3 mt-4">
+            {callBreakdown.length > 0 ? (
+              callBreakdown.map((item, index) => (
+                <div key={index} className="space-y-1">
+                  <div className="flex justify-between text-xs font-semibold text-gray-700">
+                    <span>{item.process || 'General Welcome'}</span>
+                    <span>{item.total} calls</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary rounded-full" 
+                      style={{ width: `${kpis.calls_today > 0 ? (item.total / kpis.calls_today) * 100 : 0}%` }}
+                    ></div>
+                  </div>
                 </div>
-              );
-            })}
+              ))
+            ) : (
+              <div className="text-xs text-gray-400 italic text-center py-8">
+                No calls recorded today yet.
+              </div>
+            )}
           </div>
-          <p className="text-[11px] text-gray-400 mt-3 text-center">Longest streak this month: 6 days</p>
+          <p className="text-[11px] text-gray-400 mt-5 pt-3 border-t border-gray-100 text-center">
+            Total Calling Duration: <span className="font-bold text-gray-700">{kpis.call_time}</span>
+          </p>
         </div>
 
-        {/* Overdue Callbacks Alert (Center, 1/3 width) */}
+        {/* Overdue Callbacks Alert */}
         <div className="bg-white border-l-4 border-red-500 border-t border-r border-b border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-bold text-red-600 flex items-center gap-1 mb-2">
@@ -253,12 +227,12 @@ export const DwHomeDashboard: React.FC = () => {
             </h3>
             
             {overdueCallbacks.length > 0 ? (
-              <div className="space-y-2 mt-2">
+              <div className="space-y-2 mt-2 max-h-[160px] overflow-y-auto pr-1">
                 {overdueCallbacks.map(cb => (
                   <div key={cb.id} className="flex justify-between items-center bg-red-50/50 p-2 rounded border border-red-100">
                     <div>
                       <div className="text-xs font-bold text-gray-800">{cb.name}</div>
-                      <div className="text-[10px] text-gray-500">{cb.tmid} · Due {cb.time}</div>
+                      <div className="text-[10px] text-gray-500">{cb.tmid} · Due {cb.logged_at}</div>
                     </div>
                     <button 
                       onClick={() => handleCallbackCall(cb.name, cb.tmid)}
@@ -276,46 +250,44 @@ export const DwHomeDashboard: React.FC = () => {
             )}
           </div>
           {overdueCallbacks.length > 3 && (
-            <button className="text-[11px] text-red-600 hover:underline mt-2 self-start font-semibold">
-              + {overdueCallbacks.length - 3} more callbacks
+            <button 
+              onClick={() => navigate('/dw/dw-callback-calendar')}
+              className="text-[11px] text-red-600 hover:underline mt-2 self-start font-semibold"
+            >
+              Show all callbacks
             </button>
           )}
         </div>
 
-        {/* Leaderboard Position (Right, 1/3 width) */}
+        {/* Leaderboard Position */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-bold text-gray-800 flex justify-between">
-              <span>Leaderboard</span>
+              <span>Leaderboard Rank</span>
               <span className="text-xs text-gray-400">Driver Welcome Team</span>
             </h3>
             <div className="text-xl font-bold text-gray-800 mt-2">
-              #2 <span className="text-xs text-gray-500 font-normal">of 6 Agents</span>
+              #{leaderboard.my_rank} <span className="text-xs text-gray-500 font-normal">of {leaderboard.total_peers} Agents</span>
             </div>
             
-            {/* Compare vs Rank 1 */}
             <div className="mt-3 space-y-2">
               <div>
                 <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                  <span>You (Revenue)</span>
+                  <span>Your Revenue</span>
                   <span className="font-bold">₹{monthlyRevenue.toLocaleString()}</span>
                 </div>
                 <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#27AE60]" style={{ width: '49.4%' }}></div>
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                  <span>#1 Agent (Rohan S.)</span>
-                  <span className="font-bold">₹8,500</span>
-                </div>
-                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-gray-300" style={{ width: '100%' }}></div>
+                  <div 
+                    className="h-full bg-[#27AE60]" 
+                    style={{ width: `${Math.min(100, Math.round((monthlyRevenue / Math.max(1, leaderboard.my_rank === 1 ? monthlyRevenue : 40000)) * 100))}%` }}
+                  ></div>
                 </div>
               </div>
             </div>
           </div>
-          <p className="text-[10px] text-gray-400 mt-3 italic">Rank is automatically updated at shift wrap-up</p>
+          <p className="text-[10px] text-gray-400 mt-3 italic">
+            Feedback Missing: <span className="text-red-500 font-bold">{kpis.feedback_missing} calls</span>
+          </p>
         </div>
 
       </div>

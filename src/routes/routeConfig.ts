@@ -511,6 +511,15 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/dw/dw-call-history',
+    name: 'Call History',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'history',
+    showInMenu: true
+  },
+  {
     path: '/dw/dw-campaign-leads',
     name: 'Campaign Leads',
     role: 'Driver Welcome',

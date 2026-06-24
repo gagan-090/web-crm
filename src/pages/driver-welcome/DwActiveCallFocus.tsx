@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useInitiateIvrCallMutation, useSubmitCtiFeedbackMutation } from '../../services/api/ctiApi';
+import { useSubmitCtiFeedbackMutation } from '../../services/api/ctiApi';
+import { 
+  useGetDwLeadDetailQuery, 
+  useGetDwNextLeadQuery, 
+  useGetDwDispositionOptionsQuery,
+  useSubmitDwFeedbackMutation,
+  useScheduleDwCallbackMutation,
+  useSkipDwLeadMutation
+} from '../../services/api/webCrmApi';
+import { useSanCti } from '../../shared/components/cti/SanCtiProvider';
 
 interface Objection {
   key: string;
@@ -12,101 +21,100 @@ export const DwActiveCallFocus: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [initiateIvrCall] = useInitiateIvrCallMutation();
+  const {
+    dial,
+    hangup,
+    callState,
+    callDuration,
+    isMuted: liveMuted,
+    isHeld: liveHeld,
+    toggleMute: toggleLiveMute,
+    toggleHold: toggleLiveHold,
+  } = useSanCti();
+
   const [submitCtiFeedback] = useSubmitCtiFeedbackMutation();
-  const [ivrCallId, setIvrCallId] = useState<number | null>(null);
+  const [submitDwFeedback] = useSubmitDwFeedbackMutation();
+  const [scheduleDwCallback] = useScheduleDwCallbackMutation();
+  const [skipDwLead] = useSkipDwLeadMutation();
 
-  // Load state from routing if available, else use default mock
+  const [ivrCallId] = useState<number | null>(null);
+
+  // Active Lead ID state (starts from navigation state or empty)
   const stateLead = location.state || {};
-  const leadName = stateLead.name || 'Suresh Yadav';
-  const leadTmid = stateLead.tmid || 'DR-48291';
-  const leadPhone = stateLead.phone || '+91-98765-43210';
-  const leadLocation = stateLead.location || 'Agra, Uttar Pradesh';
+  const [userId, setUserId] = useState<number | string>(stateLead.userId || '');
 
-  const isCampaign = stateLead.isCampaign || false;
-  const campaignContext = stateLead.campaignContext || null;
-
-  // Live timer state
-  const [seconds, setSeconds] = useState(154); // starts at 02:34
-  const [isMuted, setIsMuted] = useState(false);
-  const [isSpeaker, setIsSpeaker] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('opening');
-
-  // Campaign specific feedback states
-  const [tempUpdate, setTempUpdate] = useState<'HOT' | 'WARM' | 'COLD' | ''>('');
-  const [starRating, setStarRating] = useState<number>(0);
+  // Next Lead Query (only runs if no active userId is specified)
+  const { data: nextLeadResponse, isLoading: nextLeadLoading } = useGetDwNextLeadQuery(undefined, {
+    skip: !!userId
+  });
 
   useEffect(() => {
-    if (isCampaign) {
-      setActiveTab('campaignOpening');
-      if (campaignContext?.temperature) {
-        setTempUpdate(campaignContext.temperature);
-      }
+    if (nextLeadResponse?.data && !userId) {
+      setUserId(nextLeadResponse.data.id);
     }
-  }, [isCampaign, campaignContext]);
+  }, [nextLeadResponse, userId]);
 
-  // Interactive link trigger
-  const [showLinkModal, setShowLinkModal] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState('Job Ready ₹199');
-  
+  // Fetch driver profile details from database
+  const { data: detailResponse, isLoading: profileLoading } = useGetDwLeadDetailQuery(userId, {
+    skip: !userId
+  });
+
+  // Fetch live post-call disposition options
+  const { data: dispositionOptions } = useGetDwDispositionOptionsQuery();
+
+  const driverProfile = detailResponse?.data?.profile;
+  const planCard = detailResponse?.data?.plan_card;
+
+  const leadName = driverProfile?.name || stateLead.name || 'No Active Lead';
+  const leadTmid = driverProfile?.tmid || stateLead.tmid || 'DR-00000';
+  const leadPhone = driverProfile?.mobile || stateLead.phone || '00000 00000';
+  const leadLocation = driverProfile ? `${driverProfile.city}, ${driverProfile.state}` : stateLead.location || 'Unknown';
+
+  // Timer state
+  const [seconds, setSeconds] = useState(0);
+
+  const [activeTab, setActiveTab] = useState<string>('opening');
+
   // Note state
   const [quickNote, setQuickNote] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
 
-  // Search and bookmark state for objections
+  // Search & objections
   const [searchQuery, setSearchQuery] = useState('');
   const [bookmarks, setBookmarks] = useState<string[]>([]);
 
-  // Post-Call Form Overlay State
+  // Post-Call Form Modal States
   const [showPostCallModal, setShowPostCallModal] = useState(false);
-  const [outcome, setOutcome] = useState<'connected' | 'nr' | 'busy' | 'wrong' | 'off' | ''>('');
+  const [outcome, setOutcome] = useState<'connected' | 'not_connected' | 'callback_later' | ''>('');
   const [connectedSubStatus, setConnectedSubStatus] = useState<'interested' | 'not_interested' | 'callback' | 'subscribed' | ''>('');
   
   // Post-Call details
+  const [selectedPlan, setSelectedPlan] = useState('Job Ready ₹199');
+  const [showLinkModal, setShowLinkModal] = useState(false);
   const [interestedPlan, setInterestedPlan] = useState<'ready' | 'verified' | 'trusted' | ''>('');
   const [linkSentToggle, setLinkSentToggle] = useState<'yes' | 'no'>('no');
   const [notInterestedReason, setNotInterestedReason] = useState('');
-  const [callbackDate, setCallbackDate] = useState('2026-06-20');
-  const [callbackTime, setCallbackTime] = useState('11:30');
+  const [callbackDate, setCallbackDate] = useState(new Date().toISOString().split('T')[0]);
+  const [callbackTime, setCallbackTime] = useState('12:00');
   const [dispositionNotes, setDispositionNotes] = useState('');
-  const [escalateChoice, setEscalateChoice] = useState<'yes' | 'no' | ''>('');
-
-  // Toast message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Timer tick
+  // Listen for global disposition modal completion
   useEffect(() => {
-    const interval = setInterval(() => {
-      setSeconds(prev => prev + 1);
-    }, 1000);
-    return () => clearInterval(interval);
+    const handleComplete = () => {
+      setUserId(''); // Clears userId to fetch the next lead from the queue
+      setSeconds(0);
+    };
+    window.addEventListener('san-disposition-complete', handleComplete);
+    return () => window.removeEventListener('san-disposition-complete', handleComplete);
   }, []);
 
-  // Log CTI Call start on backend
+  // Auto-dial when lead details are loaded and CTI is idle
   useEffect(() => {
-    const numericLeadId = parseInt(leadTmid.replace(/\D/g, ''), 10) || null;
-    initiateIvrCall({
-      user_id: numericLeadId,
-      user_name: leadName,
-      user_mobile: leadPhone,
-      user_tm_id: leadTmid,
-      assigned_to: 1, // overwritten on backend
-      assigned_name: 'Demo Agent',
-      assigned_number: '178',
-      did_number: '4310735',
-      process: 'dw',
-      call_type: 'Outgoing'
-    }).unwrap()
-      .then((res) => {
-        if (res.success && res.data) {
-          console.log('[CTI] DW Call initiated logged with ID:', res.data.id);
-          setIvrCallId(res.data.id);
-        }
-      })
-      .catch((err) => {
-        console.warn('[CTI] Failed to log Call initiation:', err);
-      });
-  }, []);
+    if (leadPhone && leadPhone !== '00000 00000' && userId && callState === 'idle') {
+      dial(leadPhone, userId, leadName, leadTmid);
+    }
+  }, [userId, leadPhone, callState, dial, leadName, leadTmid]);
 
   const formatTimer = (secCount: number) => {
     const mins = Math.floor(secCount / 60);
@@ -120,11 +128,10 @@ export const DwActiveCallFocus: React.FC = () => {
   };
 
   const handleSendPaymentLink = () => {
-    triggerToast(`Payment link sent ✓`);
+    triggerToast(`Payment link sent to ${leadName} via WhatsApp ✓`);
     setShowLinkModal(false);
   };
 
-  // Quick note auto-saving
   const handleNoteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuickNote(e.target.value);
     setNoteSaving(true);
@@ -139,7 +146,82 @@ export const DwActiveCallFocus: React.FC = () => {
     }
   }, [quickNote]);
 
-  // Hindi objections data from spec
+  const handleSkipLead = async () => {
+    if (!userId) return;
+    const reason = prompt('Please enter a skip reason:');
+    if (!reason) return;
+    try {
+      await skipDwLead({
+        user_id: Number(userId),
+        reason
+      }).unwrap();
+      triggerToast('Lead skipped.');
+      navigate('/dw/dw-call-queue');
+    } catch (err) {
+      triggerToast('Failed to skip lead.');
+    }
+  };
+
+  // Submit post call disposition
+  const handleDispositionSubmit = async () => {
+    if (!userId) return;
+
+    let ctiStatus = 'FAILED';
+    if (outcome === 'connected') ctiStatus = 'ANSWER';
+    else if (outcome === 'not_connected') ctiStatus = 'NO_ANSWER';
+    else if (outcome === 'callback_later') ctiStatus = 'CALLBACK';
+
+    let dbFeedback = 'Ringing - No Answer';
+    if (outcome === 'connected') {
+      if (connectedSubStatus === 'interested') dbFeedback = 'Agree for Subscription';
+      else if (connectedSubStatus === 'not_interested') dbFeedback = notInterestedReason || 'Not Interested';
+      else if (connectedSubStatus === 'callback') dbFeedback = 'Busy Right Now';
+      else if (connectedSubStatus === 'subscribed') dbFeedback = 'Already Subscribed';
+    } else if (outcome === 'not_connected') {
+      dbFeedback = 'Ringing - No Answer';
+    }
+
+    try {
+      // 1. Submit feedback to DWC CRM table
+      await submitDwFeedback({
+        user_id: Number(userId),
+        call_status: outcome,
+        call_feedback: dbFeedback,
+        call_remarks: dispositionNotes || `Logged active call duration ${formatTimer(seconds)}`,
+        call_duration: seconds,
+        call_id: ivrCallId || undefined
+      }).unwrap();
+
+      // 2. Submit CTI feedback sync
+      if (ivrCallId) {
+        await submitCtiFeedback({
+          id: ivrCallId,
+          call_status: ctiStatus,
+          call_feedback: dbFeedback,
+          call_remarks: dispositionNotes || 'Logged from softphone'
+        }).unwrap();
+      }
+
+      // 3. Schedule Callback if callback requested
+      if (connectedSubStatus === 'callback') {
+        await scheduleDwCallback({
+          user_id: Number(userId),
+          reason: `Callback scheduled for ${callbackDate} ${callbackTime}. Note: ${dispositionNotes}`
+        }).unwrap();
+      }
+
+      triggerToast('Call disposition saved successfully ✓');
+      setTimeout(() => {
+        navigate('/dw/dw-call-queue');
+      }, 800);
+
+    } catch (err) {
+      console.error('[API] Failed to submit disposition:', err);
+      triggerToast('Failed to save disposition.');
+    }
+  };
+
+  // Hindi objections data
   const objections: Objection[] = [
     { key: 'paisa', question: 'पैसे नहीं हैं', answer: 'राजेश जी, यह एक छोटा निवेश है जो आपके व्यवसाय को कई गुना बढ़ा देगा। केवल ₹199 या ₹299 के निवेश से आपको तुरंत लोड बुकिंग मिलना शुरू हो जाएगी और आप पहले ही दिन अपनी लागत निकाल लेंगे।' },
     { key: 'job', question: 'पहले कोई जॉब नहीं मिली', answer: 'हम समझते हैं राजेश जी, लेकिन ट्रक मित्र पर 50,000 से अधिक ड्राइवर्स रोजाना लोड पा रहे हैं। हमारी टीम आपको पहला लोड बुक कराने में खुद मदद करेगी।' },
@@ -155,7 +237,6 @@ export const DwActiveCallFocus: React.FC = () => {
     );
   };
 
-  // Sort objections to place bookmarked items on top
   const getSortedObjections = () => {
     let list = [...objections];
     if (searchQuery) {
@@ -175,48 +256,13 @@ export const DwActiveCallFocus: React.FC = () => {
 
   const sortedObjections = getSortedObjections();
 
-  // Submit Disposition
-  const handleDispositionSubmit = async () => {
-    // Map UI outcomes to CTI validation outcomes
-    let ctiStatus = 'FAILED';
-    if (outcome === 'connected') ctiStatus = 'ANSWER';
-    else if (outcome === 'nr') ctiStatus = 'NO_ANSWER';
-    else if (outcome === 'busy') ctiStatus = 'BUSY';
-    else if (outcome === 'off') ctiStatus = 'SWITCH_OFF';
-    else if (outcome === 'wrong') ctiStatus = 'FAILED';
-
-    let ctiFeedback = 'Not Interested';
-    if (connectedSubStatus === 'interested') ctiFeedback = 'Interested';
-    else if (connectedSubStatus === 'callback') ctiFeedback = 'Callback Requested';
-    else if (connectedSubStatus === 'subscribed') ctiFeedback = 'Already Placed';
-
-    const recordId = ivrCallId || parseInt(leadTmid.replace(/\D/g, ''), 10) || 1;
-
-    try {
-      await submitCtiFeedback({
-        id: recordId,
-        call_status: ctiStatus,
-        call_feedback: ctiFeedback,
-        call_remarks: dispositionNotes || 'Disposition logged from Active Call screen'
-      }).unwrap();
-      
-      triggerToast('CTI Call feedback saved successfully ✓');
-    } catch (err: any) {
-      console.error('[CTI] Failed to save CTI disposition feedback:', err);
-    }
-
-    // Navigate back to queue after a successful conversion toast
-    if (outcome === 'connected' && connectedSubStatus === 'interested' && interestedPlan) {
-      triggerToast('Marked as Converted ✓');
-    } else {
-      triggerToast('Disposition logged successfully');
-    }
-    
-    // Frictionless loop: transition immediately to Call Queue or Campaign Leads
-    setTimeout(() => {
-      navigate(isCampaign ? '/dw/dw-campaign-leads' : '/dw/dw-call-queue');
-    }, 800);
-  };
+  if (profileLoading || nextLeadLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <p className="text-sm font-semibold text-outline">Loading active call dialer...</p>
+      </div>
+    );
+  }
 
   return (
     <main className="h-[calc(100vh-80px)] flex bg-white overflow-hidden border border-gray-200 rounded-xl relative">
@@ -236,25 +282,31 @@ export const DwActiveCallFocus: React.FC = () => {
         <div className="bg-white border border-gray-200 p-3 rounded-xl shadow-sm mb-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
-              <span className="font-mono text-xl font-bold text-gray-800">{formatTimer(seconds)}</span>
+              <span className={`w-2.5 h-2.5 rounded-full ${
+                callState === 'connected' ? 'bg-green-600 animate-pulse' :
+                callState === 'ringing' || callState === 'dialing' ? 'bg-amber-500 animate-ping' :
+                'bg-gray-400'
+              }`}></span>
+              <span className="font-mono text-xl font-bold text-gray-800">
+                {formatTimer(callState !== 'idle' ? callDuration : 0)}
+              </span>
             </div>
             
             {/* Audio Toggles */}
             <div className="flex items-center gap-1">
               <button 
-                onClick={() => { setIsMuted(!isMuted); triggerToast(isMuted ? 'Microphone active' : 'Microphone muted'); }}
-                className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${isMuted ? 'bg-red-50 border-red-200 text-red-600 font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
+                onClick={() => { toggleLiveMute(); triggerToast(liveMuted ? 'Microphone active' : 'Microphone muted'); }}
+                className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${liveMuted ? 'bg-red-50 border-red-200 text-red-600 font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
                 title="Mute"
               >
-                <span className="material-symbols-outlined text-[18px]">{isMuted ? 'mic_off' : 'mic'}</span>
+                <span className="material-symbols-outlined text-[18px]">{liveMuted ? 'mic_off' : 'mic'}</span>
               </button>
               <button 
-                onClick={() => { setIsSpeaker(!isSpeaker); triggerToast(isSpeaker ? 'Speaker off' : 'Speaker on'); }}
-                className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${isSpeaker ? 'bg-[#EAFAF1] border-[#27AE60] text-[#27AE60] font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
-                title="Speaker"
+                onClick={() => { toggleLiveHold(); triggerToast(liveHeld ? 'Call resumed' : 'Call on hold'); }}
+                className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${liveHeld ? 'bg-amber-50 border-amber-200 text-amber-600 font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
+                title="Hold / Speaker"
               >
-                <span className="material-symbols-outlined text-[18px]">volume_up</span>
+                <span className="material-symbols-outlined text-[18px]">{liveHeld ? 'play_arrow' : 'pause'}</span>
               </button>
             </div>
           </div>
@@ -262,28 +314,19 @@ export const DwActiveCallFocus: React.FC = () => {
           <div className="text-xs text-gray-500 mt-2 font-semibold">
             Active: <span className="text-gray-800">{leadName}</span> · <span className="font-mono">{leadTmid}</span> · <span className="text-gray-600">{leadPhone}</span> · <span className="text-gray-600">{leadLocation}</span>
           </div>
-
-          {isCampaign && campaignContext && (
-            <div className="mt-3 bg-red-500/5 border border-red-500/10 rounded-lg p-2.5 text-[11px] text-gray-700 space-y-1">
-              <div className="flex justify-between items-center mb-1">
-                <span className="font-bold text-red-800 uppercase tracking-wider text-[9px]">Campaign Source</span>
-                <span className="bg-red-500 text-white px-1.5 py-0.5 rounded font-mono text-[9px] font-bold uppercase">{campaignContext.source}</span>
-              </div>
-              <div className="truncate"><span className="text-gray-400">Campaign:</span> <span className="font-semibold text-gray-800">{campaignContext.campaignName}</span></div>
-              <div className="flex justify-between items-center text-[10px] pt-1">
-                <span><span className="text-gray-400">Form:</span> <span className="font-semibold">{campaignContext.leadForm}</span></span>
-                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${campaignContext.temperature === 'HOT' ? 'bg-red-100 text-red-700 animate-pulse' : campaignContext.temperature === 'WARM' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                  {campaignContext.temperature}
-                </span>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* PLAN PRICE REFERENCE CARD (PALE YELLOW, UNDISMISSABLE) */}
+        {/* Current Subscription Status */}
+        {planCard?.has_plan && (
+          <div className="bg-[#EAFAF1] border border-[#27AE60]/20 rounded-xl p-3 mb-4 text-xs font-bold text-[#27AE60]">
+            ✓ Driver Subscribed: {planCard.plan_label} (Expires: {planCard.expires_at})
+          </div>
+        )}
+
+        {/* Plan price reference card */}
         <div className="bg-[#FFF9E6] border border-[#F39C12] rounded-xl p-4 mb-4 select-none">
           <div className="text-xs font-bold text-[#D35400] mb-2 uppercase tracking-wide">
-            📌 CURRENT PRICES — Effective Jun 2, 2026
+            📌 CURRENT PLANS
           </div>
           <div className="space-y-1.5 text-xs text-[#7F8C8D]">
             <div className="flex justify-between">
@@ -301,24 +344,23 @@ export const DwActiveCallFocus: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Disposition Row */}
+        {/* Pre-disposition selection triggers outcome modal */}
         <div className="mb-4">
-          <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2">Live Connection Pre-disposition</div>
+          <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2">Quick Pre-Disposition</div>
           <div className="grid grid-cols-2 gap-2">
             {[
               { id: 'connected', label: 'Connected', icon: 'check_circle' },
-              { id: 'nr', label: 'No Response', icon: 'phone_disabled' },
-              { id: 'busy', label: 'Busy', icon: 'timer' },
-              { id: 'off', label: 'Switch Off', icon: 'power_off' }
+              { id: 'not_connected', label: 'No Answer / NR', icon: 'phone_disabled' },
+              { id: 'callback_later', label: 'Callback Later', icon: 'timer' }
             ].map(disp => (
               <button 
                 key={disp.id}
+                disabled={callState !== 'idle'}
                 onClick={() => {
-                  triggerToast(`Pre-logged: ${disp.label}`);
-                  // Auto-fill Step 1 outcome if they click here to minimize post-call entry time
                   setOutcome(disp.id as any);
+                  setShowPostCallModal(true);
                 }}
-                className="h-14 border border-gray-200 bg-white rounded-lg hover:bg-gray-100 flex flex-col items-center justify-center transition-all"
+                className="h-14 border border-gray-200 bg-white rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center transition-all"
               >
                 <span className="material-symbols-outlined text-[16px] text-gray-500">{disp.icon}</span>
                 <span className="text-[10px] font-bold text-gray-700 mt-1">{disp.label}</span>
@@ -327,7 +369,7 @@ export const DwActiveCallFocus: React.FC = () => {
           </div>
         </div>
 
-        {/* Send Payment Link Button (Orange) */}
+        {/* Send payment link */}
         <div className="mb-4">
           <button 
             onClick={() => setShowLinkModal(true)}
@@ -335,6 +377,17 @@ export const DwActiveCallFocus: React.FC = () => {
           >
             <span className="material-symbols-outlined text-[18px]">send</span>
             Send Payment Link via WhatsApp
+          </button>
+        </div>
+
+        {/* Skip Lead option */}
+        <div className="mb-4">
+          <button 
+            onClick={handleSkipLead}
+            className="w-full border border-gray-300 text-gray-600 hover:bg-gray-100 h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-transform active:scale-[0.98]"
+          >
+            <span className="material-symbols-outlined text-[18px]">skip_next</span>
+            Skip Lead
           </button>
         </div>
 
@@ -354,15 +407,26 @@ export const DwActiveCallFocus: React.FC = () => {
           />
         </div>
 
-        {/* End Call Button (Red, Bottom) */}
+        {/* End Call / Dial Call Button */}
         <div className="mt-auto pt-4 border-t border-gray-200">
-          <button 
-            onClick={() => setShowPostCallModal(true)}
-            className="w-full bg-[#E74C3C] hover:bg-[#c0392b] text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md"
-          >
-            <span className="material-symbols-outlined text-[18px]">call_end</span>
-            End Call
-          </button>
+          {callState !== 'idle' ? (
+            <button 
+              onClick={hangup}
+              className="w-full bg-[#E74C3C] hover:bg-[#c0392b] text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md animate-pulse"
+            >
+              <span className="material-symbols-outlined text-[18px]">call_end</span>
+              Hangup Live Call
+            </button>
+          ) : (
+            <button 
+              disabled={!leadPhone || leadPhone === '00000 00000'}
+              onClick={() => dial(leadPhone, userId, leadName, leadTmid)}
+              className="w-full bg-[#27AE60] hover:bg-[#219653] disabled:bg-gray-300 disabled:cursor-not-allowed text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md"
+            >
+              <span className="material-symbols-outlined text-[18px]">phone</span>
+              Dial Lead Call
+            </button>
+          )}
         </div>
 
       </section>
@@ -373,7 +437,6 @@ export const DwActiveCallFocus: React.FC = () => {
         {/* Script Tab Bar */}
         <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto scrollbar-none shrink-0">
           {[
-            ...(isCampaign ? [{ key: 'campaignOpening', label: '📢 Campaign Script' }] : []),
             { key: 'opening', label: 'Opening' },
             { key: 'jobReady', label: 'Job Ready Pitch' },
             { key: 'verified', label: 'Verified Upsell' },
@@ -398,23 +461,6 @@ export const DwActiveCallFocus: React.FC = () => {
         {/* Script Content Area */}
         <div className="flex-grow overflow-y-auto p-6 min-h-0">
           <div className="max-w-[480px] mx-auto text-gray-800">
-            
-            {activeTab === 'campaignOpening' && campaignContext && (
-              <div className="space-y-4 font-hindi leading-relaxed text-[15px]">
-                <h3 className="text-sm font-bold text-red-500 uppercase tracking-wide font-sans">Campaign Opening Script ({campaignContext.source})</h3>
-                <div className="bg-red-50/50 border-l-4 border-red-500 p-4 rounded-r-xl">
-                  "{campaignContext.openingScript}"
-                </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs space-y-1 text-gray-600 font-sans">
-                  <div className="font-bold text-gray-700">Campaign Context:</div>
-                  <div><span className="text-gray-400">Ad Source:</span> {campaignContext.source}</div>
-                  <div><span className="text-gray-400">Campaign:</span> {campaignContext.campaignName}</div>
-                  <div><span className="text-gray-400">Form:</span> {campaignContext.leadForm}</div>
-                  <div><span className="text-gray-400">Captured:</span> {campaignContext.capturedTime}</div>
-                  {campaignContext.utmCampaign && <div><span className="text-gray-400">UTM:</span> {campaignContext.utmSource} / {campaignContext.utmMedium} / {campaignContext.utmCampaign}</div>}
-                </div>
-              </div>
-            )}
 
             {activeTab === 'opening' && (
               <div className="space-y-4 font-hindi leading-relaxed text-[15px]">
@@ -469,7 +515,6 @@ export const DwActiveCallFocus: React.FC = () => {
                   />
                 </div>
 
-                {/* Bookmark row */}
                 {bookmarks.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5 bg-gray-50 p-2 rounded-lg border border-gray-100">
                     <span className="text-[10px] text-gray-400 font-bold uppercase">My Bookmarks:</span>
@@ -481,7 +526,6 @@ export const DwActiveCallFocus: React.FC = () => {
                   </div>
                 )}
 
-                {/* Objections List */}
                 <div className="space-y-3 mt-4">
                   {sortedObjections.map(obj => (
                     <div key={obj.key} className="border border-gray-200 rounded-xl p-4 bg-white relative hover:border-[#27AE60] transition-colors">
@@ -516,13 +560,13 @@ export const DwActiveCallFocus: React.FC = () => {
           </div>
         </div>
 
-        {/* Pulsing Voice Sync strip */}
+        {/* Voice sync strip */}
         <div className="h-8 bg-gray-900 flex items-center px-4 justify-between text-white shrink-0">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60] animate-pulse"></span>
             <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold">Exotel Softphone Active</span>
           </div>
-          <span className="text-[9px] font-mono text-gray-500">Channel ID: EX-CDR-9028</span>
+          <span className="text-[9px] font-mono text-gray-500">Live Recording Enabled</span>
         </div>
       </section>
 
@@ -547,7 +591,9 @@ export const DwActiveCallFocus: React.FC = () => {
               
               <div className="p-3 bg-gray-50 rounded border border-gray-100 font-mono text-[11px] text-gray-500 leading-normal">
                 💬 <span className="font-bold text-gray-700">WhatsApp Message:</span>
-                <p className="mt-1 font-sans text-xs">"Hello {leadName}, thank you for choosing TruckMitr. Here is your payment link for {selectedPlan}: https://truckmitr.in/pay/dr-48291"</p>
+                <p className="mt-1 font-sans text-xs">
+                  "Hello {leadName}, thank you for choosing TruckMitr. Here is your payment link for {selectedPlan}: https://truckmitr.in/pay/{leadTmid}"
+                </p>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -569,7 +615,7 @@ export const DwActiveCallFocus: React.FC = () => {
         </div>
       )}
 
-      {/* POST-CALL FORM GATED MODAL OVERLAY (BLOCKING) */}
+      {/* POST-CALL FORM GATED MODAL OVERLAY */}
       {showPostCallModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto relative">
@@ -581,20 +627,18 @@ export const DwActiveCallFocus: React.FC = () => {
                 <span className="font-mono text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{leadTmid}</span>
               </h2>
               <div className="text-[11px] text-gray-400 mt-1">
-                19 Jun 2026, 11:06 AM · Duration: {formatTimer(seconds)} (Exotel Logged CDR)
+                Duration: {formatTimer(seconds)}
               </div>
             </div>
 
-            {/* Step 1 — Outcome (Outcome Select Cards) */}
+            {/* Step 1 — Outcome */}
             <div className="space-y-3">
               <div className="text-xs font-bold text-gray-700 uppercase tracking-wider">Step 1 — Call Outcome *</div>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { id: 'connected', label: 'Connected', desc: 'Call successfully answered' },
-                  { id: 'nr', label: 'Not Reachable', desc: 'No response/Switch off' },
-                  { id: 'busy', label: 'Busy', desc: 'Line busy/call declined' },
-                  { id: 'wrong', label: 'Wrong Number', desc: 'Not a driver/incorrect phone' },
-                  { id: 'off', label: 'Switch Off', desc: 'Switched off/Network issue' }
+                  { id: 'not_connected', label: 'No Answer / NR', desc: 'No response/Switch off' },
+                  { id: 'callback_later', label: 'Callback Later', desc: 'Wants callback later' }
                 ].map(op => (
                   <button
                     key={op.id}
@@ -697,22 +741,16 @@ export const DwActiveCallFocus: React.FC = () => {
                     className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs text-gray-800"
                   >
                     <option value="">Select Reason...</option>
-                    <option value="too_expensive">Too expensive / Pricing Objection</option>
-                    <option value="not_relevant">Not relevant to me</option>
-                    <option value="competitor">Using a competitor app</option>
-                    <option value="no_smartphone">No smartphone access</option>
-                    <option value="no_jobs_needed">Not interested in jobs right now</option>
-                    <option value="other">Other reason</option>
+                    {dispositionOptions?.data?.feedbacks.map(f => (
+                      <option key={f.value} value={f.value}>{f.label}</option>
+                    ))}
                   </select>
-                </div>
-                <div className="bg-blue-50 text-blue-700 p-2.5 rounded border border-blue-100 text-[11px]">
-                  💡 <strong>System follow-up scheduled:</strong> A D+3 follow-up call will be scheduled automatically in the background.
                 </div>
               </div>
             )}
 
             {/* Step 3c — Callback Requested Sub-Form */}
-            {outcome === 'connected' && connectedSubStatus === 'callback' && (
+            {(connectedSubStatus === 'callback' || outcome === 'callback_later') && (
               <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-100 mt-4 text-xs">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -737,120 +775,26 @@ export const DwActiveCallFocus: React.FC = () => {
               </div>
             )}
 
-            {/* Campaign Specific — Temperature & Rating */}
-            {isCampaign && outcome && (
-              <div className="space-y-4 bg-red-50/30 p-4 rounded-xl border border-red-100 mt-4 text-xs">
-                <div className="font-bold text-red-800 uppercase tracking-wider flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[16px]">campaign</span>
-                  Campaign Disposition Details
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="font-bold text-gray-700 block">Temperature Update *</label>
-                  <div className="flex gap-2">
-                    {[
-                      { id: 'HOT', label: '🔥 Keep HOT' },
-                      { id: 'WARM', label: '~ Downgrade WARM' },
-                      { id: 'COLD', label: '❄ Downgrade COLD' }
-                    ].map(t => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setTempUpdate(t.id as any)}
-                        className={`flex-1 py-2 border rounded-lg font-bold text-center transition-all ${
-                          tempUpdate === t.id 
-                            ? 'bg-red-500 text-white border-red-500' 
-                            : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold text-gray-700 block">Lead Quality Rating (Optional)</label>
-                  <div className="flex items-center gap-1.5">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setStarRating(star)}
-                        className="text-lg transition-transform active:scale-125 focus:outline-none"
-                      >
-                        <span className={`material-symbols-outlined text-[24px] ${
-                          star <= starRating ? 'text-yellow-500 fill-current' : 'text-gray-300'
-                        }`}>
-                          star
-                        </span>
-                      </button>
-                    ))}
-                    {starRating > 0 && (
-                      <span className="text-[11px] font-bold text-gray-500 ml-2">({starRating} Star{starRating > 1 ? 's' : ''})</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 4 — Remarks (Optional, All Paths) */}
+            {/* Step 4 — Remarks */}
             {outcome && (
               <div className="space-y-2 mt-4 text-xs">
                 <label className="font-bold text-gray-700 block">General Remarks / Notes</label>
-                <div className="relative">
-                  <textarea
-                    value={dispositionNotes}
-                    onChange={(e) => setDispositionNotes(e.target.value)}
-                    placeholder="Enter additional remarks or context here..."
-                    className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-[#27AE60] min-h-[60px] pr-8"
-                  />
-                  <button 
-                    onClick={() => {
-                      setDispositionNotes(prev => prev ? `${prev} (Client confirmed route details)` : 'Client confirmed route details');
-                      triggerToast('Mock voice-to-text recorded');
-                    }}
-                    className="absolute right-2 bottom-3.5 text-gray-400 hover:text-[#27AE60]"
-                    title="Mock Voice-To-Text"
-                  >
-                    🎙️
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Auto-Triggered Funnel Escalation Banner */}
-            {(outcome === 'nr' || leadTmid === 'DR-48292') && (
-              <div className="bg-[#FFF9E6] border border-[#F2C94C] p-3 rounded-lg text-xs mt-4 text-[#D35400] space-y-2 select-none">
-                <div className="font-bold">⚠️ Funnel Escalation Prompt</div>
-                <p className="text-[11px] leading-tight">This lead has reached 3 NR attempts / 3 days in queue. Escalate to Funnel Caller queue?</p>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setEscalateChoice('yes')}
-                    className={`px-3 py-1 rounded text-[10px] font-bold ${escalateChoice === 'yes' ? 'bg-[#FB641B] text-white' : 'bg-white border border-gray-200'}`}
-                  >
-                    Yes, Escalate
-                  </button>
-                  <button 
-                    onClick={() => setEscalateChoice('no')}
-                    className={`px-3 py-1 rounded text-[10px] font-bold ${escalateChoice === 'no' ? 'bg-gray-600 text-white' : 'bg-white border border-gray-200'}`}
-                  >
-                    No, Keep
-                  </button>
-                </div>
+                <textarea
+                  value={dispositionNotes}
+                  onChange={(e) => setDispositionNotes(e.target.value)}
+                  placeholder="Enter call remarks..."
+                  className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-[#27AE60] min-h-[60px]"
+                />
               </div>
             )}
 
             {/* Submit Actions */}
             <div className="border-t border-gray-100 pt-4 mt-6 flex justify-end gap-2">
               <button 
-                onClick={() => {
-                  // Simulate exit block check
-                  triggerToast('Disposition logging is required. Form cannot be bypassed.');
-                }}
-                className="px-4 py-2 border border-gray-200 text-gray-400 rounded-lg text-xs font-bold cursor-not-allowed select-none"
+                onClick={() => setShowPostCallModal(false)}
+                className="px-4 py-2 border border-gray-200 text-gray-500 hover:bg-gray-100 rounded-lg text-xs font-bold"
               >
-                Cancel
+                Back to Softphone
               </button>
               
               <button
@@ -859,22 +803,18 @@ export const DwActiveCallFocus: React.FC = () => {
                   !outcome || 
                   (outcome === 'connected' && !connectedSubStatus) ||
                   (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
-                  (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason) ||
-                  ((outcome === 'nr' || leadTmid === 'DR-48292') && !escalateChoice) ||
-                  (isCampaign && !tempUpdate)
+                  (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason)
                 }
                 className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
                   (!outcome || 
                    (outcome === 'connected' && !connectedSubStatus) ||
                    (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
-                   (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason) ||
-                   ((outcome === 'nr' || leadTmid === 'DR-48292') && !escalateChoice) ||
-                   (isCampaign && !tempUpdate))
+                   (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason))
                     ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
                     : 'bg-[#27AE60] hover:bg-[#219653] text-white font-bold'
                 }`}
               >
-                Submit & Load Next Lead →
+                Submit & Log Disposition
               </button>
             </div>
 

@@ -1,0 +1,139 @@
+import React from 'react';
+import { useSanCti } from './SanCtiProvider';
+
+interface CallControlBarProps {
+  driverName?: string;
+}
+
+/**
+ * Floating call control bar — bottom-right of screen.
+ * Only visible when callState !== 'idle'.
+ */
+export default function CallControlBar({ driverName }: CallControlBarProps) {
+  const {
+    callState,
+    callDuration,
+    isHeld,
+    isMuted,
+    hangup,
+    toggleHold,
+    toggleMute,
+    acceptIncoming,
+    currentPhoneNumber,
+    currentLeadName,
+  } = useSanCti();
+
+  const activeName = driverName || currentLeadName || currentPhoneNumber || 'Unknown';
+
+  if (callState === 'idle' || callState === 'disposition_pending') return null;
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  interface StateConfigItem {
+    dot: string;
+    pulse: boolean;
+    label: string;
+    showTimer: boolean;
+  }
+
+  const stateConfig: Record<string, StateConfigItem> = {
+    dialing:          { dot: '#FCD34D', pulse: true,  label: 'Dialing...',    showTimer: false },
+    ringing:          { dot: '#FCD34D', pulse: true,  label: 'Ringing...',    showTimer: false },
+    connected:        { dot: '#22C55E', pulse: false, label: 'Connected',     showTimer: true },
+    incoming_ringing: { dot: '#3B82F6', pulse: true,  label: 'Incoming Call', showTimer: false },
+  };
+
+  const cfg = stateConfig[callState] || stateConfig.dialing;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: 24,
+      right: 24,
+      backgroundColor: '#1F2937',
+      borderRadius: 16,
+      padding: '12px 20px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+      zIndex: 9999,
+      color: '#fff',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      minWidth: 320,
+    }}>
+      {/* Status dot */}
+      <div style={{
+        width: 12, height: 12, borderRadius: '50%',
+        backgroundColor: cfg.dot,
+        animation: cfg.pulse ? 'pulse 1.5s infinite' : 'none',
+      }} />
+
+      {/* Driver name + status */}
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>
+          {activeName}
+        </div>
+        <div style={{ fontSize: 12, color: '#9CA3AF' }}>
+          {cfg.label} {cfg.showTimer && `— ${formatTime(callDuration)}`}
+        </div>
+      </div>
+
+      {/* Call controls */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        {callState === 'incoming_ringing' && (
+          <button onClick={acceptIncoming} style={{
+            ...btnStyle, backgroundColor: '#22C55E'
+          }}>
+            Answer
+          </button>
+        )}
+
+        {callState === 'connected' && (
+          <>
+            <button onClick={toggleHold} style={{
+              ...btnStyle,
+              backgroundColor: isHeld ? '#F59E0B' : '#374151',
+            }}>
+              {isHeld ? 'Resume' : 'Hold'}
+            </button>
+            <button onClick={toggleMute} style={{
+              ...btnStyle,
+              backgroundColor: isMuted ? '#EF4444' : '#374151',
+            }}>
+              {isMuted ? 'Unmute' : 'Mute'}
+            </button>
+          </>
+        )}
+
+        <button onClick={hangup} style={{
+          ...btnStyle, backgroundColor: '#EF4444'
+        }}>
+          Hangup
+        </button>
+      </div>
+
+      {/* Pulse animation */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.3); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+const btnStyle: React.CSSProperties = {
+  border: 'none',
+  borderRadius: 8,
+  padding: '6px 14px',
+  color: '#fff',
+  fontSize: 13,
+  fontWeight: 500,
+  cursor: 'pointer',
+};

@@ -93,14 +93,15 @@ export const LoginPage: React.FC = () => {
   const onSubmit = async (data: LoginInput) => {
     try {
       setServerError(null);
-      const success = await login(data.email, selectedRole);
-      if (success) {
+      const user = await login(data.email, selectedRole, data.password);
+      if (user) {
+        const userRole = user.role;
         const activeCallerRoles: Role[] = [Role.DW, Role.WCT, Role.MM, Role.SC];
-        if (activeCallerRoles.includes(selectedRole)) {
-          if (selectedRole === Role.DW) navigate('/dialer/dw/dw-active-call-focus');
-          else if (selectedRole === Role.WCT) navigate('/dialer/wct/wct-active-call-focus');
-          else if (selectedRole === Role.MM) navigate('/dialer/mm/mm-active-call-focus-refined');
-          else if (selectedRole === Role.SC) navigate('/dialer/sc/active-call-focus-special-categories');
+        if (activeCallerRoles.includes(userRole)) {
+          if (userRole === Role.DW) navigate('/dw/dw-home-dashboard');
+          else if (userRole === Role.WCT) navigate('/wct/wct-home-dashboard');
+          else if (userRole === Role.MM) navigate('/mm/mm-home-dashboard');
+          else if (userRole === Role.SC) navigate('/sc/sc-home-dashboard');
         } else {
           navigate('/');
         }
@@ -116,14 +117,15 @@ export const LoginPage: React.FC = () => {
     try {
       setServerError(null);
       const shortCode = ROLE_SHORT_CODES[role];
-      const success = await login(`${shortCode}@truckmitr.com`, role);
-      if (success) {
+      const user = await login(`${shortCode}@truckmitr.com`, role, 'password123');
+      if (user) {
+        const userRole = user.role;
         const activeCallerRoles: Role[] = [Role.DW, Role.WCT, Role.MM, Role.SC];
-        if (activeCallerRoles.includes(role)) {
-          if (role === Role.DW) navigate('/dialer/dw/dw-active-call-focus');
-          else if (role === Role.WCT) navigate('/dialer/wct/wct-active-call-focus');
-          else if (role === Role.MM) navigate('/dialer/mm/mm-active-call-focus-refined');
-          else if (role === Role.SC) navigate('/dialer/sc/active-call-focus-special-categories');
+        if (activeCallerRoles.includes(userRole)) {
+          if (userRole === Role.DW) navigate('/dw/dw-home-dashboard');
+          else if (userRole === Role.WCT) navigate('/wct/wct-home-dashboard');
+          else if (userRole === Role.MM) navigate('/mm/mm-home-dashboard');
+          else if (userRole === Role.SC) navigate('/sc/sc-home-dashboard');
         } else {
           navigate('/');
         }

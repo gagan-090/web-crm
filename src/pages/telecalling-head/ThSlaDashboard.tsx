@@ -1,4 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import {
+  useGetThSlaDashboardQuery,
+  useGetThTeamMonitorQuery,
+  useReassignThLeadsMutation,
+} from '../../services/api/teleheadApi';
 
 interface SlaItem {
   id: string;
@@ -24,14 +29,11 @@ interface Escalation {
 }
 
 export const ThSlaDashboard: React.FC = () => {
-  const [slaItems, setSlaItems] = useState<SlaItem[]>([
-    { id: '1', type: 'Super Premium Fill', process: 'MM', leadJobId: '#JOB-8842', partyName: 'VRL Logistics Ltd', deadline: '26 Oct, 18:00', timeRemaining: '1.2 Days', assignedCaller: 'Rahul S.', assignedTl: 'Rajendra', status: 'Critical' },
-    { id: '2', type: 'First-Call', process: 'TR', leadJobId: 'TR-9901', partyName: 'Jaguar Roadlines', deadline: '25 Oct, 12:00', timeRemaining: '2h 15m', assignedCaller: 'Ravi', assignedTl: 'Rajendra', status: 'Critical' },
-    { id: '3', type: 'Premium Fill', process: 'MM', leadJobId: '#JOB-8901', partyName: 'Safe Express India', deadline: '27 Oct, 12:00', timeRemaining: '3.5 Days', assignedCaller: 'Priya M.', assignedTl: 'Rajendra', status: 'At Risk' },
-    { id: '4', type: 'First-Call', process: 'TR', leadJobId: 'TR-1012', partyName: 'BlueDart Surface', deadline: '30 Oct, 18:00', timeRemaining: '6.0 Days', assignedCaller: 'Ankit K.', assignedTl: 'Rahul', status: 'Healthy' },
-    { id: '5', type: 'Super Premium Fill', process: 'MM', leadJobId: '#JOB-9012', partyName: 'Delhi Cargo Services', deadline: '31 Oct, 15:00', timeRemaining: '7.2 Days', assignedCaller: 'Sneha S.', assignedTl: 'Rajendra', status: 'Healthy' },
-  ]);
+  const { data: slaData, refetch } = useGetThSlaDashboardQuery();
+  const { data: teamData } = useGetThTeamMonitorQuery({ process: 'all' });
+  const [reassignThLeads] = useReassignThLeadsMutation();
 
+  const [slaItems, setSlaItems] = useState<SlaItem[]>([]);
   const [escalations, setEscalations] = useState<Escalation[]>([
     { id: 'esc-1', tlName: 'Rajendra', note: 'Transporter is premium and SLA deadline is tomorrow. Caller on leave.', timestamp: '10m ago', leadJobId: '#JOB-8842', partyName: 'VRL Logistics Ltd', type: 'Super Premium Fill' },
     { id: 'esc-2', tlName: 'Rahul', note: 'Multiple call attempts no response. Escalating to check details.', timestamp: '1h ago', leadJobId: 'TR-1012', partyName: 'BlueDart Surface', type: 'First-Call' },
@@ -41,34 +43,77 @@ export const ThSlaDashboard: React.FC = () => {
   const [reassignTargetCaller, setReassignTargetCaller] = useState('');
   const [processFilter, setProcessFilter] = useState<'ALL' | 'TR' | 'MM'>('ALL');
 
-  // Available callers for company-wide reassignment
-  const availableCallers = [
+  useEffect(() => {
+    if (slaData) {
+      const trItems = slaData.tr_sla?.data?.map((item: any) => ({
+        id: item.id?.toString() || item.unique_id,
+        type: 'First-Call' as const,
+        process: 'TR' as const,
+        leadJobId: item.unique_id,
+        partyName: item.name,
+        deadline: item.registered_at ? item.registered_at.split(' ')[0] : 'Today',
+        timeRemaining: `${item.mins_since_registration}m elapsed`,
+        assignedCaller: item.assigned_caller || 'Unassigned',
+        assignedTl: 'Rajendra',
+        status: (item.sla_status === 'CRITICAL' ? 'Critical' : item.sla_status === 'WARNING' ? 'At Risk' : 'Healthy') as any
+      })) || [];
+
+      const mmItems = slaData.mm_sla?.data?.map((item: any) => ({
+        id: item.job_id,
+        type: 'Super Premium Fill' as const,
+        process: 'MM' as const,
+        leadJobId: item.job_id,
+        partyName: item.transporter_name,
+        deadline: item.sla_deadline,
+        timeRemaining: `${item.days_remaining} Days`,
+        assignedCaller: item.assigned_caller || 'Unassigned',
+        assignedTl: 'Rajendra',
+        status: (item.sla_status === 'CRITICAL' ? 'Critical' : item.sla_status === 'WARNING' ? 'At Risk' : 'Healthy') as any
+      })) || [];
+
+      setSlaItems([...trItems, ...mmItems]);
+    }
+  }, [slaData]);
+
+  // Available callers from teamMonitorData
+  const availableCallers = teamData?.data
+    ?.filter(c => c.process !== 'TL')
+    ?.map(c => `${c.name} (${c.process === 'welcome-call' ? 'DW' : c.process === 'transporter' ? 'TR' : c.process === 'match-making' ? 'MM' : 'SC'})`) || [
     'Sonam (DW)',
     'Ankit Singh (DW)',
     'Arpita (DW)',
     'Pooja Pal (MM)',
-    'Tanisha (MM)',
-    'Ravi (TR)',
-    'Minanshu (TR)',
-    'Akash Thakur (SC)'
+    'Tanisha (MM)'
   ];
 
   const handleAcknowledgeEscalation = (id: string) => {
     setEscalations(prev => prev.filter(e => e.id !== id));
   };
 
-  const handleReassignSubmit = (e: React.FormEvent) => {
+  const handleReassignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItemForReassign || !reassignTargetCaller) return;
 
-    setSlaItems(prev => prev.map(item =>
-      item.id === selectedItemForReassign.id
-        ? { ...item, assignedCaller: reassignTargetCaller }
-        : item
-    ));
+    // Find admin_id of target caller
+    const callerName = reassignTargetCaller.split(' ')[0];
+    const targetCaller = teamData?.data?.find(c => c.name === callerName);
+    if (!targetCaller) {
+      alert('Selected target caller not found in team database');
+      return;
+    }
 
-    setSelectedItemForReassign(null);
-    setReassignTargetCaller('');
+    try {
+      await reassignThLeads({
+        user_ids: [parseInt(selectedItemForReassign.id)],
+        to_admin_id: targetCaller.id,
+        reason: 'SLA Dashboard Overridden Reassignment'
+      }).unwrap();
+      refetch();
+      setSelectedItemForReassign(null);
+      setReassignTargetCaller('');
+    } catch (err) {
+      alert('Failed to reassign leads: ' + JSON.stringify(err));
+    }
   };
 
   const filteredItems = slaItems.filter(
@@ -81,15 +126,15 @@ export const ThSlaDashboard: React.FC = () => {
       <section className="grid grid-cols-3 gap-md">
         <div className="bg-white border border-outline-variant p-md rounded-sm flipkart-shadow">
           <p className="font-label-caps text-outline text-[10px] uppercase font-bold">Company-Wide SLA Compliance</p>
-          <p className="text-2xl font-extrabold text-green-600 mt-xs">92.8%</p>
+          <p className="text-2xl font-extrabold text-green-600 mt-xs">{slaData?.compliance_rate ? `${slaData.compliance_rate}%` : '92.8%'}</p>
         </div>
         <div className="bg-white border border-outline-variant p-md rounded-sm flipkart-shadow">
           <p className="font-label-caps text-outline text-[10px] uppercase font-bold">Active SLA Breaches</p>
-          <p className="text-2xl font-extrabold text-red-600 mt-xs">2</p>
+          <p className="text-2xl font-extrabold text-red-600 mt-xs">{(slaData?.tr_sla?.breached || 0) + (slaData?.mm_sla?.breached || 0) || 2}</p>
         </div>
         <div className="bg-white border border-outline-variant p-md rounded-sm flipkart-shadow">
           <p className="font-label-caps text-outline text-[10px] uppercase font-bold">At-Risk (Within 24 Hours)</p>
-          <p className="text-2xl font-extrabold text-amber-600 mt-xs">4</p>
+          <p className="text-2xl font-extrabold text-amber-600 mt-xs">{(slaData?.tr_sla?.critical || 0) + (slaData?.mm_sla?.critical || 0) || 4}</p>
         </div>
       </section>
 

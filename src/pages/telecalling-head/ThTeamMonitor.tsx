@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useGetThTeamMonitorQuery, useMoveThLeadsMutation } from '../../services/api/teleheadApi';
 
 interface Caller {
   id: string;
@@ -30,52 +31,55 @@ export const ThTeamMonitor: React.FC = () => {
     { id: 'B04', name: 'Sana', target: 'Special Categories Backup', active: false },
   ]);
 
-  // List of all 19 callers system-wide
-  const [callers, setCallers] = useState<Caller[]>([
-    { id: '1', name: 'Sonam', process: 'DW', role: 'Welcome Caller', status: 'In Call', statusTime: '04:12', currentLead: 'DR-48291', queueDepth: 8, callsToday: 45, revenueToday: 15400, lastActive: 'Just now', reportingTl: 'Rahul' },
-    { id: '2', name: 'Ankit Singh', process: 'DW', role: 'Welcome Caller', status: 'In Call', statusTime: '01:30', currentLead: 'DR-48190', queueDepth: 12, callsToday: 32, revenueToday: 18500, lastActive: 'Just now', reportingTl: 'Rahul' },
-    { id: '3', name: 'Arpita', process: 'DW', role: 'Welcome Caller', status: 'Wrapping Up', statusTime: '00:15', currentLead: 'DR-49110', queueDepth: 5, callsToday: 28, revenueToday: 9500, lastActive: '2m ago', reportingTl: 'Rahul' },
-    { id: '4', name: 'Pallvi', process: 'DW', role: 'Welcome Caller', status: 'Idle', currentLead: '-', queueDepth: 0, callsToday: 41, revenueToday: 12000, lastActive: '8m ago', reportingTl: 'Rahul' },
-    { id: '5', name: 'Kajal', process: 'DW', role: 'Welcome Caller', status: 'Offline', currentLead: '-', queueDepth: 0, callsToday: 0, revenueToday: 0, lastActive: 'Yesterday', reportingTl: 'Rahul' },
-    { id: '6', name: 'Gagan Shukla', process: 'DW', role: 'Welcome Caller', status: 'In Call', statusTime: '12:04', currentLead: 'DR-44021', queueDepth: 14, callsToday: 55, revenueToday: 22000, lastActive: 'Just now', reportingTl: 'Rahul' },
-    { id: '7', name: 'Abhi', process: 'DW', role: 'Welcome Caller', status: 'In Call', statusTime: '05:30', currentLead: 'DR-45112', queueDepth: 6, callsToday: 18, revenueToday: 4500, lastActive: 'Just now', reportingTl: 'Rahul' },
+  const { data: teamData, refetch } = useGetThTeamMonitorQuery({ process: 'all' });
+  const [moveLeads] = useMoveThLeadsMutation();
 
-    { id: '8', name: 'Pooja Pal', process: 'MM', role: 'Matchmaker', status: 'In Call', statusTime: '02:44', currentLead: 'JD-12022', queueDepth: 4, callsToday: 22, revenueToday: 19500, lastActive: 'Just now', reportingTl: 'Rajendra' },
-    { id: '9', name: 'Tanisha', process: 'MM', role: 'Matchmaker', status: 'Wrapping Up', statusTime: '01:10', currentLead: 'JD-12015', queueDepth: 3, callsToday: 19, revenueToday: 11000, lastActive: '1m ago', reportingTl: 'Rajendra' },
-    { id: '10', name: 'Raksha', process: 'MM', role: 'Matchmaker', status: 'In Call', statusTime: '03:22', currentLead: 'JD-12098', queueDepth: 6, callsToday: 25, revenueToday: 15000, lastActive: 'Just now', reportingTl: 'Rajendra' },
-    { id: '11', name: 'Bhavana Tiwari', process: 'TR', role: 'Welcome Caller', status: 'In Call', statusTime: '08:15', currentLead: 'TR-11204', queueDepth: 9, callsToday: 30, revenueToday: 28000, lastActive: 'Just now', reportingTl: 'Rajendra' },
-    { id: '12', name: 'Ravi', process: 'TR', role: 'Welcome Caller', status: 'Idle', currentLead: '-', queueDepth: 0, callsToday: 27, revenueToday: 21800, lastActive: '15m ago', reportingTl: 'Rajendra' },
-    { id: '13', name: 'Minanshu', process: 'TR', role: 'Welcome Caller', status: 'In Call', statusTime: '00:50', currentLead: 'TR-10291', queueDepth: 8, callsToday: 35, revenueToday: 30000, lastActive: 'Just now', reportingTl: 'Rajendra' },
-    { id: '14', name: 'Pooja Chaudhary', process: 'TR', role: 'Welcome Caller', status: 'In Call', statusTime: '06:12', currentLead: 'TR-12098', queueDepth: 11, callsToday: 40, revenueToday: 12000, lastActive: 'Just now', reportingTl: 'Rajendra' },
+  const [callers, setCallers] = useState<Caller[]>([]);
 
-    { id: '15', name: 'Akash Thakur', process: 'SC', role: 'Special Categories', status: 'In Call', statusTime: '11:22', currentLead: 'FM-00231', queueDepth: 7, callsToday: 21, revenueToday: 28000, lastActive: 'Just now', reportingTl: 'Rajendra' },
-
-    { id: '16', name: 'Pooja (QC)', process: 'QC', role: 'QC Analyst', status: 'Active', currentLead: 'Auditing Sonam', queueDepth: 2, callsToday: 14, revenueToday: 0, lastActive: 'Just now', reportingTl: 'Rajendra' },
-
-    { id: '17', name: 'Rahul', process: 'TL', role: 'Team Leader', status: 'Active', currentLead: 'Reviewing Wrap-up', queueDepth: 0, callsToday: 0, revenueToday: 0, lastActive: 'Just now', reportingTl: 'Telecalling Head' },
-    { id: '18', name: 'Rajendra', process: 'TL', role: 'Team Leader', status: 'Active', currentLead: 'Reviewing SLA', queueDepth: 0, callsToday: 0, revenueToday: 0, lastActive: 'Just now', reportingTl: 'Telecalling Head' },
-    { id: '19', name: 'Testing Prince', process: 'TL', role: 'Team Leader', status: 'Offline', currentLead: '-', queueDepth: 0, callsToday: 0, revenueToday: 0, lastActive: '2 days ago', reportingTl: 'Telecalling Head' },
-  ]);
+  useEffect(() => {
+    if (teamData?.data) {
+      const mapped = teamData.data.map(caller => ({
+        id: caller.id.toString(),
+        name: caller.name,
+        process: (caller.process === 'welcome-call' ? 'DW' : caller.process === 'transporter' ? 'TR' : caller.process === 'match-making' ? 'MM' : caller.process === 'special' ? 'SC' : caller.process === 'qc' ? 'QC' : 'TL') as any,
+        role: caller.process === 'welcome-call' ? 'Welcome Caller' : caller.process === 'transporter' ? 'Welcome Caller' : caller.process === 'match-making' ? 'Matchmaker' : caller.process === 'special' ? 'Special Categories' : caller.process === 'qc' ? 'QC Analyst' : 'Team Leader',
+        status: (caller.live_status === 'Idle' ? 'Idle' : caller.live_status === 'On Call' ? 'In Call' : caller.live_status === 'Offline' ? 'Offline' : 'Active') as any,
+        statusTime: undefined,
+        currentLead: caller.last_call_status || '-',
+        queueDepth: caller.queue_depth,
+        callsToday: caller.calls_today,
+        revenueToday: caller.revenue_today,
+        lastActive: caller.last_call_at ? caller.last_call_at.split(' ')[1] : 'Just now',
+        reportingTl: caller.process === 'welcome-call' ? 'Rahul' : 'Rajendra'
+      }));
+      setCallers(mapped);
+    }
+  }, [teamData]);
 
   const toggleBackup = (id: string) => {
     setBackups(prev => prev.map(b => b.id === id ? { ...b, active: !b.active } : b));
   };
 
-  const handleRebalance = (e: React.FormEvent) => {
+  const handleRebalance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rebalanceFrom || !rebalanceTo) return;
 
-    setCallers(prev => prev.map(c => {
-      if (c.name === rebalanceFrom) {
-        return { ...c, queueDepth: Math.max(0, c.queueDepth - parseInt(rebalanceAmount)) };
-      }
-      if (c.name === rebalanceTo) {
-        return { ...c, queueDepth: c.queueDepth + parseInt(rebalanceAmount) };
-      }
-      return c;
-    }));
+    const fromCaller = callers.find(c => c.name === rebalanceFrom);
+    const toCaller = callers.find(c => c.name === rebalanceTo);
+    if (!fromCaller || !toCaller) return;
 
-    setIsRebalanceOpen(false);
+    try {
+      await moveLeads({
+        from: parseInt(fromCaller.id),
+        to: parseInt(toCaller.id),
+        limit: parseInt(rebalanceAmount),
+        reason: 'Cross-team rebalance from Telecalling Head'
+      }).unwrap();
+      refetch();
+      setIsRebalanceOpen(false);
+    } catch (err) {
+      alert('Failed to rebalance leads: ' + JSON.stringify(err));
+    }
   };
 
   // Filter logic

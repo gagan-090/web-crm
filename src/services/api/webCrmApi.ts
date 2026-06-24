@@ -1,66 +1,281 @@
 import { baseApi } from './baseApi';
 
+export interface DwLead {
+  id: number;
+  tmid: string;
+  name: string;
+  mobile: string;
+  city: string;
+  state: string;
+  vehicle_type: string;
+  registered_at: string;
+  profile_complete: boolean;
+  last_status: string | null;
+  last_feedback: string | null;
+  last_remarks: string | null;
+  last_call_at: string | null;
+  last_payment: number | null;
+  current_plan: string | null;
+  call_count: number;
+}
+
 export interface DwDashboardResponse {
   status: boolean;
   data: {
     kpis: {
-      todayEarnings: number;
-      salaryGateCount: number;
-      monthlyRevenue: number;
-      queueCount: number;
+      calls_pending: number;
+      assigned_total: number;
+      calls_today: number;
+      connected_today: number;
+      subscriptions_today: number;
+      feedback_missing: number;
+      call_time: string;
+      monthly_revenue: number;
     };
-    streak: {
-      count: number;
-      active: boolean;
-    };
-    leaderboard: {
-      position: number;
-      total: number;
-      points: number;
-    };
-    overdueCallbacks: Array<{
+    overdue_callbacks: Array<{
       id: number;
       tmid: string;
       name: string;
-      phone: string;
-      callback: string;
+      mobile: string;
       reason: string;
+      logged_at: string;
     }>;
+    call_breakdown: Array<{
+      process: string;
+      total: number;
+    }>;
+    leaderboard: {
+      my_rank: number;
+      total_peers: number;
+    };
+    caller: {
+      id: number;
+      name: string;
+    };
   };
 }
 
 export interface DwQueueResponse {
   status: boolean;
-  leads: Array<{
-    id: string;
+  data: {
+    leads: Array<DwLead>;
+    summary: {
+      total: number;
+      fresh: number;
+      callback: number;
+      contacted: number;
+    };
+    pagination: {
+      total: number;
+      per_page: number;
+      current_page: number;
+      last_page: number;
+    };
+    filter: string;
+  };
+}
+
+export interface DwNextLeadResponse {
+  status: boolean;
+  data: {
+    id: number;
     tmid: string;
     name: string;
-    phone: string;
+    mobile: string;
     city: string;
     state: string;
-    registeredDaysAgo: number;
-    attempts: string[];
-    lastStatus: string;
-    vehicleType: string;
-    licenseType: string;
-    experience: string;
-    preferredRoute: string;
-    subscribed: boolean;
-    whatsapp: boolean;
-    notes: string;
-    history: Array<{
-      date: string;
-      duration: string;
-      status: string;
-      caller: string;
+    vehicle_type: string;
+    registered_at: string;
+    last_status: string | null;
+    last_feedback: string | null;
+    last_call_at: string | null;
+    call_count: number;
+    current_plan: string;
+  } | null;
+  message?: string;
+}
+
+export interface DwLeadDetailResponse {
+  status: boolean;
+  data: {
+    profile: {
+      id: number;
+      tmid: string;
+      name: string;
+      mobile: string;
+      city: string;
+      state: string;
+      vehicle_type: string;
+      license_number: string | null;
+      license_type: string | null;
+      experience: string | null;
+      profile_complete: boolean;
+      registered_at: string;
+      language: string;
+      referral_code: string | null;
+    };
+    plan_card: {
+      has_plan: boolean;
+      plan_label: string;
+      amount: number;
+      expires_at: string | null;
+    };
+    call_history: Array<{
+      id: number;
+      user_id: number;
+      assigned_to: number;
+      call_status: string;
+      call_feedback: string;
+      call_remarks: string | null;
+      call_recording: string | null;
+      active_time: number;
+      process: string;
+      call_type: string;
+      created_at: string;
+      caller_name: string | null;
     }>;
+    ivr_history: Array<{
+      id: number;
+      assigned_to: number;
+      assigned_name: string | null;
+      user_id: number;
+      user_tm_id: string;
+      user_name: string;
+      user_mobile: string;
+      process: string;
+      call_status: string;
+      call_feedback: string | null;
+      call_remarks: string | null;
+      call_recording: string | null;
+      created_at: string;
+    }>;
+    payments: Array<{
+      id: number;
+      subscription_plan_id: string | null;
+      user_id: number;
+      unique_id: string;
+      amount: number;
+      payment_status: string;
+      start_at: number;
+      end_at: number;
+      created_at: string;
+      plan_label: string;
+    }>;
+    total_calls: number;
+    total_revenue: number;
+  };
+}
+
+export interface DwDispositionOptionsResponse {
+  status: boolean;
+  data: {
+    call_statuses: Array<{
+      value: string;
+      label: string;
+      label_hi: string;
+    }>;
+    feedbacks: Array<{
+      value: string;
+      label: string;
+      color: string;
+    }>;
+  };
+}
+
+export interface DwPerformanceResponse {
+  status: boolean;
+  data: {
+    period: string;
+    metrics: {
+      total_calls: number;
+      connected: number;
+      conversions: number;
+      revenue: number;
+      connect_rate: number;
+      conversion_rate: number;
+      avg_call_time: string;
+    };
+    dispositions: Array<{
+      call_feedback: string;
+      count: number;
+    }>;
+    daily_trend: Array<{
+      date: string;
+      calls: number;
+      conversions: number;
+    }>;
+    monthly: {
+      revenue: number;
+      target: number;
+      pct: number;
+    };
+    salary_gate: {
+      base_salary: number;
+      threshold: number;
+      achieved: number;
+      cleared: boolean;
+      gap: number;
+    };
+  };
+}
+
+export interface DwCallbacksResponse {
+  status: boolean;
+  data: Array<{
+    id: number;
+    user_id?: number;
+    tmid: string;
+    name: string;
+    mobile: string;
+    city: string;
+    reason: string;
+    logged_at: string;
+    scheduled_for: string;
   }>;
-  pagination?: {
+  total: number;
+}
+
+export interface DwCallHistoryResponse {
+  status: boolean;
+  data: Array<{
+    id: number;
+    tmid: string;
+    name: string;
+    mobile: string;
+    call_status: string;
+    call_feedback: string;
+    call_remarks: string | null;
+    call_recording: string | null;
+    duration_secs: number;
+    process: string;
+    call_type: string;
+    created_at: string;
+    date_display: string;
+    recording_url: string | null;
+  }>;
+  pagination: {
     total: number;
+    per_page: number;
     current_page: number;
     last_page: number;
   };
 }
+
+export interface DwBreakStatusResponse {
+  status: boolean;
+  data: {
+    on_break: boolean;
+    break_log: Array<{
+      id: number;
+      admin_id: number;
+      start_time: string;
+      end_time: string | null;
+      created_at: string;
+      duration: string;
+    }>;
+  };
+}
+
 
 export interface WctDashboardResponse {
   status: boolean;
@@ -340,12 +555,71 @@ export interface TlRosterResponse {
 
 export const webCrmApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    // DW Endpoint
+    // DW Endpoints
     getDwDashboard: builder.query<DwDashboardResponse, void>({
       query: () => '/web-crm/dw/dashboard',
     }),
-    getDwQueue: builder.query<DwQueueResponse, void>({
-      query: () => '/web-crm/dw/queue',
+    getDwQueue: builder.query<DwQueueResponse, { per_page?: number; page?: number; filter?: string; search?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/queue',
+        params: params || undefined,
+      }),
+    }),
+    getDwNextLead: builder.query<DwNextLeadResponse, void>({
+      query: () => '/web-crm/dw/queue/next',
+    }),
+    skipDwLead: builder.mutation<any, { user_id: number; reason: string }>({
+      query: (body) => ({
+        url: '/web-crm/dw/queue/skip',
+        method: 'POST',
+        body,
+      }),
+    }),
+    getDwLeadDetail: builder.query<DwLeadDetailResponse, number | string>({
+      query: (userId) => `/web-crm/dw/lead/${userId}`,
+    }),
+    getDwDispositionOptions: builder.query<DwDispositionOptionsResponse, void>({
+      query: () => '/web-crm/dw/disposition-options',
+    }),
+    submitDwFeedback: builder.mutation<any, {
+      user_id: number;
+      call_status: string;
+      call_feedback: string;
+      call_remarks?: string;
+      call_recording?: string;
+      call_duration?: number;
+      call_id?: number;
+    }>({
+      query: (body) => ({
+        url: '/web-crm/dw/feedback',
+        method: 'POST',
+        body,
+      }),
+    }),
+    getDwPerformance: builder.query<DwPerformanceResponse, { period?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/performance',
+        params: params || undefined,
+      }),
+    }),
+    getDwCallbacks: builder.query<DwCallbacksResponse, void>({
+      query: () => '/web-crm/dw/callbacks',
+    }),
+    scheduleDwCallback: builder.mutation<any, { user_id: number; reason: string }>({
+      query: (body) => ({
+        url: '/web-crm/dw/callbacks/schedule',
+        method: 'POST',
+        body,
+      }),
+    }),
+    getDwCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number; page?: number; search?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/call-history',
+        params: params || undefined,
+      }),
+    }),
+    getDwBreakStatus: builder.query<DwBreakStatusResponse, void>({
+      query: () => '/web-crm/dw/break-status',
     }),
 
     // WCT Endpoint
@@ -442,12 +716,34 @@ export const webCrmApi = baseApi.injectEndpoints({
         body,
       }),
     }),
+    getTarget: builder.query<any, string>({
+      query: (key) => `/web-crm/targets/${key}`,
+      providesTags: (_result, _error, key) => [{ type: 'Settings', id: key }],
+    }),
+    setTarget: builder.mutation<any, { key: string; value: any }>({
+      query: ({ key, value }) => ({
+        url: `/web-crm/targets/${key}`,
+        method: 'POST',
+        body: { value },
+      }),
+      invalidatesTags: (_result, _error, { key }) => [{ type: 'Settings', id: key }],
+    }),
   }),
 });
 
 export const {
   useGetDwDashboardQuery,
   useGetDwQueueQuery,
+  useGetDwNextLeadQuery,
+  useSkipDwLeadMutation,
+  useGetDwLeadDetailQuery,
+  useGetDwDispositionOptionsQuery,
+  useSubmitDwFeedbackMutation,
+  useGetDwPerformanceQuery,
+  useGetDwCallbacksQuery,
+  useScheduleDwCallbackMutation,
+  useGetDwCallHistoryQuery,
+  useGetDwBreakStatusQuery,
   useGetWctDashboardQuery,
   useGetWctQueueQuery,
   useGetMmDashboardQuery,
@@ -467,4 +763,7 @@ export const {
   useGetTlDashboardQuery,
   useGetTlRosterQuery,
   useReassignTlLeadsMutation,
+  useGetTargetQuery,
+  useSetTargetMutation,
 } = webCrmApi;
+

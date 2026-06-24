@@ -1,51 +1,44 @@
 import React, { useState } from 'react';
+import { useGetDwPerformanceQuery } from '../../services/api/webCrmApi';
 
 export const DwPerformanceStats: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'thisMonth' | 'lastMonth' | 'history' | 'campaigns'>('thisMonth');
+  const [activeTab, setActiveTab] = useState<'today' | 'this_week' | 'this_month'>('this_month');
 
-  // Simulator & gate states
-  const [simulateConversions, setSimulateConversions] = useState<number>(12); // slider state
-  const baseSalary = 11000;
-  const gateThreshold = baseSalary * 2; // ₹22,000
-  
-  // Choose revenue state to demonstrate crossed/uncrossed gate
-  const [monthlyRevenue, setMonthlyRevenue] = useState<number>(4200); 
+  // Fetch live performance stats
+  const { data: response, isLoading } = useGetDwPerformanceQuery({ period: activeTab });
 
-  const isGateCrossed = monthlyRevenue >= gateThreshold;
-  const remainingToGate = Math.max(0, gateThreshold - monthlyRevenue);
-  const gateProgressPercent = Math.min(100, Math.round((monthlyRevenue / gateThreshold) * 100));
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <p className="text-sm font-semibold text-outline">Loading performance stats...</p>
+      </div>
+    );
+  }
 
-  // Incentive calculations
-  // Pre-gate base quantites:
-  // Job Ready ₹199: 12 qty @ ₹30 = ₹360
-  // Verified ₹299: 3 qty @ ₹50 = ₹150
-  // Trusted ₹499: 0 qty @ ₹80 = ₹0
-  // Base total = ₹510
-  const baseIncentive = 510;
-  const simulatedCount = simulateConversions;
-  const projectedIncentive = baseIncentive + (simulatedCount * 30);
-  const additionalIncentive = simulatedCount * 30;
+  const data = response?.data;
+  const metrics = data?.metrics || {
+    total_calls: 0,
+    connected: 0,
+    conversions: 0,
+    revenue: 0,
+    connect_rate: 0,
+    conversion_rate: 0,
+    avg_call_time: '0h 0m'
+  };
 
-  // Mini Chart data
-  const chartData = [
-    { month: 'Jan', revenue: 38000 },
-    { month: 'Feb', revenue: 45000 },
-    { month: 'Mar', revenue: 52000 }, // target crossed
-    { month: 'Apr', revenue: 41000 },
-    { month: 'May', revenue: 48000 },
-    { month: 'Jun', revenue: monthlyRevenue }
-  ];
+  const dispositions = data?.dispositions || [];
+  const dailyTrend = data?.daily_trend || [];
+  const monthly = data?.monthly || { revenue: 0, target: 50000, pct: 0 };
+  const salaryGate = data?.salary_gate || {
+    base_salary: 11000,
+    threshold: 22000,
+    achieved: 0,
+    cleared: false,
+    gap: 22000
+  };
 
-  // Leaderboard data
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const leaderboardList = [
-    { name: 'Rohan Sharma', revenue: 54000, rank: 1 },
-    { name: 'You (Agent)', revenue: monthlyRevenue, rank: 2 },
-    { name: 'Suman Gupta', revenue: 38000, rank: 3 },
-    { name: 'Vijay Yadav', revenue: 31000, rank: 4 },
-    { name: 'Ankita Roy', revenue: 27000, rank: 5 },
-    { name: 'Pankaj Kumar', revenue: 18000, rank: 6 }
-  ];
+  const isGateCrossed = salaryGate.cleared;
+  const gateProgressPercent = Math.min(100, Math.round((salaryGate.achieved / salaryGate.threshold) * 100));
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
@@ -59,509 +52,162 @@ export const DwPerformanceStats: React.FC = () => {
         
         {/* Tab switch buttons */}
         <div className="bg-gray-100 p-1 rounded-lg flex items-center gap-1 select-none">
-          <button
-            onClick={() => setActiveTab('thisMonth')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded transition-all ${
-              activeTab === 'thisMonth' ? 'bg-white text-gray-800 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            This Month
-          </button>
-          <button
-            onClick={() => setActiveTab('lastMonth')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded transition-all ${
-              activeTab === 'lastMonth' ? 'bg-white text-gray-800 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            Last Month
-          </button>
-          <button
-            onClick={() => setActiveTab('campaigns')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded transition-all ${
-              activeTab === 'campaigns' ? 'bg-white text-red-600 shadow-sm font-bold' : 'text-gray-500 hover:text-red-500'
-            }`}
-          >
-            🔥 Campaigns
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded transition-all ${
-              activeTab === 'history' ? 'bg-white text-gray-800 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            History
-          </button>
+          {([
+            { id: 'today', label: 'Today' },
+            { id: 'this_week', label: 'This Week' },
+            { id: 'this_month', label: 'This Month' }
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded transition-all ${
+                activeTab === tab.id ? 'bg-white text-gray-800 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </section>
 
-      {/* Simulator Quick Toggles */}
-      <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl flex items-center justify-between text-xs">
-        <span className="font-semibold text-gray-600">Simulate Gate Target Achieved:</span>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => setMonthlyRevenue(4200)}
-            className={`px-3 py-1 rounded border transition-colors ${monthlyRevenue === 4200 ? 'bg-[#27AE60] text-white border-[#27AE60] font-bold' : 'bg-white text-gray-600 border-gray-200'}`}
-          >
-            Under Gate (₹4,200)
-          </button>
-          <button 
-            onClick={() => setMonthlyRevenue(23500)}
-            className={`px-3 py-1 rounded border transition-colors ${monthlyRevenue === 23500 ? 'bg-[#27AE60] text-white border-[#27AE60] font-bold' : 'bg-white text-gray-600 border-gray-200'}`}
-          >
-            Crossed Gate (₹23,500)
-          </button>
-        </div>
-      </div>
-
-      {activeTab === 'thisMonth' && (
-        <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="space-y-6 animate-in fade-in duration-300">
+        
+        {/* Main stats blocks grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           
-          {/* Main stats blocks grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            
-            {/* Revenue Block */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Revenue Target Achievement</span>
-              <div className="text-2xl font-bold text-gray-800 mt-1">
-                ₹{monthlyRevenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹50,000</span>
-              </div>
-              <div className="mt-3">
-                <div className="w-full h-3.5 bg-gray-100 rounded-full overflow-hidden relative flex items-center justify-center">
-                  <div 
-                    className="h-full bg-[#27AE60] rounded-full transition-all duration-500 absolute left-0 top-0" 
-                    style={{ width: `${(monthlyRevenue / 50000) * 100}%` }}
-                  ></div>
-                  <span className="z-10 text-[9px] font-bold text-gray-700">
-                    {((monthlyRevenue / 50000) * 100).toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-              <div className="mt-2 text-xs flex items-center gap-1">
-                <span className="text-[#27AE60] font-bold">↑ 12% vs last month</span>
-                <span className="text-gray-400">(same point in time)</span>
+          {/* Revenue Block */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Revenue Target Achievement</span>
+            <div className="text-2xl font-bold text-gray-800 mt-1">
+              ₹{metrics.revenue.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹{monthly.target.toLocaleString()}</span>
+            </div>
+            <div className="mt-3">
+              <div className="w-full h-3.5 bg-gray-100 rounded-full overflow-hidden relative flex items-center justify-center">
+                <div 
+                  className="h-full bg-[#27AE60] rounded-full transition-all duration-500 absolute left-0 top-0" 
+                  style={{ width: `${monthly.pct}%` }}
+                ></div>
+                <span className="z-10 text-[9px] font-bold text-gray-700">
+                  {monthly.pct}%
+                </span>
               </div>
             </div>
-
-            {/* Conversion Rate Block */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Monthly Conversion Rate</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-bold text-red-600">4.34%</span>
-                <span className="text-xs text-gray-500">vs ≥5% target</span>
-              </div>
-              <div className="mt-3 py-1 bg-red-50 text-red-600 text-xs font-bold px-2 rounded-lg text-center">
-                ⚠️ 0.66% to target
-              </div>
-              <div className="mt-2 text-xs text-gray-400">
-                Calculated on total connected calls
-              </div>
-            </div>
-
-            {/* Calls Summary Block */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Calls Summary (Today/Month)</span>
-              <div className="text-xl font-bold text-gray-800 mt-1">
-                142 <span className="text-xs text-gray-400 font-normal">calls made</span>
-              </div>
-              <div className="text-xs text-gray-500 mt-2 space-y-1">
-                <div className="flex justify-between">
-                  <span>Avg Duration:</span>
-                  <span className="font-semibold text-gray-800">2m 18s</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Connected Rate:</span>
-                  <span className="font-semibold text-gray-800">62 calls (43.7%)</span>
-                </div>
-              </div>
-            </div>
-
           </div>
 
-          {/* Incentive and Salary Gate Panel */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            {/* Gate Status Card */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div>
-                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Salary Incentive Gate</span>
-                
-                {isGateCrossed ? (
-                  <div className="bg-[#EAFAF1] text-[#27AE60] text-xs font-bold p-3 rounded-lg border border-[#27AE60]/20 mt-3 select-none flex items-center gap-1">
-                    ✓ Gate Crossed on 14 June — incentives active
-                  </div>
-                ) : (
-                  <div className="mt-3">
-                    <div className="flex justify-between text-xs mb-1 font-semibold text-gray-700">
-                      <span>₹{monthlyRevenue.toLocaleString()} / ₹22,000 (Base Salary × 2)</span>
-                      <span>{gateProgressPercent}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-gray-400" style={{ width: `${gateProgressPercent}%` }}></div>
-                    </div>
-                    <p className="text-xs text-red-500 font-semibold mt-2">
-                      ⚠️ ₹{remainingToGate.toLocaleString()} to unlock incentives
-                    </p>
-                  </div>
-                )}
+          {/* Conversion Rate Block */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Conversion Rate (Period)</span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-2xl font-bold text-red-600">{metrics.conversion_rate}%</span>
+              <span className="text-xs text-gray-500">Connected: {metrics.connected}</span>
+            </div>
+            <div className="mt-3 py-1 bg-green-50 text-[#27AE60] text-xs font-bold px-2 rounded-lg text-center">
+              Conversions: {metrics.conversions}
+            </div>
+          </div>
+
+          {/* Calls Summary Block */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Calls Summary</span>
+            <div className="text-xl font-bold text-gray-800 mt-1">
+              {metrics.total_calls} <span className="text-xs text-gray-400 font-normal">calls made</span>
+            </div>
+            <div className="text-xs text-gray-500 mt-2 space-y-1">
+              <div className="flex justify-between">
+                <span>Avg Duration:</span>
+                <span className="font-semibold text-gray-800">{metrics.avg_call_time}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Connect Rate:</span>
+                <span className="font-semibold text-gray-800">{metrics.connect_rate}%</span>
               </div>
             </div>
+          </div>
 
-            {/* Incentive Itemization Table (Locked/Unlocked) */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden relative">
+        </div>
+
+        {/* Incentive and Salary Gate Panel */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          {/* Gate Status Card */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+            <div>
+              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Salary Incentive Gate</span>
               
-              {/* Blurred Overlay for lock */}
-              {!isGateCrossed && (
-                <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center text-center p-4">
-                  <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shadow-sm">
-                    🔒
+              {isGateCrossed ? (
+                <div className="bg-[#EAFAF1] text-[#27AE60] text-xs font-bold p-3 rounded-lg border border-[#27AE60]/20 mt-3 select-none flex items-center gap-1">
+                  ✓ Gate Crossed — incentives active
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <div className="flex justify-between text-xs mb-1 font-semibold text-gray-700">
+                    <span>₹{salaryGate.achieved.toLocaleString()} / ₹{salaryGate.threshold.toLocaleString()} (Salary × 2)</span>
+                    <span>{gateProgressPercent}%</span>
                   </div>
-                  <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider mt-2">Incentives Locked</h4>
-                  <p className="text-[10px] text-gray-500 max-w-[240px] mt-1">Cross the 2x Base Salary Gate to unlock the itemized earnings breakdown table.</p>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-gray-400" style={{ width: `${gateProgressPercent}%` }}></div>
+                  </div>
+                  <p className="text-xs text-red-500 font-semibold mt-2">
+                    ⚠️ ₹{salaryGate.gap.toLocaleString()} to unlock incentives
+                  </p>
                 </div>
               )}
-
-              <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider flex justify-between items-center">
-                <span>Incentive Itemization</span>
-                {isGateCrossed && <span className="text-[#27AE60]">✓ Gate Unlocked</span>}
-              </div>
-              
-              <table className="w-full text-xs text-left">
-                <thead className="bg-gray-100 text-gray-500 uppercase text-[9px]">
-                  <tr>
-                    <th className="p-3">Plan</th>
-                    <th className="p-3 text-center">Qty</th>
-                    <th className="p-3 text-center">Rate</th>
-                    <th className="p-3 text-right">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-700">
-                  <tr>
-                    <td className="p-3 font-semibold">Job Ready ₹199</td>
-                    <td className="p-3 text-center">12</td>
-                    <td className="p-3 text-center">₹30</td>
-                    <td className="p-3 text-right font-bold font-mono">₹360</td>
-                  </tr>
-                  <tr>
-                    <td className="p-3 font-semibold">Verified ₹299</td>
-                    <td className="p-3 text-center">3</td>
-                    <td className="p-3 text-center">₹50</td>
-                    <td className="p-3 text-right font-bold font-mono">₹150</td>
-                  </tr>
-                  <tr>
-                    <td className="p-3 font-semibold">Trusted ₹499</td>
-                    <td className="p-3 text-center">0</td>
-                    <td className="p-3 text-center">₹80</td>
-                    <td className="p-3 text-right font-bold font-mono">₹0</td>
-                  </tr>
-                  <tr className="bg-gray-50 font-bold text-gray-900 border-t border-gray-200">
-                    <td className="p-3" colSpan={3}>Total Earned</td>
-                    <td className="p-3 text-right font-mono text-[#27AE60]">₹510</td>
-                  </tr>
-                </tbody>
-              </table>
             </div>
-
           </div>
 
-          {/* Interactive Payout Simulator & Mini Month-over-Month Chart */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            {/* "What If" Simulator */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">"What If" Incentive Simulator</h3>
-                <p className="text-[11px] text-gray-500 leading-normal">
-                  Estimate your prospective earnings payout. Adjust the slider to see earnings growth:
-                </p>
-              </div>
-
-              <div className="my-4">
-                <div className="flex justify-between items-center text-xs mb-1">
-                  <span className="text-gray-600 font-medium">If I convert <span className="font-bold text-[#27AE60] bg-[#EAFAF1] px-1.5 py-0.5 rounded">{simulateConversions}</span> more Job Ready plans:</span>
-                  <span className="font-bold text-gray-800">+{simulatedCount} conversions</span>
-                </div>
-                
-                <input
-                  type="range"
-                  min="0"
-                  max="50"
-                  value={simulateConversions}
-                  onChange={(e) => setSimulateConversions(Number(e.target.value))}
-                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#27AE60] focus:outline-none"
-                />
-              </div>
-
-              <div className="p-3 bg-[#EAFAF1] border border-[#27AE60]/20 rounded-lg text-xs font-bold text-gray-800 flex justify-between items-center">
-                <span>Projected Incentive Payout:</span>
-                <span className="text-[#27AE60] font-mono text-sm">₹{projectedIncentive} (+₹{additionalIncentive})</span>
-              </div>
+          {/* Disposition breakdown */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden p-4">
+            <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block mb-3">Call Dispositions logged</span>
+            <div className="space-y-2">
+              {dispositions.length > 0 ? (
+                dispositions.map((d, idx) => (
+                  <div key={idx} className="flex justify-between items-center text-xs text-gray-700">
+                    <span>{d.call_feedback}</span>
+                    <span className="font-bold">{d.count} calls</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-gray-400 italic text-center py-4">No dispositions logged.</p>
+              )}
             </div>
-
-            {/* Mini Chart */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between min-h-[200px]">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Month-over-Month Revenue</span>
-                <span className="text-[10px] text-gray-400 border-b border-dashed border-gray-300 pb-0.5">Target: ₹50k</span>
-              </div>
-
-              {/* Simple SVG/CSS bar layout */}
-              <div className="flex justify-between items-end h-24 px-2 relative border-b border-gray-100">
-                
-                {/* Dashed Target Line */}
-                <div className="absolute left-0 right-0 top-1/6 border-t border-dashed border-red-300 w-full z-0 pointer-events-none">
-                  <span className="absolute right-1 -top-2.5 text-[8px] bg-white text-red-500 font-bold px-1">Target</span>
-                </div>
-
-                {chartData.map((d, i) => {
-                  const maxVal = 60000;
-                  const pct = (d.revenue / maxVal) * 100;
-                  const isCurrent = d.month === 'Jun';
-                  return (
-                    <div key={i} className="flex flex-col items-center w-8 group relative z-10">
-                      {/* Tooltip */}
-                      <span className="absolute -top-6 text-[9px] bg-gray-800 text-white rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity font-mono">
-                        ₹{d.revenue.toLocaleString()}
-                      </span>
-                      <div 
-                        className={`w-full rounded-t transition-all duration-700 ${isCurrent ? 'bg-[#27AE60]' : 'bg-[#27AE60]/40'}`} 
-                        style={{ height: `${pct}%`, minHeight: '4px' }}
-                      ></div>
-                      <span className="text-[9px] text-gray-400 mt-1 font-bold">{d.month}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
           </div>
 
-          {/* Calendar Streak & Leaderboard Row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            {/* Streak Calendar */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Current Month Attendance Streak</span>
-                <span className="text-xs text-[#27AE60] font-bold">🔥 4 days streak</span>
-              </div>
+        </div>
 
-              {/* 30 days grid */}
-              <div className="grid grid-cols-7 gap-1.5">
-                {Array.from({ length: 30 }, (_, i) => {
-                  const day = i + 1;
-                  // mock statuses for calendar grid
-                  let state = 'future';
-                  if (day <= 18) {
-                    if (day % 4 === 0) state = 'none'; // red outline
-                    else if (day % 3 === 0) state = 'called'; // gray outline
-                    else state = 'converted'; // green filled
-                  }
+        {/* Call Volume Trend Chart */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between min-h-[220px]">
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Call Volume Trend</span>
+            <span className="text-[10px] text-gray-400">Daily breakdown</span>
+          </div>
 
-                  let cellClass = '';
-                  if (state === 'converted') cellClass = 'bg-[#EAFAF1] border-[#27AE60] text-[#27AE60] font-bold';
-                  else if (state === 'called') cellClass = 'border-dashed border-gray-300 text-gray-400';
-                  else if (state === 'none') cellClass = 'border-red-400 text-red-500 border';
-                  else if (state === 'future') cellClass = 'bg-gray-50 text-gray-300 border-gray-100';
-
-                  return (
+          <div className="flex justify-between items-end h-32 px-4 relative border-b border-gray-100">
+            {dailyTrend.length > 0 ? (
+              dailyTrend.map((d, i) => {
+                const maxVal = Math.max(...dailyTrend.map(t => t.calls), 20);
+                const pct = (d.calls / maxVal) * 100;
+                return (
+                  <div key={i} className="flex flex-col items-center w-8 group relative z-10">
+                    <span className="absolute -top-6 text-[9px] bg-gray-800 text-white rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity font-mono">
+                      {d.calls} calls
+                    </span>
                     <div 
-                      key={day} 
-                      className={`h-7 border rounded flex items-center justify-center text-[10px] select-none ${cellClass}`}
-                    >
-                      {day}
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-[10px] text-gray-400 mt-3 text-center">
-                Green = Conversion · Gray = Outbound Made · Red = Zero Calls Made · Light Gray = Future
-              </p>
-            </div>
-
-            {/* Leaderboard Chip Expandable */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div>
-                <div 
-                  onClick={() => setShowLeaderboard(!showLeaderboard)}
-                  className="flex justify-between items-center cursor-pointer hover:bg-gray-50 p-1.5 rounded-lg transition-colors border border-gray-100"
-                >
-                  <div className="flex items-center gap-2 text-xs font-bold text-gray-700">
-                    🏆 <span>#2 in Driver Welcome team this month</span>
+                      className="w-full rounded-t bg-[#27AE60] hover:bg-[#219653] transition-all duration-300" 
+                      style={{ height: `${pct}%`, minHeight: '4px' }}
+                    ></div>
+                    <span className="text-[8px] text-gray-400 mt-1 font-bold truncate w-full text-center">
+                      {d.date.slice(-5)}
+                    </span>
                   </div>
-                  <span className="text-xs text-gray-400 font-semibold">{showLeaderboard ? 'Collapse ▲' : 'Expand ▼'}</span>
-                </div>
-
-                {showLeaderboard && (
-                  <div className="mt-3 divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden animate-in fade-in duration-300">
-                    {leaderboardList.map((agent, i) => (
-                      <div key={i} className={`flex justify-between items-center p-2.5 text-xs ${agent.rank === 2 ? 'bg-[#EAFAF1]/30 font-bold' : ''}`}>
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 font-mono">#{agent.rank}</span>
-                          <span className="text-gray-800">{agent.name}</span>
-                        </div>
-                        <span className="font-mono text-gray-600">₹{agent.revenue.toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <p className="text-[10px] text-gray-400 mt-3 italic">
-                Revenue is calculated only for captured payments.
-              </p>
-            </div>
-
-          </div>
-
-        </div>
-      )}
-
-      {activeTab === 'campaigns' && (
-        <div className="space-y-6 animate-in fade-in duration-300">
-          {/* Top Cards Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Campaign Conversions</span>
-              <div className="text-2xl font-bold text-gray-800 mt-1">18 <span className="text-xs text-gray-400 font-normal">leads converted</span></div>
-              <div className="text-xs text-[#27AE60] font-bold mt-2">↑ 4.2% higher vs organic target</div>
-            </div>
-            
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Campaign Conversion Rate</span>
-              <div className="text-2xl font-bold text-red-655 text-red-600 mt-1">8.5%</div>
-              <div className="text-xs text-gray-500 mt-2">Connected: 212 calls</div>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Campaign Avg Star Rating</span>
-              <div className="text-2xl font-bold text-yellow-500 mt-1">4.2 ★</div>
-              <div className="text-xs text-gray-500 mt-2">From 18 conversions</div>
-            </div>
-          </div>
-
-          {/* Source-wise Breakdown Table & Temperature analysis */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Table */}
-            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-3">
-              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-100 pb-2 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-red-500">campaign</span>
-                Source-Wise Campaign Breakdown
-              </h3>
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="border-b border-gray-205 border-gray-200 text-gray-400 font-bold uppercase text-[9px]">
-                    <th className="py-2">Source</th>
-                    <th className="py-2 text-center">Connected Calls</th>
-                    <th className="py-2 text-center">Conversions</th>
-                    <th className="py-2 text-right">Conv. Rate</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-700">
-                  <tr>
-                    <td className="py-2.5 font-semibold">Meta Ads</td>
-                    <td className="py-2.5 text-center">112</td>
-                    <td className="py-2.5 text-center">10</td>
-                    <td className="py-2.5 text-right font-bold text-[#27AE60]">8.9%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 font-semibold">Google Ads</td>
-                    <td className="py-2.5 text-center">45</td>
-                    <td className="py-2.5 text-center">4</td>
-                    <td className="py-2.5 text-right font-bold text-[#27AE60]">8.8%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 font-semibold">Instagram</td>
-                    <td className="py-2.5 text-center">32</td>
-                    <td className="py-2.5 text-center">3</td>
-                    <td className="py-2.5 text-right font-bold text-[#27AE60]">9.3%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 font-semibold">Facebook Comments</td>
-                    <td className="py-2.5 text-center">23</td>
-                    <td className="py-2.5 text-center">1</td>
-                    <td className="py-2.5 text-right font-bold text-amber-500">4.3%</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Temperature analysis */}
-            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
-              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-100 pb-2">
-                🔥 Temperature Conversion Analysis
-              </h3>
-              <div className="space-y-3.5">
-                <div>
-                  <div className="flex justify-between text-xs mb-1 font-semibold">
-                    <span className="text-red-600">HOT Leads (80% target)</span>
-                    <span>12/15 converted (80.0%)</span>
-                  </div>
-                  <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-red-500 rounded-full" style={{ width: '80%' }}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1 font-semibold">
-                    <span className="text-amber-600">WARM Leads (40% target)</span>
-                    <span>5/20 converted (25.0%)</span>
-                  </div>
-                  <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-500 rounded-full" style={{ width: '25%' }}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1 font-semibold">
-                    <span className="text-blue-600">COLD Leads (10% target)</span>
-                    <span>1/30 converted (3.3%)</span>
-                  </div>
-                  <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full" style={{ width: '3.3%' }}></div>
-                  </div>
-                </div>
-              </div>
-            </div>
+                );
+              })
+            ) : (
+              <p className="text-xs text-gray-400 italic text-center py-8 w-full">No daily trends recorded.</p>
+            )}
           </div>
         </div>
-      )}
 
-      {activeTab === 'history' && (
-        <div className="space-y-6 animate-in fade-in duration-300">
-          <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-4">6-Month Historic Earnings Data</h3>
-            
-            {/* Simple Table */}
-            <table className="w-full text-xs text-left border-collapse">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-gray-500 font-bold uppercase text-[9px]">
-                  <th className="p-3">Month</th>
-                  <th className="p-3 text-right">Revenue</th>
-                  <th className="p-3 text-right">Target</th>
-                  <th className="p-3 text-center">% Achieved</th>
-                  <th className="p-3 text-center">Conversions</th>
-                  <th className="p-3 text-right">Avg Conversion Rate</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-gray-700">
-                {[
-                  { month: 'May 2026', revenue: 48000, target: 50000, pct: '96.0%', convs: 36, rate: '4.8%' },
-                  { month: 'Apr 2026', revenue: 41000, target: 50000, pct: '82.0%', convs: 29, rate: '4.1%' },
-                  { month: 'Mar 2026', revenue: 52000, target: 50000, pct: '104.0%', convs: 41, rate: '5.2%' },
-                  { month: 'Feb 2026', revenue: 45000, target: 50000, pct: '90.0%', convs: 34, rate: '4.6%' },
-                  { month: 'Jan 2026', revenue: 38000, target: 50000, pct: '76.0%', convs: 25, rate: '3.9%' }
-                ].map((row, i) => (
-                  <tr key={i} className="hover:bg-gray-50/50">
-                    <td className="p-3 font-semibold text-gray-800">{row.month}</td>
-                    <td className="p-3 text-right font-mono font-semibold">₹{row.revenue.toLocaleString()}</td>
-                    <td className="p-3 text-right font-mono text-gray-400">₹{row.target.toLocaleString()}</td>
-                    <td className="p-3 text-center font-bold text-gray-700">{row.pct}</td>
-                    <td className="p-3 text-center font-semibold text-gray-700">{row.convs}</td>
-                    <td className="p-3 text-right font-mono text-gray-500">{row.rate}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      </div>
 
     </div>
   );

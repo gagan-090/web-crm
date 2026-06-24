@@ -43,14 +43,17 @@ export const ThSettings: React.FC = () => {
     { id: 'TM-882', name: 'Rohan Kumar', team: 'DW', status: 'ACTIVE' },
     { id: 'TM-419', name: 'Sneha Sharma', team: 'TR-MM', status: 'ACTIVE' },
     { id: 'TM-202', name: 'Arjun Patel', team: 'SC', status: 'INACTIVE' },
-    { id: 'TM-612', name: 'Vikram Das', team: 'QC', status: 'ACTIVE' },
-    { id: 'TM-303', name: 'Sonia Gupta', team: 'TL', status: 'ACTIVE' },
   ]);
 
   // Target Benchmarks state
   const [leadGen, setLeadGen] = useState('1200');
   const [conversion, setConversion] = useState('15');
   const [retention, setRetention] = useState('88');
+
+  // Lead target allocation by team states
+  const [dwLeadAlloc, setDwLeadAlloc] = useState('500');
+  const [trMmLeadAlloc, setTrMmLeadAlloc] = useState('500');
+  const [scLeadAlloc, setScLeadAlloc] = useState('200');
 
   // Filter state for callers and plans
   const [selectedTeam, setSelectedTeam] = useState('ALL');
@@ -92,6 +95,9 @@ export const ThSettings: React.FC = () => {
       setLeadGen(dbBenchmarks.value.leadGen?.toString() || '1200');
       setConversion(dbBenchmarks.value.conversion?.toString() || '15');
       setRetention(dbBenchmarks.value.retention?.toString() || '88');
+      setDwLeadAlloc(dbBenchmarks.value.dwLeadAlloc?.toString() || '500');
+      setTrMmLeadAlloc(dbBenchmarks.value.trMmLeadAlloc?.toString() || '500');
+      setScLeadAlloc(dbBenchmarks.value.scLeadAlloc?.toString() || '200');
     }
   }, [dbBenchmarks]);
 
@@ -109,6 +115,9 @@ export const ThSettings: React.FC = () => {
       leadGen: parseInt(leadGen) || 0,
       conversion: parseInt(conversion) || 0,
       retention: parseInt(retention) || 0,
+      dwLeadAlloc: parseInt(dwLeadAlloc) || 0,
+      trMmLeadAlloc: parseInt(trMmLeadAlloc) || 0,
+      scLeadAlloc: parseInt(scLeadAlloc) || 0,
       lastUpdated: new Date().toLocaleString()
     };
     try {
@@ -208,9 +217,9 @@ export const ThSettings: React.FC = () => {
   };
 
   const toggleCallerStatus = async (id: string) => {
-    const updatedCallers = callers.map(c => {
+    const updatedCallers: Caller[] = callers.map(c => {
       if (c.id === id) {
-        return { ...c, status: c.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' as const };
+        return { ...c, status: c.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' };
       }
       return c;
     });
@@ -377,8 +386,6 @@ export const ThSettings: React.FC = () => {
                   <option value="DW">DW</option>
                   <option value="TR-MM">TR-MM</option>
                   <option value="SC">SC</option>
-                  <option value="QC">QC</option>
-                  <option value="TL">TL</option>
                 </select>
               </div>
               <button 
@@ -499,6 +506,144 @@ export const ThSettings: React.FC = () => {
                 <span className="text-[10px] text-error font-bold">-2.4%</span>
               </div>
             </div>
+            <div className="border-t border-outline-variant pt-md mt-md space-y-sm">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">Lead Target Allocation</h4>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const total = parseInt(leadGen) || 0;
+                      const equalShare = Math.floor(total / 3);
+                      const remainder = total - (equalShare * 3);
+                      setDwLeadAlloc(equalShare.toString());
+                      setTrMmLeadAlloc(equalShare.toString());
+                      setScLeadAlloc((equalShare + remainder).toString());
+                    }}
+                    className="text-[10px] font-bold text-primary hover:underline"
+                  >
+                    Distribute Equally
+                  </button>
+                  <span className="text-[10px] text-on-surface-variant/40">|</span>
+                  <button
+                    onClick={() => {
+                      setDwLeadAlloc('0');
+                      setTrMmLeadAlloc('0');
+                      setScLeadAlloc('0');
+                    }}
+                    className="text-[10px] font-bold text-error hover:underline"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                <div className="flex items-center justify-between p-sm bg-surface-container-low rounded border border-outline-variant/30">
+                  <span className="text-[11px] font-bold text-on-surface-variant">DW</span>
+                  <div className="flex items-center gap-md">
+                    <span className="text-[9px] text-on-surface-variant">Proj. Conv: <strong className="text-primary">{Math.floor((parseInt(dwLeadAlloc) || 0) * (parseInt(conversion) || 0) / 100)}</strong></span>
+                    <input 
+                      type="number" 
+                      value={dwLeadAlloc} 
+                      onChange={(e) => setDwLeadAlloc(e.target.value)} 
+                      className="w-24 px-2 py-1 border border-outline-variant rounded font-data-mono text-xs focus:ring-1 focus:ring-primary outline-none" 
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-sm bg-surface-container-low rounded border border-outline-variant/30">
+                  <span className="text-[11px] font-bold text-on-surface-variant">TR-MM</span>
+                  <div className="flex items-center gap-md">
+                    <span className="text-[9px] text-on-surface-variant">Proj. Conv: <strong className="text-primary">{Math.floor((parseInt(trMmLeadAlloc) || 0) * (parseInt(conversion) || 0) / 100)}</strong></span>
+                    <input 
+                      type="number" 
+                      value={trMmLeadAlloc} 
+                      onChange={(e) => setTrMmLeadAlloc(e.target.value)} 
+                      className="w-24 px-2 py-1 border border-outline-variant rounded font-data-mono text-xs focus:ring-1 focus:ring-primary outline-none" 
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-sm bg-surface-container-low rounded border border-outline-variant/30">
+                  <span className="text-[11px] font-bold text-on-surface-variant">SC</span>
+                  <div className="flex items-center gap-md">
+                    <span className="text-[9px] text-on-surface-variant">Proj. Conv: <strong className="text-primary">{Math.floor((parseInt(scLeadAlloc) || 0) * (parseInt(conversion) || 0) / 100)}</strong></span>
+                    <input 
+                      type="number" 
+                      value={scLeadAlloc} 
+                      onChange={(e) => setScLeadAlloc(e.target.value)} 
+                      className="w-24 px-2 py-1 border border-outline-variant rounded font-data-mono text-xs focus:ring-1 focus:ring-primary outline-none" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Target allocation summary check & visual progress bar */}
+              {(() => {
+                const dwVal = parseInt(dwLeadAlloc) || 0;
+                const trMmVal = parseInt(trMmLeadAlloc) || 0;
+                const scVal = parseInt(scLeadAlloc) || 0;
+                const totalAlloc = dwVal + trMmVal + scVal;
+                const masterLeadGen = parseInt(leadGen) || 0;
+
+                const dwPct = masterLeadGen > 0 ? (dwVal / masterLeadGen) * 100 : 0;
+                const trMmPct = masterLeadGen > 0 ? (trMmVal / masterLeadGen) * 100 : 0;
+                const scPct = masterLeadGen > 0 ? (scVal / masterLeadGen) * 100 : 0;
+                const unallocPct = masterLeadGen > totalAlloc ? ((masterLeadGen - totalAlloc) / masterLeadGen) * 100 : 0;
+
+                return (
+                  <div className="space-y-sm pt-xs">
+                    <div className="h-3 w-full bg-surface-container rounded overflow-hidden flex">
+                      <div className="bg-primary h-full transition-all duration-300" style={{ width: `${dwPct}%` }} title={`DW: ${dwVal}`} />
+                      <div className="bg-secondary h-full transition-all duration-300" style={{ width: `${trMmPct}%` }} title={`TR-MM: ${trMmVal}`} />
+                      <div className="bg-teal-600 h-full transition-all duration-300" style={{ width: `${scPct}%` }} title={`SC: ${scVal}`} />
+                      {unallocPct > 0 && <div className="bg-gray-200 h-full transition-all duration-300" style={{ width: `${unallocPct}%` }} title={`Unallocated: ${masterLeadGen - totalAlloc}`} />}
+                    </div>
+
+                    <div className="flex justify-between items-center text-[10px] pt-xs border-t border-outline-variant/35 mt-xs">
+                      <span className="font-semibold text-on-surface-variant flex gap-md">
+                        <span className="flex items-center gap-xs"><span className="w-2.5 h-2.5 bg-primary rounded"></span>DW ({(dwPct).toFixed(0)}%)</span>
+                        <span className="flex items-center gap-xs"><span className="w-2.5 h-2.5 bg-secondary rounded"></span>TR-MM ({(trMmPct).toFixed(0)}%)</span>
+                        <span className="flex items-center gap-xs"><span className="w-2.5 h-2.5 bg-teal-600 rounded"></span>SC ({(scPct).toFixed(0)}%)</span>
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-[10px] pt-xs">
+                      <span className="font-bold text-on-surface-variant">
+                        Total Allocated: {totalAlloc.toLocaleString()} / {masterLeadGen.toLocaleString()}
+                      </span>
+                      {totalAlloc > masterLeadGen ? (
+                        <span className="text-error font-bold">⚠️ Exceeds target by {(totalAlloc - masterLeadGen).toLocaleString()}</span>
+                      ) : totalAlloc < masterLeadGen ? (
+                        <span className="text-primary font-bold">Unallocated: {(masterLeadGen - totalAlloc).toLocaleString()}</span>
+                      ) : (
+                        <span className="text-green-600 font-bold">✓ Fully Allocated</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Projected Output Metrics */}
+            <div className="border-t border-outline-variant pt-md mt-md space-y-sm bg-surface-container-low p-sm rounded border border-outline-variant/40">
+              <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">Projected Output Metrics</h4>
+              <div className="grid grid-cols-2 gap-sm text-[11px]">
+                <div className="p-xs bg-white border border-outline-variant/40 rounded shadow-sm">
+                  <p className="text-on-surface-variant font-semibold text-[9px]">Expected Conversions</p>
+                  <p className="font-data-mono text-data-mono text-headline-sm text-primary font-bold">
+                    {Math.floor((parseInt(leadGen) || 0) * (parseInt(conversion) || 0) / 100)}
+                  </p>
+                  <p className="text-[8px] text-on-surface-variant">From master lead target</p>
+                </div>
+                <div className="p-xs bg-white border border-outline-variant/40 rounded shadow-sm">
+                  <p className="text-on-surface-variant font-semibold text-[9px]">Projected Revenue</p>
+                  <p className="font-data-mono text-data-mono text-headline-sm text-green-600 font-bold">
+                    ₹{((Math.floor((parseInt(leadGen) || 0) * (parseInt(conversion) || 0) / 100)) * 499).toLocaleString()}
+                  </p>
+                  <p className="text-[8px] text-on-surface-variant">Est. @ avg plan price ₹499</p>
+                </div>
+              </div>
+            </div>
+
             <button 
               onClick={handleSaveBenchmarks}
               className="w-full py-sm bg-surface-container-high hover:bg-surface-variant text-on-surface font-bold text-xs rounded transition-colors uppercase tracking-widest mt-md"
@@ -671,8 +816,6 @@ export const ThSettings: React.FC = () => {
                   <option value="DW">DW</option>
                   <option value="TR-MM">TR-MM</option>
                   <option value="SC">SC</option>
-                  <option value="QC">QC</option>
-                  <option value="TL">TL</option>
                 </select>
               </div>
               <div>

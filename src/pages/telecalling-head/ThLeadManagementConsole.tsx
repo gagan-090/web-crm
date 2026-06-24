@@ -22,7 +22,9 @@ interface Lead {
   process: Process;
   regDate: string;
   lastCalled: string;
+  notes?: string[];
 }
+
 
 interface ColdLead {
   id: string;
@@ -77,6 +79,7 @@ export const ThLeadManagementConsole: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [dateFilter, setDateFilter] = useState<DateFilter>('Last 7 Days');
   const [callerFilter, setCallerFilter] = useState('All Callers');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -100,16 +103,31 @@ export const ThLeadManagementConsole: React.FC = () => {
   const [newProcess, setNewProcess] = useState<Process>('Driver Registration');
 
   // Leads list
-  const [leads, setLeads] = useState<Lead[]>(ALL_LEADS);
+  const [leads, setLeads] = useState<Lead[]>(() =>
+    ALL_LEADS.map(l => ({ ...l, notes: [] as string[] }))
+  );
+
+  // Reassign Modal State
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const [reassignTargetIds, setReassignTargetIds] = useState<string[]>([]);
+  const [reassignTargetCaller, setReassignTargetCaller] = useState('Animesh Roy');
+
+  // Lead Details Modal State
+  const [selectedLeadForView, setSelectedLeadForView] = useState<Lead | null>(null);
+  const [newNote, setNewNote] = useState('');
 
   // ── Derived data ─────────────────────────────────────────────────────────
   const filteredLeads = useMemo(() =>
     leads.filter(l => {
       if (statusFilter !== 'All' && l.status !== statusFilter) return false;
       if (callerFilter !== 'All Callers' && l.assignedCaller !== callerFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return l.name.toLowerCase().includes(q) || l.id.toLowerCase().includes(q) || l.mobile.includes(q);
+      }
       return true;
     }),
-    [leads, statusFilter, callerFilter]
+    [leads, statusFilter, callerFilter, searchQuery]
   );
 
   const totalLeads = filteredLeads.length;
@@ -139,11 +157,24 @@ export const ThLeadManagementConsole: React.FC = () => {
     setSelectedIds(new Set());
   };
 
-  const handleReassign = () => {
-    const caller = prompt('Enter caller name to reassign to:');
-    if (!caller) return;
-    setLeads(prev => prev.map(l => selectedIds.has(l.id) ? { ...l, assignedCaller: caller } : l));
+  const openReassignModal = (ids: string[]) => {
+    setReassignTargetIds(ids);
+    setReassignTargetCaller(CALLERS.filter(c => c !== 'All Callers' && c !== 'Unassigned')[0] || 'Animesh Roy');
+    setReassignModalOpen(true);
+  };
+
+  const handleConfirmReassign = () => {
+    setLeads(prev => prev.map(l => reassignTargetIds.includes(l.id) ? { ...l, assignedCaller: reassignTargetCaller } : l));
+    if (selectedLeadForView && reassignTargetIds.includes(selectedLeadForView.id)) {
+      setSelectedLeadForView(prev => prev ? { ...prev, assignedCaller: reassignTargetCaller } : null);
+    }
     setSelectedIds(new Set());
+    setReassignModalOpen(false);
+  };
+
+  const handleReassign = () => {
+    if (selectedIds.size === 0) return;
+    openReassignModal(Array.from(selectedIds));
   };
 
   const handleExportCsv = () => {
@@ -194,6 +225,28 @@ export const ThLeadManagementConsole: React.FC = () => {
     alert(`${sel.length} lead(s) added to Reactivation Campaign!`);
   };
 
+  const handleUpdateLeadField = (leadId: string, field: keyof Lead, value: any) => {
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, [field]: value } : l));
+    if (selectedLeadForView && selectedLeadForView.id === leadId) {
+      setSelectedLeadForView(prev => prev ? { ...prev, [field]: value } : null);
+    }
+  };
+
+  const handleAddNote = (leadId: string) => {
+    if (!newNote.trim()) return;
+    setLeads(prev => prev.map(l => {
+      if (l.id === leadId) {
+        const currentNotes = l.notes || [];
+        return { ...l, notes: [newNote, ...currentNotes] };
+      }
+      return l;
+    }));
+    if (selectedLeadForView && selectedLeadForView.id === leadId) {
+      setSelectedLeadForView(prev => prev ? { ...prev, notes: [newNote, ...(prev.notes || [])] } : null);
+    }
+    setNewNote('');
+  };
+
   // ── Create lead ───────────────────────────────────────────────────────────
   const handleCreateLead = (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,6 +290,23 @@ export const ThLeadManagementConsole: React.FC = () => {
       <section className="px-4 py-2 bg-white border-b border-gray-200 flex items-center justify-between shrink-0 gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Filters:</span>
+
+          {/* Search Bar */}
+          <div className="relative flex items-center">
+            <span className="material-symbols-outlined absolute left-2.5 text-gray-400 text-[16px]">search</span>
+            <input
+              type="text"
+              placeholder="Search Name/ID/Mobile..."
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setPage(0); }}
+              className="pl-8 pr-3 py-1 bg-gray-100 border border-gray-300 rounded-full text-[11px] outline-none focus:border-blue-500 focus:bg-white w-48 transition-all"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-2.5 text-gray-400 hover:text-gray-600">
+                <span className="material-symbols-outlined text-[14px]">close</span>
+              </button>
+            )}
+          </div>
 
           {/* Status */}
           <label className={`relative inline-flex items-center gap-1 px-3 py-1 rounded-full border text-[11px] font-semibold cursor-pointer select-none transition-colors
@@ -330,12 +400,12 @@ export const ThLeadManagementConsole: React.FC = () => {
                 ) : pagedLeads.map(lead => (
                   <tr
                     key={lead.id}
-                    onClick={() => toggleOne(lead.id)}
+                    onClick={() => setSelectedLeadForView(lead)}
                     className={`group cursor-pointer transition-colors hover:bg-blue-50/40 ${selectedIds.has(lead.id) ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''}`}
                   >
-                    <td className="px-3 py-2">
-                      <input type="checkbox" checked={selectedIds.has(lead.id)} readOnly
-                        className="rounded border-gray-300 text-blue-600 w-4 h-4 pointer-events-none" />
+                    <td className="px-3 py-2" onClick={e => { e.stopPropagation(); toggleOne(lead.id); }}>
+                      <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => {}}
+                        className="rounded border-gray-300 text-blue-600 w-4 h-4 cursor-pointer" />
                     </td>
                     <td className="px-3 py-2 text-[11px] font-mono text-blue-600 font-semibold">{lead.id}</td>
                     <td className="px-3 py-2 text-[12px] font-semibold text-gray-800">{lead.name}</td>
@@ -346,13 +416,23 @@ export const ThLeadManagementConsole: React.FC = () => {
                     <td className="px-3 py-2 text-[11px] text-gray-500">{lead.process}</td>
                     <td className="px-3 py-2 text-[11px] text-gray-500">{lead.regDate}</td>
                     <td className="px-3 py-2 text-[11px] text-gray-500">{lead.lastCalled}</td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={e => { e.stopPropagation(); alert(`Actions for ${lead.name}`); }}
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-600 transition-all"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">more_vert</span>
-                      </button>
+                    <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => setSelectedLeadForView(lead)}
+                          className="text-gray-400 hover:text-blue-600"
+                          title="View Details"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">visibility</span>
+                        </button>
+                        <button
+                          onClick={() => openReassignModal([lead.id])}
+                          className="text-gray-400 hover:text-blue-600"
+                          title="Reassign / Transfer"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">move_up</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -587,6 +667,189 @@ export const ThLeadManagementConsole: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reassign / Transfer Modal ────────────────────────────────────── */}
+      {reassignModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden border border-gray-200">
+            <div className="bg-blue-600 px-6 py-4 text-white flex justify-between items-center">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px]">move_up</span>
+                Transfer / Reassign Leads
+              </h3>
+              <button onClick={() => setReassignModalOpen(false)} className="hover:bg-white/20 p-1 rounded transition-colors">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+            <div className="p-6 space-y-4 text-[12px]">
+              <p className="text-gray-600">
+                You are transferring <strong className="text-blue-600">{reassignTargetIds.length}</strong> lead(s) to a new caller agent.
+              </p>
+              <div>
+                <label className="block font-semibold text-gray-500 mb-1 uppercase text-[10px] tracking-wider">Select Caller</label>
+                <select 
+                  value={reassignTargetCaller} 
+                  onChange={e => setReassignTargetCaller(e.target.value)}
+                  className="w-full h-9 border border-gray-300 px-2 rounded bg-white focus:border-blue-500 outline-none"
+                >
+                  {CALLERS.filter(c => c !== 'All Callers').map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="pt-3 border-t border-gray-200 flex justify-end gap-2">
+                <button type="button" onClick={() => setReassignModalOpen(false)}
+                  className="px-5 py-2 border border-gray-300 hover:bg-gray-100 text-gray-700 font-semibold rounded transition-colors text-[11px]">
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleConfirmReassign}
+                  className="px-5 py-2 bg-blue-600 text-white hover:bg-blue-700 font-bold rounded shadow-sm transition-colors text-[11px]"
+                >
+                  Confirm Transfer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lead Detail Modal / Panel ─────────────────────────────────────── */}
+      {selectedLeadForView && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-end z-50">
+          <div className="bg-white h-full w-full max-w-md shadow-2xl flex flex-col border-l border-gray-200">
+            {/* Header */}
+            <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0">
+              <div>
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">{selectedLeadForView.type} Lead Details</span>
+                <h3 className="font-bold text-sm truncate max-w-[280px]">{selectedLeadForView.name}</h3>
+              </div>
+              <button onClick={() => setSelectedLeadForView(null)} className="hover:bg-white/10 p-1.5 rounded-full transition-colors">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 text-[12px]">
+              {/* Quick Info Card */}
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 font-semibold uppercase text-[10px]">Lead ID</span>
+                  <span className="font-mono font-bold text-gray-800">{selectedLeadForView.id}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 font-semibold uppercase text-[10px]">Mobile</span>
+                  <span className="font-mono text-gray-800">{selectedLeadForView.mobile}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 font-semibold uppercase text-[10px]">Registered On</span>
+                  <span className="text-gray-800">{selectedLeadForView.regDate}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 font-semibold uppercase text-[10px]">Last Contacted</span>
+                  <span className="text-gray-800">{selectedLeadForView.lastCalled}</span>
+                </div>
+              </div>
+
+              {/* Editable Fields */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-gray-700 uppercase tracking-wider text-[10px]">Lead Lifecycle Control</h4>
+                
+                <div>
+                  <label className="block text-gray-500 font-semibold mb-1">Lifecycle Status</label>
+                  <div className="flex gap-2">
+                    {(['HOT', 'WARM', 'COLD'] as LeadStatus[]).map(st => {
+                      const isActive = selectedLeadForView.status === st;
+                      const activeCls = st === 'HOT' ? 'bg-red-600 text-white border-red-600' : st === 'WARM' ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-600 text-white border-gray-600';
+                      return (
+                        <button
+                          key={st}
+                          onClick={() => handleUpdateLeadField(selectedLeadForView.id, 'status', st)}
+                          className={`flex-1 py-1 px-3 border rounded text-[11px] font-bold transition-all ${isActive ? activeCls : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                        >
+                          {st}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <label className="block text-gray-500 font-semibold mb-1">Assigned Caller</label>
+                    <select
+                      value={selectedLeadForView.assignedCaller}
+                      onChange={e => handleUpdateLeadField(selectedLeadForView.id, 'assignedCaller', e.target.value)}
+                      className="w-full h-8 border border-gray-300 px-2 rounded bg-white outline-none focus:border-blue-500 text-[11px]"
+                    >
+                      {CALLERS.filter(c => c !== 'All Callers').map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-gray-500 font-semibold mb-1">Current Process Phase</label>
+                    <select
+                      value={selectedLeadForView.process}
+                      onChange={e => handleUpdateLeadField(selectedLeadForView.id, 'process', e.target.value as Process)}
+                      className="w-full h-8 border border-gray-300 px-2 rounded bg-white outline-none focus:border-blue-500 text-[11px]"
+                    >
+                      <option>Vendor Onboarding</option>
+                      <option>KYC Verification</option>
+                      <option>RTO Check</option>
+                      <option>Direct Load Booking</option>
+                      <option>Account Setup</option>
+                      <option>Driver Registration</option>
+                      <option>Transporter Onboarding</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes Section */}
+              <div className="space-y-3 pt-2">
+                <h4 className="font-bold text-gray-700 uppercase tracking-wider text-[10px]">Caller Logs / Call Notes</h4>
+                
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Add dynamic call updates or status notes..."
+                    value={newNote}
+                    onChange={e => setNewNote(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddNote(selectedLeadForView.id)}
+                    className="flex-1 h-9 border border-gray-300 px-3 rounded text-[11px] outline-none focus:border-blue-500"
+                  />
+                  <button
+                    onClick={() => handleAddNote(selectedLeadForView.id)}
+                    className="px-4 bg-gray-900 text-white font-bold rounded text-[11px] hover:bg-gray-800 transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {!selectedLeadForView.notes || selectedLeadForView.notes.length === 0 ? (
+                    <p className="text-gray-400 text-center py-4 italic">No call updates log added yet.</p>
+                  ) : (
+                    selectedLeadForView.notes.map((note, nIdx) => (
+                      <div key={nIdx} className="p-2.5 bg-gray-50 border border-gray-200 rounded text-gray-700 space-y-1">
+                        <p className="leading-relaxed">{note}</p>
+                        <p className="text-[9px] text-gray-400 font-semibold">Logged Just now</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end shrink-0">
+              <button
+                onClick={() => setSelectedLeadForView(null)}
+                className="px-6 py-2 bg-gray-900 text-white font-bold rounded hover:bg-gray-800 transition-colors"
+              >
+                Close View
+              </button>
+            </div>
           </div>
         </div>
       )}

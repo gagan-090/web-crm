@@ -1,53 +1,142 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { 
-  useGetDwQueueQuery, 
+import {
   useGetDwLeadDetailQuery,
-  useSubmitDwFeedbackMutation 
+  useSubmitDwFeedbackMutation
 } from '../../services/api/webCrmApi';
+import { useQueueCache, useQueueCountsCache, invalidateQueueCache } from '../../shared/hooks/useQueueCache';
+import { useSanCti } from '../../shared/components/cti/SanCtiProvider';
+
+const SkeletonCard = () => (
+  <div className="p-3 border-l-4 border-gray-200 bg-white animate-pulse space-y-2">
+    <div className="flex justify-between items-center">
+      <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+      <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+    </div>
+    <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+    <div className="flex justify-between items-center pt-2">
+      <div className="h-3 bg-gray-200 rounded w-1/5"></div>
+      <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+    </div>
+  </div>
+);
 
 export const DwCallQueue: React.FC = () => {
-  const navigate = useNavigate();
+  const { dial, callState } = useSanCti();
 
   // Search, Tab, Sort & Pagination States
-  const [activeTab, setActiveTab] = useState<'fresh' | 'callbacks'>('fresh');
+  const [activeTab, setActiveTab] = useState<'fresh' | 'old' | 'uncalled' | 'callbacks' | 'called'>('fresh');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Map frontend tab to backend API filters
-  const apiFilter = activeTab === 'callbacks' ? 'callback' : 'fresh';
+  // Advanced Filter States
+  const [filtersEnabled, setFiltersEnabled] = useState(false);
+  const [filterSubscribed, setFilterSubscribed] = useState<string>('all'); // all | yes | no
+  const [filterPan, setFilterPan] = useState<string>('all'); // all | yes | no
+  const [filterSalary, setFilterSalary] = useState<string>('all'); // all | under_15k | 15k_25k | over_25k
+  const [filterVehicleType, setFilterVehicleType] = useState<string>('');
+  const [filterExperience, setFilterExperience] = useState<string>('all'); // all | fresh | 1_3_years | over_3_years
+  const [filterProfileComplete, setFilterProfileComplete] = useState<string>('all'); // all | yes | no
+  const [filterRoute, setFilterRoute] = useState<string>('');
+  const [filterStateId, setFilterStateId] = useState<string>(''); // empty for all
 
-  const { data: queueResponse, isLoading: isQueueLoading } = useGetDwQueueQuery({
+  const activeFilters = {
+    subscribed: filterSubscribed !== 'all' ? filterSubscribed : undefined,
+    pan: filterPan !== 'all' ? filterPan : undefined,
+    salary: filterSalary !== 'all' ? filterSalary : undefined,
+    vehicle_type: filterVehicleType || undefined,
+    experience: filterExperience !== 'all' ? filterExperience : undefined,
+    profile_complete: filterProfileComplete !== 'all' ? filterProfileComplete : undefined,
+    route: filterRoute || undefined,
+    state_id: filterStateId ? Number(filterStateId) : undefined,
+  };
+
+  const handleFilterChange = (setter: any, val: any) => {
+    setter(val);
+    setCurrentPage(1);
+  };
+
+  const resetFilters = () => {
+    setFilterSubscribed('all');
+    setFilterPan('all');
+    setFilterSalary('all');
+    setFilterVehicleType('');
+    setFilterExperience('all');
+    setFilterProfileComplete('all');
+    setFilterRoute('');
+    setFilterStateId('');
+    setCurrentPage(1);
+  };
+
+  // Integrate SWR caching hooks
+  const {
+    data: queueData,
+    isLoading: isQueueLoading,
+    isFetching: isQueueFetching,
+    refetch: refetchQueue,
+    removeLead
+  } = useQueueCache(activeTab, {
     page: currentPage,
-    filter: apiFilter,
-    search: searchQuery || undefined,
+    search: searchQuery,
     per_page: 20
-  });
+  }, activeFilters);
 
-  const leads = queueResponse?.data?.leads || [];
-  const summary = queueResponse?.data?.summary || { total: 0, fresh: 0, callback: 0, contacted: 0 };
-  const pagination = queueResponse?.data?.pagination || { total: 0, per_page: 20, current_page: 1, last_page: 1 };
+  const { counts, isFetching: isCountsFetching, refetch: refetchCounts } = useQueueCountsCache();
+
+  const handleRefresh = () => {
+    refetchQueue();
+    refetchCounts();
+  };
+
+  const leads = queueData?.leads || [];
+  const pagination = queueData?.pagination || { total: 0, per_page: 20, current_page: 1, last_page: 1 };
 
   // Selected Lead state
   const [selectedId, setSelectedId] = useState<number | string>('');
 
   useEffect(() => {
-    if (leads.length > 0 && !selectedId) {
-      setSelectedId(leads[0].id);
+    if (leads.length > 0) {
+      const exists = leads.some(l => l.id === selectedId);
+      if (!exists) {
+        setSelectedId(leads[0].id);
+      }
+    } else {
+      setSelectedId('');
     }
   }, [leads, selectedId]);
 
   // Fetch lead details dynamically when selectedId changes
-  const { data: detailResponse, isLoading: isDetailLoading } = useGetDwLeadDetailQuery(selectedId, {
-    skip: !selectedId
+  // refetchOnMountOrArgChange: this panel is revisited often right after a call
+  // (Call Queue -> Active Call Focus -> back to Call Queue), and RTK Query's
+  // default cache would otherwise serve a result from before the latest call
+  // history row was written.
+  const { data: detailResponse, isLoading: isDetailLoading, refetch: refetchDetail } = useGetDwLeadDetailQuery(selectedId, {
+    skip: !selectedId,
+    refetchOnMountOrArgChange: true
   });
 
   const [submitFeedback] = useSubmitDwFeedbackMutation();
 
+  // When a call dialed from THIS screen completes disposition (via the global
+  // PostCallDispositionModal, rendered in DashboardLayout), refresh the list
+  // so the now-called lead drops out of view and tab counts update — without
+  // ever having navigated away to do it.
+  useEffect(() => {
+    const handleDispositionComplete = () => {
+      if (selectedId) {
+        removeLead(Number(selectedId));
+      }
+      invalidateQueueCache();
+      refetchCounts();
+      refetchQueue();
+      refetchDetail();
+    };
+    window.addEventListener('san-disposition-complete', handleDispositionComplete);
+    return () => window.removeEventListener('san-disposition-complete', handleDispositionComplete);
+  }, [selectedId, removeLead, refetchCounts, refetchQueue, refetchDetail]);
+
   const driverProfile = detailResponse?.data?.profile;
   const planCard = detailResponse?.data?.plan_card;
-  const callHistory = detailResponse?.data?.call_history || [];
   const ivrHistory = detailResponse?.data?.ivr_history || [];
 
   const triggerToast = (msg: string) => {
@@ -66,14 +155,17 @@ export const DwCallQueue: React.FC = () => {
   };
 
   const handleCallNow = (lead: any) => {
-    navigate('/dw/dw-active-call-focus', {
-      state: {
-        userId: lead.id,
-        tmid: lead.tmid,
-        name: lead.name,
-        mobile: lead.mobile
-      }
-    });
+    // Dial directly from this screen instead of navigating to Active Call
+    // Focus. CallControlBar (the floating call status bar) and
+    // PostCallDispositionModal are both rendered globally in DashboardLayout,
+    // so the in-progress call and the post-call disposition form simply
+    // appear on top of this screen — the agent never has to leave it.
+    if (callState !== 'idle') {
+      triggerToast('Finish or hang up the current call before dialing another lead.');
+      return;
+    }
+    setSelectedId(lead.id);
+    dial(lead.mobile, lead.id, lead.name, lead.tmid);
   };
 
   const handleQuickAction = async (action: string) => {
@@ -105,29 +197,39 @@ export const DwCallQueue: React.FC = () => {
         call_duration: 0
       }).unwrap();
 
+      removeLead(Number(selectedId));
+      invalidateQueueCache();
+      refetchCounts();
+      refetchQueue();
+      refetchDetail();
+
       triggerToast(`Lead status updated: ${callFeedback}`);
     } catch (err) {
       triggerToast('Failed to apply quick action.');
     }
   };
 
-  // Combine and sort call timeline
-  const combinedHistory = [
-    ...callHistory.map(h => ({
+  // Call timeline — sourced solely from call_history_ivr.
+  // status stays as the raw lowercase DB value (e.g. 'connected',
+  // 'not_connected', 'callback_later') so the badge color lookup below
+  // doesn't depend on any pre-formatted display string.
+  const combinedHistory = [...ivrHistory]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .map(h => ({
       date: new Date(h.created_at).toLocaleString(),
-      duration: `${Math.floor(h.active_time / 60)}m ${h.active_time % 60}s`,
-      status: h.call_status === 'connected' ? 'Connected' : 'Not Connected',
-      caller: h.caller_name || 'Agent',
-      remarks: h.call_remarks || ''
-    })),
-    ...ivrHistory.map(h => ({
-      date: new Date(h.created_at).toLocaleString(),
-      duration: 'IVR Attempt',
-      status: h.call_status || 'IVR',
+      duration: `${Math.floor(((h as any).active_time || 0) / 60)}m ${((h as any).active_time || 0) % 60}s`,
+      status: h.call_status || '',
       caller: h.assigned_name || 'IVR System',
+      feedback: h.call_feedback || '',
       remarks: h.call_remarks || ''
-    }))
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }));
+
+  const getStatusBadge = (status: string) => {
+    if (status === 'connected') return { label: 'Connected', cls: 'bg-[#EAFAF1] text-[#27AE60]' };
+    if (status === 'callback_later') return { label: 'Callback Later', cls: 'bg-amber-50 text-amber-600' };
+    if (status === 'not_connected') return { label: 'Not Connected', cls: 'bg-red-50 text-red-500' };
+    return { label: status || 'Unknown', cls: 'bg-gray-100 text-gray-500' };
+  };
 
   return (
     <main className="h-[calc(100vh-80px)] flex bg-white overflow-hidden border border-gray-200 rounded-xl relative">
@@ -147,22 +249,174 @@ export const DwCallQueue: React.FC = () => {
         <div className="p-3 border-b border-gray-200 shrink-0 bg-white">
           <div className="flex justify-between items-center mb-3">
             <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Queue Routing</span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <input 
                 type="text"
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                className="w-32 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#27AE60] outline-none"
+                className="w-24 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#27AE60] outline-none"
               />
+              <button
+                onClick={handleRefresh}
+                disabled={isQueueFetching || isCountsFetching}
+                className="p-1 border rounded text-xs flex items-center justify-center transition-colors bg-white border-gray-300 text-gray-500 hover:bg-gray-50 disabled:opacity-60"
+                title="Refresh queue"
+              >
+                <span className={`material-symbols-outlined text-[16px] ${(isQueueFetching || isCountsFetching) ? 'animate-spin' : ''}`}>refresh</span>
+              </button>
+              <button
+                onClick={() => setFiltersEnabled(prev => !prev)}
+                className={`p-1 border rounded text-xs flex items-center justify-center transition-colors ${
+                  filtersEnabled || Object.values(activeFilters).some(v => v !== undefined)
+                    ? 'bg-[#EAFAF1] border-[#27AE60] text-[#27AE60]'
+                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                }`}
+                title="Toggle Advanced Filters"
+              >
+                <span className="material-symbols-outlined text-[16px]">filter_alt</span>
+              </button>
             </div>
           </div>
 
+          {/* Advanced Filters Panel */}
+          {filtersEnabled && (
+            <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs space-y-2.5 max-h-[300px] overflow-y-auto">
+              <div className="flex justify-between items-center pb-1.5 border-b border-gray-200">
+                <span className="font-bold text-gray-700">Advanced Filters</span>
+                <button 
+                  onClick={resetFilters}
+                  className="text-[10px] text-red-600 hover:text-red-800 font-semibold"
+                >
+                  Reset All
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5 uppercase">Subscription</label>
+                  <select
+                    value={filterSubscribed}
+                    onChange={(e) => handleFilterChange(setFilterSubscribed, e.target.value)}
+                    className="w-full p-1 border border-gray-300 rounded bg-white text-xs"
+                  >
+                    <option value="all">All</option>
+                    <option value="yes">Subscribed</option>
+                    <option value="no">Unsubscribed</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5 uppercase">PAN Card</label>
+                  <select
+                    value={filterPan}
+                    onChange={(e) => handleFilterChange(setFilterPan, e.target.value)}
+                    className="w-full p-1 border border-gray-300 rounded bg-white text-xs"
+                  >
+                    <option value="all">All</option>
+                    <option value="yes">Available</option>
+                    <option value="no">Not Available</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5 uppercase">Expected Salary</label>
+                  <select
+                    value={filterSalary}
+                    onChange={(e) => handleFilterChange(setFilterSalary, e.target.value)}
+                    className="w-full p-1 border border-gray-300 rounded bg-white text-xs"
+                  >
+                    <option value="all">All</option>
+                    <option value="under_15k">Under ₹15k</option>
+                    <option value="15k_25k">₹15k - ₹25k</option>
+                    <option value="over_25k">Over ₹25k</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5 uppercase">Experience</label>
+                  <select
+                    value={filterExperience}
+                    onChange={(e) => handleFilterChange(setFilterExperience, e.target.value)}
+                    className="w-full p-1 border border-gray-300 rounded bg-white text-xs"
+                  >
+                    <option value="all">All</option>
+                    <option value="fresh">Fresher (&lt; 1 yr)</option>
+                    <option value="1_3_years">1 - 3 Years</option>
+                    <option value="over_3_years">Over 3 Years</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5 uppercase">Profile Completion</label>
+                  <select
+                    value={filterProfileComplete}
+                    onChange={(e) => handleFilterChange(setFilterProfileComplete, e.target.value)}
+                    className="w-full p-1 border border-gray-300 rounded bg-white text-xs"
+                  >
+                    <option value="all">All</option>
+                    <option value="yes">Complete</option>
+                    <option value="no">Incomplete</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5 uppercase">State</label>
+                  <select
+                    value={filterStateId}
+                    onChange={(e) => handleFilterChange(setFilterStateId, e.target.value)}
+                    className="w-full p-1 border border-gray-300 rounded bg-white text-xs"
+                  >
+                    <option value="">All States</option>
+                    {counts?.states?.map((st: any) => (
+                      <option key={st.id} value={st.id}>{st.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-0.5 uppercase">Route / Location</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Delhi, Jaipur"
+                  value={filterRoute}
+                  onChange={(e) => handleFilterChange(setFilterRoute, e.target.value)}
+                  className="w-full p-1 border border-gray-300 rounded bg-white text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-0.5 uppercase">Vehicle Type</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Container, Pickup"
+                  value={filterVehicleType}
+                  onChange={(e) => handleFilterChange(setFilterVehicleType, e.target.value)}
+                  className="w-full p-1 border border-gray-300 rounded bg-white text-xs"
+                />
+              </div>
+            </div>
+          )}
+
           {/* Filter Tab Row */}
-          <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
+          <div className="flex flex-wrap gap-1 pb-1">
             {[
-              { id: 'fresh', label: `Fresh (${summary.fresh})` },
-              { id: 'callbacks', label: `Callbacks (${summary.callback})` }
+              { id: 'fresh', label: `Fresh (${counts?.fresh ?? 0})` },
+              { id: 'old', label: `Old Leads (${counts?.old ?? 0})` },
+              { id: 'uncalled', label: `Uncalled (${counts?.uncalled ?? 0})` },
+              { 
+                id: 'callbacks', 
+                label: (
+                  <span className="flex items-center gap-1">
+                    Callbacks ({counts?.callbacks ?? 0})
+                    {counts?.overdue_callbacks && counts.overdue_callbacks > 0 ? (
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" title={`${counts.overdue_callbacks} Overdue`}></span>
+                    ) : null}
+                  </span>
+                )
+              },
+              { id: 'called', label: `Called Today (${counts?.called_today ?? 0})` }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -182,7 +436,11 @@ export const DwCallQueue: React.FC = () => {
         {/* Lead List Area */}
         <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-gray-100">
           {isQueueLoading ? (
-            <div className="p-8 text-center text-gray-500 text-xs">Loading queue...</div>
+            <div className="divide-y divide-gray-100">
+              {[...Array(5)].map((_, i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
           ) : leads.length > 0 ? (
             leads.map(l => (
               <div 
@@ -199,6 +457,22 @@ export const DwCallQueue: React.FC = () => {
                   </div>
                   
                   <div className="text-[12px] text-gray-500 mt-0.5">{l.city}, {l.state}</div>
+
+                  <div className="flex justify-between items-center text-[10px] text-gray-400 mt-1.5 bg-gray-50 p-1.5 rounded border border-gray-100">
+                    <span>Reg: {l.registered_at ? new Date(l.registered_at).toLocaleDateString('en-GB') : 'N/A'}</span>
+                    {l.current_plan && l.current_plan !== 'Free' && l.subscription_date ? (
+                      <span className="text-[#27AE60] font-bold flex items-center gap-0.5" title={`${l.current_plan} Plan`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60] animate-pulse"></span>
+                        Sub: {new Date(l.subscription_date).toLocaleDateString('en-GB')}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {activeTab === 'called' && l.last_feedback && (
+                    <div className="text-[11px] text-gray-500 mt-1 truncate bg-gray-100 px-1.5 py-0.5 rounded italic">
+                      {l.last_feedback} {l.last_remarks ? ` - ${l.last_remarks}` : ''}
+                    </div>
+                  )}
 
                   <div className="flex justify-between items-center mt-2.5">
                     <span className="text-[11px] text-gray-400">
@@ -300,9 +574,9 @@ export const DwCallQueue: React.FC = () => {
             </div>
 
             {/* Profile Card key-value grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {/* Personal Info */}
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
                   <span className="material-symbols-outlined text-[16px]">person</span> Personal Details
                 </h3>
@@ -341,7 +615,7 @@ export const DwCallQueue: React.FC = () => {
               </div>
 
               {/* License & Professional */}
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
                   <span className="material-symbols-outlined text-[16px]">badge</span> Professional Info
                 </h3>
@@ -374,7 +648,7 @@ export const DwCallQueue: React.FC = () => {
               </div>
 
               {/* Preferences & Earnings */}
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
                   <span className="material-symbols-outlined text-[16px]">settings_suggest</span> Preference & Earnings
                 </h3>
@@ -418,20 +692,22 @@ export const DwCallQueue: React.FC = () => {
                 
                 <div className="border border-gray-200 rounded-xl p-4 bg-white max-h-[250px] overflow-y-auto divide-y divide-gray-100">
                   {combinedHistory.length > 0 ? (
-                    combinedHistory.map((hist, idx) => (
-                      <div key={idx} className="py-2.5 first:pt-0 last:pb-0 text-xs">
-                        <div className="flex justify-between items-center mb-1 font-semibold">
-                          <span className="text-gray-800">{hist.date} — {hist.duration}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                            hist.status === 'Connected' ? 'bg-[#EAFAF1] text-[#27AE60]' : 'bg-red-50 text-red-500'
-                          }`}>
-                            {hist.status}
-                          </span>
+                    combinedHistory.map((hist, idx) => {
+                      const badge = getStatusBadge(hist.status);
+                      return (
+                        <div key={idx} className="py-2.5 first:pt-0 last:pb-0 text-xs">
+                          <div className="flex justify-between items-center mb-1 font-semibold">
+                            <span className="text-gray-800">{hist.date} — {hist.duration}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${badge.cls}`}>
+                              {badge.label}
+                            </span>
+                          </div>
+                          <p className="text-gray-500">Caller: {hist.caller}</p>
+                          {hist.feedback && <p className="text-gray-600 mt-0.5 font-medium">Feedback: {hist.feedback}</p>}
+                          {hist.remarks && <p className="text-gray-400 mt-0.5 italic">Remarks: {hist.remarks}</p>}
                         </div>
-                        <p className="text-gray-500">Caller: {hist.caller}</p>
-                        {hist.remarks && <p className="text-gray-400 mt-0.5 italic">Remarks: {hist.remarks}</p>}
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-xs text-gray-400 italic text-center py-4">No previous calls recorded.</p>
                   )}
@@ -445,10 +721,10 @@ export const DwCallQueue: React.FC = () => {
                 </h3>
                 
                 <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col relative min-h-[140px] text-xs text-gray-600">
-                  {callHistory[0]?.call_remarks ? (
+                  {ivrHistory[0]?.call_remarks ? (
                     <div>
-                      <p className="font-semibold text-gray-800">Last Remark ({new Date(callHistory[0].created_at).toLocaleDateString()}):</p>
-                      <p className="mt-1 italic">"{callHistory[0].call_remarks}"</p>
+                      <p className="font-semibold text-gray-800">Last Remark ({new Date(ivrHistory[0].created_at).toLocaleDateString()}):</p>
+                      <p className="mt-1 italic">"{ivrHistory[0].call_remarks}"</p>
                     </div>
                   ) : (
                     <p className="italic text-gray-400">No previous call remarks logged.</p>

@@ -405,8 +405,17 @@ function getRoleKey(roleStr: string): 'dwc' | 'twc' | 'sc' | 'mm' {
 export const incentiveApi = baseApi.injectEndpoints({
   endpoints: (build) => ({
     getGateProgress: build.query<GateProgress, string>({
-      queryFn: (role) => {
+      async queryFn(role, _queryApi, _extraOptions, fetchWithBQ) {
         const key = getRoleKey(role);
+
+        // Driver Welcome is backed by the real incentive engine — every other
+        // role still reads from the in-memory mock store below.
+        if (key === 'dwc') {
+          const result = await fetchWithBQ('/web-crm/dw/incentive/gate-progress');
+          if (result.error) return { error: result.error as any };
+          return { data: (result.data as any).data as GateProgress };
+        }
+
         const data = mockStore[key];
         const teiScore = data.teiScore;
         const metrics = calculateIncentiveForRole(key, data.conversions, teiScore, true);
@@ -430,7 +439,15 @@ export const incentiveApi = baseApi.injectEndpoints({
           }
         };
       },
+      keepUnusedDataFor: 60,
       async onCacheEntryAdded(arg, { updateCachedData, cacheEntryRemoved }) {
+        // Real dwc data doesn't live in the mock store, so there's nothing to
+        // subscribe to — just wait out the cache entry's lifetime.
+        if (getRoleKey(arg) === 'dwc') {
+          await cacheEntryRemoved;
+          return;
+        }
+
         const unsubscribeStore = subscribe(() => {
           updateCachedData((draft) => {
             const key = getRoleKey(arg);
@@ -459,8 +476,15 @@ export const incentiveApi = baseApi.injectEndpoints({
     }),
 
     getMonthIncentive: build.query<MonthlyIncentive, string>({
-      queryFn: (role) => {
+      async queryFn(role, _queryApi, _extraOptions, fetchWithBQ) {
         const key = getRoleKey(role);
+
+        if (key === 'dwc') {
+          const result = await fetchWithBQ('/web-crm/dw/incentive/month');
+          if (result.error) return { error: result.error as any };
+          return { data: (result.data as any).data as MonthlyIncentive };
+        }
+
         const conversions = mockStore[key].conversions;
         const teiScore = mockStore[key].teiScore;
 
@@ -524,7 +548,7 @@ export const incentiveApi = baseApi.injectEndpoints({
               idleTimeGrade: 'A'
             },
             versatilityBonus: {
-              processesQualified: activeProcesses >= 2 ? ['Welcome calling', 'Outbound Sales'] : [key === 'dwc' ? 'Driver Welcome' : 'Transporter Welcome'],
+              processesQualified: activeProcesses >= 2 ? ['Welcome calling', 'Outbound Sales'] : [key === 'twc' ? 'Transporter Welcome' : key === 'sc' ? 'Special Categories' : 'Matchmaking'],
               bonusAmount: metrics.versatilityBonus,
               nextTierRequirement: activeProcesses >= 2 
                 ? 'Qualified! Earned ₹750 versatility bonus.' 
@@ -540,7 +564,13 @@ export const incentiveApi = baseApi.injectEndpoints({
           }
         };
       },
+      keepUnusedDataFor: 60,
       async onCacheEntryAdded(arg, { updateCachedData, cacheEntryRemoved }) {
+        if (getRoleKey(arg) === 'dwc') {
+          await cacheEntryRemoved;
+          return;
+        }
+
         const unsubscribeStore = subscribe(() => {
           updateCachedData((draft) => {
             const key = getRoleKey(arg);
@@ -595,7 +625,7 @@ export const incentiveApi = baseApi.injectEndpoints({
             }));
 
             draft.versatilityBonus = {
-              processesQualified: activeProcesses >= 2 ? ['Welcome calling', 'Outbound Sales'] : [key === 'dwc' ? 'Driver Welcome' : 'Transporter Welcome'],
+              processesQualified: activeProcesses >= 2 ? ['Welcome calling', 'Outbound Sales'] : [key === 'twc' ? 'Transporter Welcome' : key === 'sc' ? 'Special Categories' : 'Matchmaking'],
               bonusAmount: metrics.versatilityBonus,
               nextTierRequirement: activeProcesses >= 2 
                 ? 'Qualified! Earned ₹750 versatility bonus.' 

@@ -1,20 +1,15 @@
-import { useState, useContext } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../../app/providers/AuthProvider';
 import {
   useGetGateProgressQuery,
   useGetMonthIncentiveQuery,
   useGetIncentiveHistoryQuery,
-  useTriggerMockConversionMutation,
 } from '../../services/api/incentiveApi';
-import { SanCtiContext } from '../../shared/components/cti/SanCtiProvider';
 
 export default function MyIncentivePage() {
   const { user } = useAuth();
   const roleName = user?.role || '';
   const [lang, setLang] = useState<'EN' | 'HI'>('EN');
-  const [simFeedback, setSimFeedback] = useState<string | null>(null);
-  const [triggerMockConversion, { isLoading: isSimulating }] = useTriggerMockConversionMutation();
-  const cti = useContext(SanCtiContext);
 
   const { data: progress } = useGetGateProgressQuery(roleName, { skip: !roleName });
   const { data: incentive, isLoading } = useGetMonthIncentiveQuery(roleName, { skip: !roleName });
@@ -156,136 +151,7 @@ export default function MyIncentivePage() {
         </div>
       </div>
 
-      {/* ► Demo / Simulation Bar */}
-      <div className="mb-6 bg-gray-50 rounded-xl p-4 border border-gray-250 shadow-sm">
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-bold text-gray-700 uppercase tracking-widest">Incentive Flow Simulator</p>
-            <p className="text-[10.5px] text-gray-500 mt-0.5">Test call-to-incentive flow manually or trigger quick mock conversions</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Quick Conversion Buttons */}
-            <div className="flex flex-wrap items-center gap-2 border-r border-gray-250 pr-3 mr-1">
-              <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider mr-1">Quick:</span>
-              {(roleName.toLowerCase().includes('dw') || roleName.toLowerCase().includes('welcome')) && [
-                { plan: 'job_ready', label: 'Basic ₹199' },
-                { plan: 'verified', label: 'Standard ₹299' },
-                { plan: 'trusted', label: 'Premium ₹499' },
-              ].map(({ plan, label }) => (
-                <button
-                  key={plan}
-                  disabled={isSimulating}
-                  onClick={async () => {
-                    await triggerMockConversion({ role: roleName, planName: plan });
-                    setSimFeedback(`✓ ${label} simulated!`);
-                    setTimeout(() => setSimFeedback(null), 2550);
-                  }}
-                  className="px-2 py-0.5 rounded bg-white hover:bg-gray-55 text-gray-705 text-[10.5px] font-semibold border border-gray-300 transition-all active:scale-95 disabled:opacity-50 shadow-sm"
-                >
-                  {label}
-                </button>
-              ))}
 
-              {(roleName.toLowerCase().includes('tw') || roleName.toLowerCase().includes('transporter')) && [
-                { plan: 'tr_subscription', label: 'Sub ₹999' },
-                { plan: 'premium_posting', label: 'Premium ₹1999' },
-                { plan: 'sp_posting', label: 'Super ₹2999' },
-              ].map(({ plan, label }) => (
-                <button
-                  key={plan}
-                  disabled={isSimulating}
-                  onClick={async () => {
-                    await triggerMockConversion({ role: roleName, planName: plan });
-                    setSimFeedback(`✓ ${label} simulated!`);
-                    setTimeout(() => setSimFeedback(null), 2500);
-                  }}
-                  className="px-2 py-0.5 rounded bg-white hover:bg-gray-55 text-gray-705 text-[10.5px] font-semibold border border-gray-300 transition-all active:scale-95 disabled:opacity-50 shadow-sm"
-                >
-                  {label}
-                </button>
-              ))}
-
-              {(roleName.toLowerCase().includes('sc') || roleName.toLowerCase().includes('special')) && [
-                { plan: 'association', label: 'Assoc ₹999' },
-                { plan: 'foreman', label: 'Foreman ₹799' },
-                { plan: 'dhabha_ref', label: 'Dhabha Ref' },
-                { plan: 'puncture_ref', label: 'Puncture Ref' },
-              ].map(({ plan, label }) => (
-                <button
-                  key={plan}
-                  disabled={isSimulating}
-                  onClick={async () => {
-                    await triggerMockConversion({ role: roleName, planName: plan });
-                    setSimFeedback(`✓ ${label} simulated!`);
-                    setTimeout(() => setSimFeedback(null), 2500);
-                  }}
-                  className="px-2 py-0.5 rounded bg-white hover:bg-gray-55 text-gray-705 text-[10.5px] font-semibold border border-gray-300 transition-all active:scale-95 disabled:opacity-50 shadow-sm"
-                >
-                  {label}
-                </button>
-              ))}
-
-              {(roleName.toLowerCase().includes('mm') || roleName.toLowerCase().includes('match')) && [
-                { plan: 'mm_premium_conv', label: 'Premium ₹1999' },
-                { plan: 'mm_sp_conv', label: 'Super ₹2999' },
-                { plan: 'mm_placement', label: 'Placement' },
-              ].map(({ plan, label }) => (
-                <button
-                  key={plan}
-                  disabled={isSimulating}
-                  onClick={async () => {
-                    await triggerMockConversion({ role: roleName, planName: plan });
-                    setSimFeedback(`✓ ${label} simulated!`);
-                    setTimeout(() => setSimFeedback(null), 2500);
-                  }}
-                  className="px-2 py-0.5 rounded bg-white hover:bg-gray-55 text-gray-705 text-[10.5px] font-semibold border border-gray-300 transition-all active:scale-95 disabled:opacity-50 shadow-sm"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Interactive Call Flow Simulation */}
-            {cti && cti.startMockCall && (
-              <button
-                disabled={cti.callState !== 'idle'}
-                onClick={() => {
-                  let mockName = 'Ramesh Kumar (Driver)';
-                  let mockPhone = '+91 99999 88888';
-                  let mockTmid = 'DR-8921';
-                  
-                  if (isTwc) {
-                    mockName = 'Vijay Transport Corp';
-                    mockPhone = '+91 98888 77777';
-                    mockTmid = 'TR-1082';
-                  } else if (isMm) {
-                    mockName = 'Rajesh Matchmaking (Broker)';
-                    mockPhone = '+91 97777 66666';
-                    mockTmid = 'BR-5531';
-                  } else if (isSc) {
-                    mockName = 'Suresh Categories (Vendor)';
-                    mockPhone = '+91 96666 55555';
-                    mockTmid = 'VN-4402';
-                  }
-                  
-                  cti.startMockCall?.(mockName, mockPhone, mockTmid);
-                  setSimFeedback(`✓ Call simulated for ${mockName}`);
-                  setTimeout(() => setSimFeedback(null), 2500);
-                }}
-                className="px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-900 text-white text-[11px] font-semibold transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
-              >
-                Simulate Call & Disposition Flow
-              </button>
-            )}
-
-            {simFeedback && (
-              <div className="text-[10px] text-gray-800 font-bold bg-gray-150 border border-gray-300 rounded px-2.5 py-1">
-                {simFeedback}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* Main Layout Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">

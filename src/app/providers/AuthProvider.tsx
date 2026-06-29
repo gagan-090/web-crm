@@ -35,11 +35,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Check local storage for existing session
     const storedUser = localStorage.getItem('tm_connect_user');
     if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        localStorage.removeItem('tm_connect_user');
-      }
+      // try {
+      //   const parsed = JSON.parse(storedUser);
+      //   // Reject sessions cached with a role value that no longer exists
+      //   // (e.g. pre-migration short codes like 'dw' vs current 'Driver Welcome').
+      //   // Stale role strings silently break role-gated UI with no error shown.
+      //   if (parsed?.role && Object.values(Role).includes(parsed.role)) {
+      //     setUser(parsed);
+      //   } else {
+      //     localStorage.removeItem('tm_connect_user');
+      //   }
+      // } catch (e) {
+      //   localStorage.removeItem('tm_connect_user');
+      // }
     }
     setIsLoading(false);
   }, []);
@@ -69,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200); // 1.2s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
     try {
       const response = await fetch(`${API_BASE}/web-crm/login`, {
@@ -128,15 +136,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('tm_connect_user');
+    localStorage.clear();
   };
 
   const switchRole = (newRole: Role) => {
     if (user) {
       const shortCode = ROLE_SHORT_CODES[newRole] || 'dw';
-      const updated: User = { 
-        ...user, 
-        role: newRole, 
+      const updated: User = {
+        ...user,
+        role: newRole,
         sub_role: newRole === Role.TL ? 'Driver Welcome' : null,
         name: `Demo User (${newRole})`,
         email: `${shortCode}@truckmitr.com`,

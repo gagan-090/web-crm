@@ -18,9 +18,9 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
     hangup,
     toggleHold,
     toggleMute,
-    acceptIncoming,
     currentPhoneNumber,
     currentLeadName,
+    isIncomingCall,
   } = useSanCti();
 
   const activeName = driverName || currentLeadName || currentPhoneNumber || 'Unknown';
@@ -71,26 +71,51 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
         width: 12, height: 12, borderRadius: '50%',
         backgroundColor: cfg.dot,
         animation: cfg.pulse ? 'pulse 1.5s infinite' : 'none',
+        flexShrink: 0,
       }} />
 
-      {/* Driver name + status */}
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>
-          {activeName}
+      {/* Caller name + status */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isIncomingCall && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, backgroundColor: '#3B82F6',
+              color: '#fff', borderRadius: 4, padding: '1px 5px', letterSpacing: '0.5px',
+              flexShrink: 0,
+            }}>
+              INCOMING
+            </span>
+          )}
+          <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {activeName}
+          </div>
         </div>
-        <div style={{ fontSize: 12, color: '#9CA3AF' }}>
+        <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 1 }}>
           {cfg.label} {cfg.showTimer && `— ${formatTime(callDuration)}`}
+          {currentPhoneNumber && activeName !== currentPhoneNumber && (
+            <span style={{ marginLeft: 6, color: '#6B7280' }}>· {currentPhoneNumber}</span>
+          )}
         </div>
       </div>
 
       {/* Call controls */}
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        {/* No Answer button here on purpose: answering from this bar only ever
+            sent a postMessage from OUTSIDE the SAN iframe, which can never
+            carry a real/trusted click into SAN's document — that's the exact
+            gap that broke inbound audio on incoming calls. The SAN Softphone
+            widget (bottom-left) is now always visible specifically so the
+            agent's real click lands inside SAN's own iframe and answers
+            natively. This is just a pointer to it, not a second Answer button. */}
         {callState === 'incoming_ringing' && (
-          <button onClick={acceptIncoming} style={{
-            ...btnStyle, backgroundColor: '#22C55E'
+          <span style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: '#FCD34D',
+            whiteSpace: 'nowrap',
           }}>
-            Answer
-          </button>
+            👈 Answer from the SAN Softphone widget
+          </span>
         )}
 
         {callState === 'connected' && (

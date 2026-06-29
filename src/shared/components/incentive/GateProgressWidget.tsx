@@ -1,7 +1,7 @@
 import { useGetGateProgressQuery } from '../../../services/api/incentiveApi';
 import { useAuth } from '../../../app/providers/AuthProvider';
 
-export default function GateProgressWidget() {
+export default function GateProgressWidget({ onClick }: { onClick?: () => void }) {
   const { user } = useAuth();
   const roleName = user?.role || '';
   const { data: progress, isLoading } = useGetGateProgressQuery(roleName, {
@@ -17,7 +17,10 @@ export default function GateProgressWidget() {
   // Special Categories has no gates, incentives always unlocked immediately
   if (progress.salaryGateThreshold === 0 && progress.incentiveGateThreshold === 0) {
     return (
-      <div className="bg-gradient-to-r from-emerald-50 to-teal-50 p-5 rounded-xl border border-emerald-200 shadow-sm font-sans">
+      <div 
+        onClick={onClick}
+        className={`bg-gradient-to-r from-emerald-50 to-teal-50 p-5 rounded-xl border border-emerald-200 shadow-sm font-sans ${onClick ? 'cursor-pointer hover:border-emerald-400 hover:shadow transition-all duration-200' : ''}`}
+      >
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
             ✓
@@ -45,7 +48,10 @@ export default function GateProgressWidget() {
   } = progress;
 
   return (
-    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm font-sans space-y-4">
+    <div 
+      onClick={onClick}
+      className={`bg-white p-5 rounded-xl border border-gray-200 shadow-sm font-sans space-y-4 ${onClick ? 'cursor-pointer hover:border-[#27AE60]/40 hover:shadow transition-all duration-200' : ''}`}
+    >
       <div className="flex justify-between items-center border-b border-gray-100 pb-2">
         <div>
           <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Target Gate Progress</span>

@@ -243,7 +243,7 @@ export const TlOverviewDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 max-w-7xl mx-auto w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)] relative">
+    <div className="space-y-4 max-w-7xl mx-auto w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)] relative bg-white">
       
       {/* Toast Alert */}
       {toastMessage && (
@@ -254,7 +254,7 @@ export const TlOverviewDashboard: React.FC = () => {
       )}
 
       {/* Top Banner & Mode Toggle */}
-      <div className="flex justify-between items-center bg-gray-50 p-3 border border-gray-200 rounded-xl shrink-0">
+      <div className="flex justify-between items-center bg-white p-3 border border-gray-200 rounded-xl shrink-0">
         <div>
           <h1 className="text-lg font-bold text-gray-800">Team Leader Management Console</h1>
           <p className="text-[11px] text-gray-400 mt-0.5">Real-time team oversight, rebalancing, and compliance monitoring</p>
@@ -473,7 +473,7 @@ export const TlOverviewDashboard: React.FC = () => {
       </section>
 
       {/* CAMPAIGN PERFORMANCE HUB */}
-      <section className="bg-gradient-to-r from-red-50/50 via-orange-50/30 to-amber-50/20 border border-orange-100 rounded-xl p-4 shadow-sm space-y-3">
+      <section className="bg-white border border-orange-100 rounded-xl p-4 shadow-sm space-y-3">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-orange-600 text-lg">campaign</span>
@@ -555,7 +555,7 @@ export const TlOverviewDashboard: React.FC = () => {
       </section>
 
       {/* MY TEAM GRID */}
-      <section className="bg-gray-50/50 p-4 border border-gray-200 rounded-xl">
+      <section className="bg-white p-4 border border-gray-200 rounded-xl">
         <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">
           Active Team Roster ({currentTeam.length} Direct Reports)
         </h3>

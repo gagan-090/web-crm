@@ -9,21 +9,55 @@ interface PostCallDispositionModalProps {
   onDispositionComplete?: (result: any) => void;
 }
 
-interface DispositionOption {
-  value: string;
-  label: string;
-  label_hi: string;
-  color: string;
-  requires: string[];
-}
+const mmStages = [
+  { value: '1', label: 'Stage 1: Profile Assessment' },
+  { value: '2', label: 'Stage 2: Document Verification' },
+  { value: '3', label: 'Stage 3: Interview Scheduled' },
+  { value: '4', label: 'Stage 4: Trial Drive' },
+  { value: '5', label: 'Stage 5: Background Check' },
+  { value: '6', label: 'Stage 6: Job Offer Extended' },
+  { value: '7', label: 'Stage 7: Offer Accepted' },
+  { value: '8', label: 'Stage 8: Final Placement Confirmed' },
+];
 
-/**
- * Post-Call Disposition Modal
- *
- * BLOCKING: No escape, no close button, no clicking outside.
- * The next lead DOES NOT load until this is submitted.
- * This is the #1 data integrity mechanism in the CRM.
- */
+const dwPlans = [
+  { value: 'job_ready', label: 'Job Ready Driver (₹199 Plan)' },
+  { value: 'verified', label: 'Verified Driver (₹299 Plan)' },
+  { value: 'trusted', label: 'Trusted Driver (₹499 Plan)' },
+];
+
+const twPlans = [
+  { value: 'tr_subscription', label: 'Transporter Subscription (₹999 Plan)' },
+  { value: 'premium_posting', label: 'Premium Job Posting (₹1,999 Plan)' },
+  { value: 'sp_posting', label: 'Super Premium Posting (₹2,999 Plan)' },
+];
+
+const generalPlans = [
+  { value: '199_plan', label: '₹199 Basic' },
+  { value: '299_plan', label: '₹299 Standard' },
+  { value: '499_plan', label: '₹499 Premium' },
+  { value: '1999_plan', label: '₹1,999 Pro' },
+  { value: '2999_plan', label: '₹2,999 Super Pro' },
+];
+
+const rejectionReasons = [
+  { value: 'already_have_loads', label: 'Already Have Loads' },
+  { value: 'using_other_app', label: 'Using Other App' },
+  { value: 'dont_trust_online', label: 'Don\'t Trust Online' },
+  { value: 'no_smartphone', label: 'No Smartphone' },
+  { value: 'price_too_high', label: 'Price Too High' },
+  { value: 'will_think', label: 'Will Think About It' },
+  { value: 'other', label: 'Other' },
+];
+
+const mmRejectionReasons = [
+  { value: 'not_interested_in_location', label: 'Not Interested in Location' },
+  { value: 'salary_too_low', label: 'Salary Too Low' },
+  { value: 'already_employed', label: 'Already Employed' },
+  { value: 'dont_like_transporter', label: 'Don\'t Like Transporter' },
+  { value: 'other', label: 'Other' },
+];
+
 export default function PostCallDispositionModal({
   driverName,
   driverTmid,
@@ -40,78 +74,141 @@ export default function PostCallDispositionModal({
   const { user } = useAuth();
   const [triggerMockConversion] = useTriggerMockConversionMutation();
 
-  const activeName = driverName || currentLeadName || 'Unknown Driver';
+  const activeName = driverName || currentLeadName || 'Unknown Lead';
   const activeTmid = driverTmid || currentLeadTmid || '';
 
-  const [selectedDisposition, setSelectedDisposition] = useState<string>('');
+  // Level 1 state
+  const [level1, setLevel1] = useState<'connected' | 'not_connected' | 'callback_later' | ''>('');
+  
+  // Level 2 states
+  const [level2Sub, setLevel2Sub] = useState<string>('');
+  const [callbackSub, setCallbackSub] = useState<string>(''); // For connected -> callback later interval
+  
+  // Form fields
   const [notes, setNotes] = useState<string>('');
   const [callbackAt, setCallbackAt] = useState<string>('');
   const [reason, setReason] = useState<string>('');
   const [planSelected, setPlanSelected] = useState<string>('');
   const [paymentId, setPaymentId] = useState<string>('');
   const [languageNoted, setLanguageNoted] = useState<string>('');
+  const [feedbackStage, setFeedbackStage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Reset form when modal opens
+  // callDuration only ever counts up once SAN confirms Answer (or the mock-call
+  // simulation), so > 0 here means the call definitely connected at some point
+  // this session — even though SAN doesn't always reliably confirm Hangup too.
+  const wasConnected = callDuration > 0;
+
+  // Reset form when modal opens. Pre-select "Connected" when we already know
+  // it connected — selecting "Not Connected" would just be factually wrong.
   useEffect(() => {
     if (showDispositionForm) {
-      setSelectedDisposition('');
+      setLevel1(wasConnected ? 'connected' : '');
+      setLevel2Sub('');
+      setCallbackSub('');
       setNotes('');
       setCallbackAt('');
       setReason('');
       setPlanSelected('');
       setPaymentId('');
       setLanguageNoted('');
+      setFeedbackStage('');
     }
   }, [showDispositionForm]);
 
   if (!showDispositionForm) return null;
 
-  const dispositions: DispositionOption[] = [
-    { value: 'converted',        label: 'Converted (Paid)',           label_hi: 'पेमेंट हो गया',           color: '#22C55E', requires: ['plan_selected', 'payment_id'] },
-    { value: 'interested',       label: 'Interested (Will Pay Later)', label_hi: 'रुचि है, बाद में करेंगे', color: '#F59E0B', requires: ['callback_at', 'notes'] },
-    { value: 'free_plan',        label: 'Staying on Free Plan',       label_hi: 'फ्री प्लान पर रहेंगे',    color: '#6B7280', requires: ['reason'] },
-    { value: 'callback',         label: 'Call Back Later',            label_hi: 'बाद में कॉल करें',        color: '#3B82F6', requires: ['callback_at'] },
-    { value: 'not_interested',   label: 'Not Interested',             label_hi: 'रुचि नहीं है',            color: '#EF4444', requires: ['reason'] },
-    { value: 'no_answer',        label: 'No Answer / Not Picked',     label_hi: 'कॉल नहीं उठाया',          color: '#EC4899', requires: [] },
-    { value: 'busy',             label: 'Busy / Call Waiting',        label_hi: 'व्यस्त है',               color: '#F59E0B', requires: [] },
-    { value: 'not_reachable',    label: 'Not Reachable / Switched Off',label_hi: 'पहुंच से बाहर / बंद है',   color: '#7C3AED', requires: [] },
-    { value: 'wrong_number',     label: 'Wrong Number / Invalid',     label_hi: 'गलत नंबर',               color: '#9CA3AF', requires: [] },
-    { value: 'language_barrier',  label: 'Language Barrier',           label_hi: 'भाषा की समस्या',         color: '#8B5CF6', requires: ['language_noted'] },
-  ];
+  // Role detection
+  const isDriverWelcome = user?.role?.includes('DW') || user?.role?.includes('Welcome');
+  const isTransporterWelcome = user?.role?.includes('TW') || user?.role?.includes('Transporter');
+  const isMatchmaking = user?.role?.includes('MM') || user?.role?.includes('Match');
 
-  const selected = dispositions.find(d => d.value === selectedDisposition);
+  const getCalculatedCallbackTime = (interval: string): string => {
+    const now = new Date();
+    if (interval === 'tomorrow_morning') {
+      const d = new Date(now);
+      d.setDate(d.getDate() + 1);
+      return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}T10:00`;
+    }
+    if (interval === 'tomorrow_evening') {
+      const d = new Date(now);
+      d.setDate(d.getDate() + 1);
+      return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}T17:00`;
+    }
+    if (interval === 'two_days_morning') {
+      const d = new Date(now);
+      d.setDate(d.getDate() + 2);
+      return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}T10:00`;
+    }
+    return '';
+  };
 
   const canSubmit = () => {
-    if (!selectedDisposition) return false;
-    if (!selected) return false;
-    const req = selected.requires;
-    if (req.includes('plan_selected') && !planSelected) return false;
-    if (req.includes('payment_id') && !paymentId) return false;
-    if (req.includes('callback_at') && !callbackAt) return false;
-    if (req.includes('reason') && !reason) return false;
-    if (req.includes('notes') && !notes) return false;
-    if (req.includes('language_noted') && !languageNoted) return false;
+    if (!level1) return false;
+    if (!level2Sub) return false;
+
+    if (level1 === 'connected') {
+      if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') {
+        if (!planSelected || !paymentId) return false;
+      }
+      if (level2Sub === 'interested_callback') {
+        if (!callbackSub) return false;
+        if (callbackSub === 'custom' && !callbackAt) return false;
+      }
+      if (level2Sub === 'not_interested' || level2Sub === 'rejected') {
+        if (!reason) return false;
+      }
+      if (level2Sub === 'language_barrier') {
+        if (!languageNoted) return false;
+      }
+      if (level2Sub === 'placement_done') {
+        if (!feedbackStage) return false;
+      }
+    } else if (level1 === 'callback_later') {
+      if (level2Sub === 'custom' && !callbackAt) return false;
+    }
     return true;
   };
 
-  const handleSubmit = async (loadNext: boolean) => {
+  const handleSubmit = async (loadNext: boolean | 'stay') => {
     if (!canSubmit() || isSubmitting) return;
     setIsSubmitting(true);
 
+    let finalCallbackAt = null;
+    let finalCallbackSub = null;
+
+    if (level1 === 'callback_later') {
+      finalCallbackSub = level2Sub;
+      if (level2Sub === 'custom') {
+        finalCallbackAt = callbackAt;
+      } else {
+        finalCallbackAt = getCalculatedCallbackTime(level2Sub);
+      }
+    } else if (level1 === 'connected' && level2Sub === 'interested_callback') {
+      finalCallbackSub = callbackSub;
+      if (callbackSub === 'custom') {
+        finalCallbackAt = callbackAt;
+      } else {
+        finalCallbackAt = getCalculatedCallbackTime(callbackSub);
+      }
+    }
+
     try {
       const result = await submitDisposition({
-        disposition: selectedDisposition,
-        notes,
-        callback_at: callbackAt || null,
-        reason: reason || null,
+        disposition: level1,
+        notes: notes || null,
+        callback_at: finalCallbackAt,
+        callback_sub: finalCallbackSub,
+        disposition_sub: level2Sub,
         plan_selected: planSelected || null,
         payment_id: paymentId || null,
         language_noted: languageNoted || null,
+        feedback_stage: feedbackStage || null,
+        reason: reason || null,
       });
 
-      // Fire Incentive Engine mock conversion when disposition is 'converted'
-      if (selectedDisposition === 'converted' && user?.role) {
+      // Fire Incentive Engine mock conversion when appropriate
+      if (level1 === 'connected' && (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') && user?.role) {
         triggerMockConversion({
           role: user.role,
           planName: planSelected || 'Basic 199',
@@ -144,200 +241,390 @@ export default function PostCallDispositionModal({
       <div style={{
         backgroundColor: '#fff',
         borderRadius: 16,
-        width: '100%',
-        maxWidth: 480,
-        maxHeight: '90vh',
+        width: '95%',
+        maxWidth: 520,
+        maxHeight: '92vh',
         overflow: 'auto',
-        padding: 32,
+        padding: 24,
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       }}>
-        {/* Header — NO close button. Intentional. */}
-        <div style={{ marginBottom: 24 }}>
+        {/* Header */}
+        <div style={{ marginBottom: 20, borderBottom: '1px solid #F3F4F6', paddingBottom: 12 }}>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111827' }}>
-            Call Ended — Tag This Call
+            Call Ended — Log Disposition
           </h3>
-          <p style={{ margin: '8px 0 0', fontSize: 14, color: '#6B7280' }}>
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
             {activeName} {activeTmid ? `(${activeTmid})` : ''} — {formatDuration(callDuration)}
           </p>
         </div>
 
-        {/* Grouped Disposition Options */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 20 }}>
-          {[
-            {
-              title: 'Connected (कॉल जुड़ गया)',
-              color: '#10B981',
-              items: dispositions.filter(d => ['converted', 'interested', 'free_plan', 'not_interested', 'language_barrier'].includes(d.value))
-            },
-            {
-              title: 'Disconnected (कॉल नहीं जुड़ा)',
-              color: '#EF4444',
-              items: dispositions.filter(d => ['no_answer', 'busy', 'not_reachable', 'wrong_number'].includes(d.value))
-            },
-            {
-              title: 'Call Back (बाद में बात करें)',
-              color: '#3B82F6',
-              items: dispositions.filter(d => ['callback'].includes(d.value))
-            }
-          ].map(sec => (
-            <div key={sec.title}>
-              <div style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: sec.color,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                marginBottom: 8,
-                borderBottom: `1px solid ${sec.color}20`,
-                paddingBottom: 4
-              }}>
-                {sec.title}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {sec.items.map(d => (
-                  <label
-                    key={d.value}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 14px', borderRadius: 10,
-                      border: selectedDisposition === d.value
-                        ? `2px solid ${d.color}`
-                        : '1px solid #E5E7EB',
-                      cursor: 'pointer',
-                      backgroundColor: selectedDisposition === d.value ? `${d.color}10` : '#fff',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="disposition"
-                      value={d.value}
-                      checked={selectedDisposition === d.value}
-                      onChange={() => setSelectedDisposition(d.value)}
-                      style={{ accentColor: d.color }}
-                    />
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{d.label}</div>
-                      <div style={{ fontSize: 12, color: '#9CA3AF' }}>{d.label_hi}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
+        {/* Level 1 Selection */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={labelStyle}>Step 1: Call Outcome</div>
+          {wasConnected && (
+            <div style={{ fontSize: 11, color: '#10B981', fontWeight: 600, marginBottom: 8 }}>
+              Call already connected — "Not Connected" is hidden.
             </div>
-          ))}
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: wasConnected ? '1fr 1fr' : '1fr 1fr 1fr', gap: 10 }}>
+            {[
+              { id: 'connected', label: 'Connected', sub: 'कॉल जुड़ गया', color: '#10B981' },
+              ...(wasConnected ? [] : [{ id: 'not_connected', label: 'Not Connected', sub: 'कॉल नहीं जुड़ा', color: '#EF4444' }]),
+              { id: 'callback_later', label: 'Callback Later', sub: 'बाद में कॉल करें', color: '#3B82F6' }
+            ].map(item => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setLevel1(item.id as any);
+                  setLevel2Sub('');
+                  setCallbackSub('');
+                }}
+                style={{
+                  padding: '12px 8px',
+                  borderRadius: 12,
+                  border: level1 === item.id ? `2px solid ${item.color}` : '1px solid #E5E7EB',
+                  backgroundColor: level1 === item.id ? `${item.color}0A` : '#fff',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937' }}>{item.label}</div>
+                <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{item.sub}</div>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Dynamic fields based on selection */}
-        {selected && (
+        {/* Level 2 Sub-Options based on Level 1 */}
+        {level1 === 'not_connected' && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={labelStyle}>Step 2: Reconnection State</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {[
+                { value: 'no_answer', label: 'No Answer / Ringing', label_hi: 'कॉल नहीं उठाया' },
+                { value: 'busy', label: 'Busy / Call Waiting', label_hi: 'व्यस्त है' },
+                { value: 'not_reachable', label: 'Not Reachable / Switched Off', label_hi: 'बंद/नेटवर्क से बाहर' },
+                { value: 'wrong_number', label: 'Wrong Number / Invalid', label_hi: 'गलत नंबर' },
+                { value: 'disconnected', label: 'Call Disconnected', label_hi: 'कॉल कट गया' }
+              ].map(item => (
+                <label
+                  key={item.value}
+                  style={getRadioStyle(level2Sub === item.value, '#EF4444')}
+                >
+                  <input
+                    type="radio"
+                    name="level2Sub"
+                    value={item.value}
+                    checked={level2Sub === item.value}
+                    onChange={() => setLevel2Sub(item.value)}
+                    style={{ accentColor: '#EF4444', marginRight: 8 }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                    <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {level1 === 'callback_later' && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={labelStyle}>Step 2: Callback Interval</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {[
+                { value: 'tomorrow_morning', label: 'Call Tomorrow Morning', label_hi: 'कल सुबह (10 AM)' },
+                { value: 'tomorrow_evening', label: 'Call Tomorrow Evening', label_hi: 'कल शाम (5 PM)' },
+                { value: 'two_days_morning', label: 'Call in 2 Days', label_hi: '2 दिन बाद (10 AM)' },
+                { value: 'custom', label: 'Custom Date & Time', label_hi: 'कस्टम समय चुनें' }
+              ].map(item => (
+                <label
+                  key={item.value}
+                  style={getRadioStyle(level2Sub === item.value, '#3B82F6')}
+                >
+                  <input
+                    type="radio"
+                    name="level2Sub"
+                    value={item.value}
+                    checked={level2Sub === item.value}
+                    onChange={() => setLevel2Sub(item.value)}
+                    style={{ accentColor: '#3B82F6', marginRight: 8 }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                    <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            {level2Sub === 'custom' && (
+              <div style={{ marginTop: 12 }}>
+                <input
+                  type="datetime-local"
+                  value={callbackAt}
+                  onChange={e => setCallbackAt(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {level1 === 'connected' && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={labelStyle}>Step 2: Connected Outcome</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {/* Render options for Driver Welcome */}
+              {(isDriverWelcome || (!isTransporterWelcome && !isMatchmaking)) && (
+                <>
+                  {[
+                    { value: 'agree_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
+                    { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
+                    { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
+                    { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' },
+                    { value: 'language_barrier', label: 'Language Barrier', label_hi: 'भाषा की समस्या' }
+                  ].map(item => (
+                    <label
+                      key={item.value}
+                      style={getRadioStyle(level2Sub === item.value, '#10B981')}
+                    >
+                      <input
+                        type="radio"
+                        name="level2Sub"
+                        value={item.value}
+                        checked={level2Sub === item.value}
+                        onChange={() => setLevel2Sub(item.value)}
+                        style={{ accentColor: '#10B981', marginRight: 8 }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                        <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                      </div>
+                    </label>
+                  ))}
+                </>
+              )}
+
+              {/* Render options for Transporter Welcome */}
+              {isTransporterWelcome && (
+                <>
+                  {[
+                    { value: 'agree_tr_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
+                    { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
+                    { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
+                    { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' }
+                  ].map(item => (
+                    <label
+                      key={item.value}
+                      style={getRadioStyle(level2Sub === item.value, '#10B981')}
+                    >
+                      <input
+                        type="radio"
+                        name="level2Sub"
+                        value={item.value}
+                        checked={level2Sub === item.value}
+                        onChange={() => setLevel2Sub(item.value)}
+                        style={{ accentColor: '#10B981', marginRight: 8 }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                        <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                      </div>
+                    </label>
+                  ))}
+                </>
+              )}
+
+              {/* Render options for Matchmaking */}
+              {isMatchmaking && (
+                <>
+                  {[
+                    { value: 'placement_done', label: 'Driver Placement Done', label_hi: 'ड्राइवर प्लेसमेंट हो गया' },
+                    { value: 'callback', label: 'Call Back Later', label_hi: 'बाद में कॉल करें' },
+                    { value: 'rejected', label: 'Rejected by Driver/Transporter', label_hi: 'रिजेक्ट हो गया' }
+                  ].map(item => (
+                    <label
+                      key={item.value}
+                      style={getRadioStyle(level2Sub === item.value, '#10B981')}
+                    >
+                      <input
+                        type="radio"
+                        name="level2Sub"
+                        value={item.value}
+                        checked={level2Sub === item.value}
+                        onChange={() => setLevel2Sub(item.value)}
+                        style={{ accentColor: '#10B981', marginRight: 8 }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                        <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                      </div>
+                    </label>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Level 3 conditional inputs based on selected Connected Outcome */}
+        {level1 === 'connected' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-            {selected.requires.includes('plan_selected') && (
-              <select value={planSelected} onChange={e => setPlanSelected(e.target.value)}
-                style={inputStyle}>
-                <option value="">Select Plan / Event</option>
-                {/* DWC Specific Options */}
-                {(user?.role?.includes('DW') || user?.role?.includes('Welcome')) && (
-                  <>
-                    <option value="job_ready">Job Ready Driver (₹199 Plan)</option>
-                    <option value="verified">Verified Driver (₹299 Plan)</option>
-                    <option value="trusted">Trusted Driver (₹499 Plan)</option>
-                  </>
-                )}
-                {/* SC Specific Options */}
-                {(user?.role?.includes('SC') || user?.role?.includes('Special')) && (
-                  <>
-                    <option value="association">Association Subscription (₹999 Plan)</option>
-                    <option value="foreman">Foreman Subscription (₹799 Plan)</option>
-                    <option value="dhabha_ref">Dhabha Partner Referral (₹0 Plan)</option>
-                    <option value="puncture_ref">Puncture Shop Referral (₹0 Plan)</option>
-                  </>
-                )}
-                {/* TWC Specific Options */}
-                {(user?.role?.includes('TW') || user?.role?.includes('Transporter')) && (
-                  <>
-                    <option value="tr_subscription">Transporter Subscription (₹999 Plan)</option>
-                    <option value="premium_posting">Premium Job Posting (₹1,999 Plan)</option>
-                    <option value="sp_posting">Super Premium Posting (₹2,999 Plan)</option>
-                  </>
-                )}
-                {/* MM Specific Options */}
-                {(user?.role?.includes('MM') || user?.role?.includes('Match')) && (
-                  <>
-                    <option value="mm_premium_conv">Premium Conversion (₹1,999 Plan)</option>
-                    <option value="mm_sp_conv">Super Premium Conv. (₹2,999 Plan)</option>
-                    <option value="mm_placement">Driver Placement (₹0 Plan)</option>
-                  </>
-                )}
-                {/* General Fallback */}
-                {!user?.role && (
-                  <>
-                    <option value="199_plan">₹199 Basic</option>
-                    <option value="299_plan">₹299 Standard</option>
-                    <option value="499_plan">₹499 Premium</option>
-                    <option value="1999_plan">₹1,999 Pro</option>
-                    <option value="2999_plan">₹2,999 Super Pro</option>
-                  </>
-                )}
-              </select>
+            
+            {/* Subscription Flow */}
+            {(level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') && (
+              <>
+                <div>
+                  <label style={subLabelStyle}>Select Subscription Plan *</label>
+                  <select
+                    value={planSelected}
+                    onChange={e => setPlanSelected(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Choose a subscription plan...</option>
+                    {isDriverWelcome && dwPlans.map(p => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                    {isTransporterWelcome && twPlans.map(p => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                    {!isDriverWelcome && !isTransporterWelcome && generalPlans.map(p => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={subLabelStyle}>Payment Transaction ID *</label>
+                  <input
+                    type="text"
+                    placeholder="Enter payment/UPI reference transaction ID..."
+                    value={paymentId}
+                    onChange={e => setPaymentId(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+              </>
             )}
 
-            {selected.requires.includes('payment_id') && (
-              <input type="text" placeholder="Payment ID (e.g. pay_29N8...)"
-                value={paymentId} onChange={e => setPaymentId(e.target.value)}
-                style={inputStyle} />
-            )}
-
-            {selected.requires.includes('callback_at') && (
-              <input type="datetime-local" value={callbackAt}
-                onChange={e => setCallbackAt(e.target.value)}
-                style={inputStyle} />
-            )}
-
-            {selected.requires.includes('reason') && (
-              <select value={reason} onChange={e => setReason(e.target.value)}
-                style={inputStyle}>
-                <option value="">Select Reason</option>
-                {selectedDisposition === 'not_interested' ? (
-                  <>
-                    <option value="already_have_loads">Already Have Loads</option>
-                    <option value="using_other_app">Using Other App</option>
-                    <option value="dont_trust_online">Don't Trust Online</option>
-                    <option value="no_smartphone">No Smartphone</option>
-                    <option value="price_too_high">Price Too High</option>
-                    <option value="will_think">Will Think About It</option>
-                    <option value="other">Other</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="no_money_now">No Money Right Now</option>
-                    <option value="wants_to_try_first">Wants to Try First</option>
-                    <option value="fleet_owner_decides">Fleet Owner Decides</option>
-                    <option value="price_too_high">Price Too High</option>
-                    <option value="other">Other</option>
-                  </>
+            {/* Callback Requested Flow */}
+            {level2Sub === 'interested_callback' && (
+              <>
+                <div>
+                  <label style={subLabelStyle}>Callback Schedule Interval *</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {[
+                      { value: 'tomorrow_morning', label: 'Tomorrow Morning', label_hi: 'कल सुबह (10 AM)' },
+                      { value: 'tomorrow_evening', label: 'Tomorrow Evening', label_hi: 'कल शाम (5 PM)' },
+                      { value: 'two_days_morning', label: 'In 2 Days', label_hi: '2 दिन बाद (10 AM)' },
+                      { value: 'custom', label: 'Custom Date & Time', label_hi: 'कस्टम समय चुनें' }
+                    ].map(item => (
+                      <label
+                        key={item.value}
+                        style={getRadioStyle(callbackSub === item.value, '#3B82F6')}
+                      >
+                        <input
+                          type="radio"
+                          name="callbackSub"
+                          value={item.value}
+                          checked={callbackSub === item.value}
+                          onChange={() => setCallbackSub(item.value)}
+                          style={{ accentColor: '#3B82F6', marginRight: 8 }}
+                        />
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                          <div style={{ fontSize: 9, color: '#9CA3AF' }}>{item.label_hi}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {callbackSub === 'custom' && (
+                  <div>
+                    <label style={subLabelStyle}>Select Custom Date & Time *</label>
+                    <input
+                      type="datetime-local"
+                      value={callbackAt}
+                      onChange={e => setCallbackAt(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
                 )}
-              </select>
+              </>
             )}
 
-            {selected.requires.includes('language_noted') && (
-              <select value={languageNoted} onChange={e => setLanguageNoted(e.target.value)}
-                style={inputStyle}>
-                <option value="">Driver's Language</option>
-                <option value="tamil">Tamil</option>
-                <option value="telugu">Telugu</option>
-                <option value="kannada">Kannada</option>
-                <option value="malayalam">Malayalam</option>
-                <option value="bengali">Bengali</option>
-                <option value="marathi">Marathi</option>
-                <option value="gujarati">Gujarati</option>
-                <option value="punjabi">Punjabi</option>
-                <option value="odia">Odia</option>
-                <option value="other">Other</option>
-              </select>
+            {/* Rejection / Not Interested Flow */}
+            {(level2Sub === 'not_interested' || level2Sub === 'rejected') && (
+              <div>
+                <label style={subLabelStyle}>Reason for rejection *</label>
+                <select
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">Select a reason...</option>
+                  {isMatchmaking 
+                    ? mmRejectionReasons.map(r => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))
+                    : rejectionReasons.map(r => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))
+                  }
+                </select>
+              </div>
             )}
 
-            {/* Notes — always shown for connected dispositions */}
+            {/* Language Barrier Flow */}
+            {level2Sub === 'language_barrier' && (
+              <div>
+                <label style={subLabelStyle}>Select Language Noted *</label>
+                <select
+                  value={languageNoted}
+                  onChange={e => setLanguageNoted(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">Select driver's language...</option>
+                  <option value="tamil">Tamil (தமிழ்)</option>
+                  <option value="telugu">Telugu (తెలుగు)</option>
+                  <option value="kannada">Kannada (ಕನ್ನಡ)</option>
+                  <option value="malayalam">Malayalam (മലയാളം)</option>
+                  <option value="bengali">Bengali (বাংলা)</option>
+                  <option value="marathi">Marathi (मराठी)</option>
+                  <option value="gujarati">Gujarati (ગુજરાતી)</option>
+                  <option value="punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
+                  <option value="odia">Odia (ଓଡ଼ିଆ)</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            )}
+
+            {/* Matchmaking Placement Done Flow */}
+            {level2Sub === 'placement_done' && (
+              <div>
+                <label style={subLabelStyle}>Verify Placement Stage *</label>
+                <select
+                  value={feedbackStage}
+                  onChange={e => setFeedbackStage(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">Choose placement stage...</option>
+                  {mmStages.map(s => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Notes (Render for any selection once Level 2 sub-option is picked) */}
+        {level2Sub && (
+          <div style={{ marginBottom: 20 }}>
+            <label style={labelStyle}>Step 3: Call Remarks</label>
             <textarea
-              placeholder="Notes (Hindi mein bhi likh sakte hain)..."
+              placeholder="Enter remarks/notes (Hindi mein bhi likh sakte hain)..."
               value={notes}
               onChange={e => setNotes(e.target.value)}
               rows={3}
@@ -346,37 +633,58 @@ export default function PostCallDispositionModal({
           </div>
         )}
 
-        {/* Submit actions */}
-        <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-          <button
-            onClick={() => handleSubmit(false)}
-            disabled={!canSubmit() || isSubmitting}
-            style={{
-              flex: 1,
-              padding: '12px 0',
-              borderRadius: 10,
-              border: '1px solid #D1D5DB',
-              backgroundColor: '#fff',
-              color: canSubmit() ? '#374151' : '#9CA3AF',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: canSubmit() ? 'pointer' : 'not-allowed',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            {isSubmitting ? 'Saving...' : 'Save & Close'}
-          </button>
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16, borderTop: '1px solid #F3F4F6', paddingTop: 16 }}>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => handleSubmit('stay')}
+              disabled={!canSubmit() || isSubmitting}
+              style={{
+                flex: 1,
+                padding: '12px 14px',
+                borderRadius: 10,
+                border: '1px solid #D1D5DB',
+                backgroundColor: '#fff',
+                color: canSubmit() ? '#374151' : '#9CA3AF',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: canSubmit() ? 'pointer' : 'not-allowed',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              Save & Stay on Lead
+            </button>
+            <button
+              onClick={() => handleSubmit(false)}
+              disabled={!canSubmit() || isSubmitting}
+              style={{
+                flex: 1,
+                padding: '12px 14px',
+                borderRadius: 10,
+                border: '1px solid #D1D5DB',
+                backgroundColor: '#fff',
+                color: canSubmit() ? '#374151' : '#9CA3AF',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: canSubmit() ? 'pointer' : 'not-allowed',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {isSubmitting ? 'Saving...' : 'Save & Close'}
+            </button>
+          </div>
+          
           <button
             onClick={() => handleSubmit(true)}
             disabled={!canSubmit() || isSubmitting}
             style={{
-              flex: 1,
-              padding: '12px 0',
+              width: '100%',
+              padding: '12px 14px',
               borderRadius: 10,
               border: 'none',
               backgroundColor: canSubmit() ? '#111827' : '#D1D5DB',
               color: canSubmit() ? '#fff' : '#9CA3AF',
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 600,
               cursor: canSubmit() ? 'pointer' : 'not-allowed',
               transition: 'all 0.15s ease',
@@ -390,12 +698,42 @@ export default function PostCallDispositionModal({
   );
 }
 
+const labelStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: '#4B5563',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  marginBottom: 8,
+};
+
+const subLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: '#6B7280',
+  textTransform: 'uppercase',
+  display: 'block',
+  marginBottom: 4,
+};
+
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '10px 14px',
+  padding: '10px 12px',
   borderRadius: 8,
   border: '1px solid #D1D5DB',
-  fontSize: 14,
+  fontSize: 13,
   fontFamily: 'inherit',
   boxSizing: 'border-box',
+  outline: 'none',
 };
+
+const getRadioStyle = (selected: boolean, color: string): React.CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  padding: '8px 12px',
+  borderRadius: 10,
+  border: selected ? `2px solid ${color}` : '1px solid #E5E7EB',
+  cursor: 'pointer',
+  backgroundColor: selected ? `${color}08` : '#fff',
+  transition: 'all 0.15s ease',
+});

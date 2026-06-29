@@ -215,7 +215,7 @@ export const GlobalOverlaysProvider: React.FC<{ children: React.ReactNode }> = (
       assigned_number: '178',
       did_number: '4310735',
       process: role,
-      call_type: 'Outgoing'
+      call_type: 'web-ivr'
     }).unwrap()
       .then((res) => {
         const data = res.data;
@@ -400,24 +400,7 @@ export const GlobalOverlaysProvider: React.FC<{ children: React.ReactNode }> = (
       startCall('CTI Caller', targetNumber, 'DR-178', 'dw', 'Outbound Dial');
     };
 
-    (window as any).toggleHold = () => {
-      const held = !callingState.isSpeakerActive;
-      console.log(`[CTI Window Command] toggleHold() called. Held: ${held}`);
-      
-      if (typeof (window as any).SANAppHoldEvent === 'function') {
-        (window as any).SANAppHoldEvent({
-          Channel: 'SIP/1004-0000939c',
-          set: held ? '1' : '0',
-          class: ''
-        });
-      }
-      toggleSpeaker(); // toggle speakers as visual indicator of hold state
-    };
 
-    (window as any).toggleMute = () => {
-      console.log('[CTI Window Command] toggleMute() called');
-      toggleMute();
-    };
 
     return () => {
       // Cleanup global bindings

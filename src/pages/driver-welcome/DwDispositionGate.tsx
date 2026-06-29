@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
+import {
   useGetDwLeadDetailQuery,
   useGetDwDispositionOptionsQuery,
   useSubmitDwFeedbackMutation,
   useScheduleDwCallbackMutation
 } from '../../services/api/webCrmApi';
+import { invalidateQueueCache } from '../../shared/hooks/useQueueCache';
 
 export const DwDispositionGate: React.FC = () => {
   const navigate = useNavigate();
@@ -77,6 +78,8 @@ export const DwDispositionGate: React.FC = () => {
           reason: `Callback scheduled for ${callbackDate} ${callbackTime}. Notes: ${finalNotes}`
         }).unwrap();
       }
+
+      invalidateQueueCache();
 
       triggerToast('Disposition logged successfully ✓');
       setTimeout(() => {

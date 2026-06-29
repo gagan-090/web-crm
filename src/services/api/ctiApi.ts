@@ -46,7 +46,7 @@ export const ctiApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     initiateIvrCall: builder.mutation<InitiateIvrCallResponse, InitiateIvrCallPayload>({
       query: (payload) => ({
-        url: '/welcome-calling/ivr-call-initiated',
+        url: '/tmapp/welcome-calling/ivr-call-initiated',
         method: 'POST',
         body: payload,
       }),
@@ -66,7 +66,7 @@ export const ctiApi = baseApi.injectEndpoints({
           formData.append('call_recording', payload.call_recording);
 
           return {
-            url: '/welcome-calling/cti-feedback-submit',
+            url: '/tmapp/welcome-calling/cti-feedback-submit',
             method: 'POST',
             body: formData,
             // fetchBaseQuery automatically handles boundary headers if body is FormData
@@ -75,7 +75,7 @@ export const ctiApi = baseApi.injectEndpoints({
 
         // Standard JSON request if no file is uploaded
         return {
-          url: '/welcome-calling/cti-feedback-submit',
+          url: '/tmapp/welcome-calling/cti-feedback-submit',
           method: 'POST',
           body: {
             id: payload.id,

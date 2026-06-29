@@ -90,7 +90,7 @@ export const ThGlobalCampaignConsole: React.FC = () => {
     try {
       await saveTarget({ key: 'tm_th_tl_targets', value: delegated }).unwrap();
       await saveTarget({ key: 'tm_th_allocated_pool', value: pool }).unwrap();
-      
+
       localStorage.setItem('tm_th_tl_targets', JSON.stringify(delegated));
       localStorage.setItem('tm_th_allocated_pool', JSON.stringify(pool));
       alert('Delegated targets published successfully to DW & WCT Team Leaders!');
@@ -327,9 +327,9 @@ export const ThGlobalCampaignConsole: React.FC = () => {
 
   const filteredQueueLeads = queueLeads.filter(l => {
     const matchesSearch = l.name.toLowerCase().includes(queueSearch.toLowerCase()) ||
-                          l.id.toLowerCase().includes(queueSearch.toLowerCase()) ||
-                          l.phone.includes(queueSearch) ||
-                          l.campaign.toLowerCase().includes(queueSearch.toLowerCase());
+      l.id.toLowerCase().includes(queueSearch.toLowerCase()) ||
+      l.phone.includes(queueSearch) ||
+      l.campaign.toLowerCase().includes(queueSearch.toLowerCase());
     return matchesSearch;
   });
 
@@ -343,7 +343,7 @@ export const ThGlobalCampaignConsole: React.FC = () => {
   ).toFixed(1);
 
   return (
-    <main className="flex flex-col h-full bg-background relative">
+    <main className="flex flex-col min-h-screen bg-background relative">
       {/* Page Header */}
       <section className="px-lg py-md bg-white border-b border-outline-variant flex justify-between items-center shrink-0">
         <div>
@@ -373,11 +373,10 @@ export const ThGlobalCampaignConsole: React.FC = () => {
           <button
             key={tab}
             onClick={() => setConsoleTab(tab)}
-            className={`py-3 px-sm font-bold text-xs border-b-2 transition-all ${
-              consoleTab === tab
+            className={`py-3 px-sm font-bold text-xs border-b-2 transition-all ${consoleTab === tab
                 ? 'border-primary text-primary'
                 : 'border-transparent text-on-surface-variant hover:text-on-surface'
-            }`}
+              }`}
           >
             {tab === 'TARGETS' ? 'TL Target Manager' : tab.replace('_', ' ')}
           </button>
@@ -386,7 +385,7 @@ export const ThGlobalCampaignConsole: React.FC = () => {
 
       {/* 1. CAMPAIGNS TAB */}
       {consoleTab === 'CAMPAIGNS' && (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col">
           {/* KPI Summary Banner */}
           <section className="p-md grid grid-cols-1 md:grid-cols-4 gap-md shrink-0">
             <div className="admin-border bg-white p-lg shadow-sm rounded-sm flex items-center justify-between">
@@ -447,9 +446,9 @@ export const ThGlobalCampaignConsole: React.FC = () => {
           </section>
 
           {/* Main Console Layout */}
-          <section className="flex-1 overflow-hidden p-md grid grid-cols-1 lg:grid-cols-12 gap-md min-h-[400px]">
+          <section className="flex-1 p-md grid grid-cols-1 lg:grid-cols-12 gap-md min-h-[400px]">
             {/* Left Column: Campaigns List (8-cols) */}
-            <div className="lg:col-span-8 flex flex-col bg-white admin-border rounded-sm shadow-sm overflow-hidden">
+            <div className="lg:col-span-8 flex flex-col bg-white admin-border rounded-sm shadow-sm">
               {/* List Headers and Filters */}
               <div className="p-md admin-border-b bg-surface-container-low/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-sm">
                 <div className="flex border border-outline-variant rounded-sm overflow-hidden bg-white">
@@ -457,11 +456,10 @@ export const ThGlobalCampaignConsole: React.FC = () => {
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      className={`px-md py-1.5 font-bold text-[11px] transition-colors border-r last:border-r-0 border-outline-variant ${
-                        activeTab === tab
+                      className={`px-md py-1.5 font-bold text-[11px] transition-colors border-r last:border-r-0 border-outline-variant ${activeTab === tab
                           ? 'bg-primary text-on-primary'
                           : 'hover:bg-surface-container-low text-on-surface-variant'
-                      }`}
+                        }`}
                     >
                       {tab}
                     </button>
@@ -513,9 +511,8 @@ export const ThGlobalCampaignConsole: React.FC = () => {
                         <tr
                           key={camp.id}
                           onClick={() => setSelectedCampaign(camp)}
-                          className={`cursor-pointer hover:bg-surface-container-low/30 transition-colors ${
-                            isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : ''
-                          }`}
+                          className={`cursor-pointer hover:bg-surface-container-low/30 transition-colors ${isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : ''
+                            }`}
                         >
                           <td className="px-lg py-3">
                             <div className="flex flex-col">
@@ -529,30 +526,28 @@ export const ThGlobalCampaignConsole: React.FC = () => {
                           </td>
                           <td className="px-lg py-3">
                             <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-extrabold text-white ${
-                                camp.targetRole === 'DW'
+                              className={`px-2 py-0.5 rounded text-[10px] font-extrabold text-white ${camp.targetRole === 'DW'
                                   ? 'bg-green-500'
                                   : camp.targetRole === 'TR'
-                                  ? 'bg-orange-500'
-                                  : camp.targetRole === 'MM'
-                                  ? 'bg-purple-500'
-                                  : 'bg-teal-500'
-                              }`}
+                                    ? 'bg-orange-500'
+                                    : camp.targetRole === 'MM'
+                                      ? 'bg-purple-500'
+                                      : 'bg-teal-500'
+                                }`}
                             >
                               {camp.targetRole}
                             </span>
                           </td>
                           <td className="px-lg py-3 text-center">
                             <span
-                              className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                                camp.status === 'Active'
+                              className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${camp.status === 'Active'
                                   ? 'bg-green-50 text-green-700 border-green-200'
                                   : camp.status === 'Paused'
-                                  ? 'bg-red-50 text-red-700 border-red-200'
-                                  : camp.status === 'Completed'
-                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                  : 'bg-slate-50 text-slate-600 border-slate-200'
-                              }`}
+                                    ? 'bg-red-50 text-red-700 border-red-200'
+                                    : camp.status === 'Completed'
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : 'bg-slate-50 text-slate-600 border-slate-200'
+                                }`}
                             >
                               {camp.status}
                             </span>
@@ -565,9 +560,8 @@ export const ThGlobalCampaignConsole: React.FC = () => {
                               </div>
                               <div className="w-full bg-surface-container h-1.5 rounded-full overflow-hidden">
                                 <div
-                                  className={`h-full rounded-full transition-all duration-500 ${
-                                    camp.status === 'Active' ? 'bg-primary' : 'bg-slate-400'
-                                  }`}
+                                  className={`h-full rounded-full transition-all duration-500 ${camp.status === 'Active' ? 'bg-primary' : 'bg-slate-400'
+                                    }`}
                                   style={{ width: `${progressPct}%` }}
                                 ></div>
                               </div>
@@ -677,11 +671,10 @@ export const ThGlobalCampaignConsole: React.FC = () => {
                     <div className="pt-md border-t border-outline-variant space-y-2">
                       <button
                         onClick={() => toggleCampaignStatus(selectedCampaign.id)}
-                        className={`w-full py-2 font-bold text-xs rounded-sm shadow-sm flex items-center justify-center gap-2 transition-colors ${
-                          selectedCampaign.status === 'Active'
+                        className={`w-full py-2 font-bold text-xs rounded-sm shadow-sm flex items-center justify-center gap-2 transition-colors ${selectedCampaign.status === 'Active'
                             ? 'bg-red-600 text-white hover:bg-red-700'
                             : 'bg-green-600 text-white hover:bg-green-700'
-                        }`}
+                          }`}
                       >
                         <span className="material-symbols-outlined text-base">
                           {selectedCampaign.status === 'Active' ? 'pause_circle' : 'play_circle'}
@@ -755,9 +748,8 @@ export const ThGlobalCampaignConsole: React.FC = () => {
                           setOverrideTemp(lead.temp);
                           setOverrideAssign(lead.assigned);
                         }}
-                        className={`cursor-pointer hover:bg-surface-container-low/30 transition-colors ${
-                          isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : ''
-                        }`}
+                        className={`cursor-pointer hover:bg-surface-container-low/30 transition-colors ${isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : ''
+                          }`}
                       >
                         <td className="px-lg py-2.5">
                           <div className="flex flex-col font-semibold">
@@ -773,13 +765,12 @@ export const ThGlobalCampaignConsole: React.FC = () => {
                         </td>
                         <td className="px-lg py-2.5 text-center">
                           <span
-                            className={`px-2 py-0.5 rounded font-extrabold text-[9px] ${
-                              lead.temp === 'HOT'
+                            className={`px-2 py-0.5 rounded font-extrabold text-[9px] ${lead.temp === 'HOT'
                                 ? 'bg-red-100 text-red-700'
                                 : lead.temp === 'WARM'
-                                ? 'bg-orange-100 text-orange-700'
-                                : 'bg-blue-100 text-blue-700'
-                            }`}
+                                  ? 'bg-orange-100 text-orange-700'
+                                  : 'bg-blue-100 text-blue-700'
+                              }`}
                           >
                             {lead.temp}
                           </span>
@@ -1182,7 +1173,7 @@ export const ThGlobalCampaignConsole: React.FC = () => {
             {/* Left side: Delegation Form */}
             <div className="lg:col-span-8 bg-white admin-border rounded-sm p-lg space-y-lg shadow-sm">
               <form onSubmit={handlePublishTlTargets} className="space-y-lg">
-                
+
                 {/* 1. TL-DW (Driver Welcome) */}
                 <div className="space-y-md border-b pb-md">
                   <div className="flex items-center gap-xs">

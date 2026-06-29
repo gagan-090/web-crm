@@ -569,6 +569,20 @@ export interface TlRosterResponse {
   }>;
 }
 
+export interface DwQueueParams {
+  per_page?: number;
+  page?: number;
+  search?: string;
+  subscribed?: string;
+  salary?: string;
+  route?: string;
+  state_id?: number;
+  pan?: string;
+  vehicle_type?: string;
+  experience?: string;
+  profile_complete?: string;
+}
+
 export const webCrmApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // DW Endpoints
@@ -578,6 +592,39 @@ export const webCrmApi = baseApi.injectEndpoints({
     getDwQueue: builder.query<DwQueueResponse, { per_page?: number; page?: number; filter?: string; search?: string } | void>({
       query: (params) => ({
         url: '/web-crm/dw/queue',
+        params: params || undefined,
+      }),
+    }),
+    getDwQueueCounts: builder.query<any, void>({
+      query: () => '/web-crm/dw/queue/counts',
+    }),
+    getDwQueueFresh: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/queue/fresh',
+        params: params || undefined,
+      }),
+    }),
+    getDwQueueOld: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/queue/old',
+        params: params || undefined,
+      }),
+    }),
+    getDwQueueUncalled: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/queue/uncalled',
+        params: params || undefined,
+      }),
+    }),
+    getDwQueueCallbacks: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/queue/callbacks',
+        params: params || undefined,
+      }),
+    }),
+    getDwQueueCalled: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/queue/called',
         params: params || undefined,
       }),
     }),
@@ -605,6 +652,13 @@ export const webCrmApi = baseApi.injectEndpoints({
       call_recording?: string;
       call_duration?: number;
       call_id?: number;
+      disposition_sub?: string | null;
+      callback_sub?: string | null;
+      callback_at?: string | null;
+      feedback_stage?: string | null;
+      plan_selected?: string | null;
+      payment_id?: string | null;
+      language_noted?: string | null;
     }>({
       query: (body) => ({
         url: '/web-crm/dw/feedback',
@@ -744,13 +798,40 @@ export const webCrmApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { key }) => [{ type: 'Settings', id: key }],
     }),
+    getDwCampaignLeads: builder.query<any, { source?: string; search?: string; page?: number; per_page?: number } | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/campaign-leads',
+        params: params || undefined,
+      }),
+      providesTags: ['Leads'],
+    }),
+    updateDwCampaignLeadNotes: builder.mutation<any, { id: string | number; notes: string }>({
+      query: ({ id, notes }) => ({
+        url: `/web-crm/dw/campaign-leads/${id}/notes`,
+        method: 'POST',
+        body: { notes },
+      }),
+    }),
   }),
 });
 
 export const {
   useGetDwDashboardQuery,
   useGetDwQueueQuery,
+  useGetDwQueueCountsQuery,
+  useGetDwQueueFreshQuery,
+  useGetDwQueueOldQuery,
+  useGetDwQueueUncalledQuery,
+  useGetDwQueueCallbacksQuery,
+  useGetDwQueueCalledQuery,
   useGetDwNextLeadQuery,
+  useLazyGetDwNextLeadQuery,
+  useLazyGetDwQueueFreshQuery,
+  useLazyGetDwQueueOldQuery,
+  useLazyGetDwQueueUncalledQuery,
+  useLazyGetDwQueueCallbacksQuery,
+  useLazyGetDwQueueCalledQuery,
+  useLazyGetDwQueueCountsQuery,
   useSkipDwLeadMutation,
   useGetDwLeadDetailQuery,
   useGetDwDispositionOptionsQuery,
@@ -781,5 +862,8 @@ export const {
   useReassignTlLeadsMutation,
   useGetTargetQuery,
   useSetTargetMutation,
+  useGetDwCampaignLeadsQuery,
+  useLazyGetDwCampaignLeadsQuery,
+  useUpdateDwCampaignLeadNotesMutation,
 } = webCrmApi;
 

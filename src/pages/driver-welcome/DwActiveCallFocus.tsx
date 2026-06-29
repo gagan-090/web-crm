@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSubmitCtiFeedbackMutation } from '../../services/api/ctiApi';
-import { 
-  useGetDwLeadDetailQuery, 
-  useGetDwNextLeadQuery, 
-  useGetDwQueueQuery,
-  useGetDwDispositionOptionsQuery,
+import {
+  useGetDwLeadDetailQuery,
+  useLazyGetDwNextLeadQuery,
+  useGetDwQueueFreshQuery,
+  useLazyGetDwQueueFreshQuery,
+  useLazyGetDwQueueOldQuery,
+  useLazyGetDwQueueUncalledQuery,
+  useLazyGetDwQueueCallbacksQuery,
+  useLazyGetDwQueueCalledQuery,
+  useLazyGetDwCampaignLeadsQuery,
   useSubmitDwFeedbackMutation,
-  useScheduleDwCallbackMutation,
   useSkipDwLeadMutation
 } from '../../services/api/webCrmApi';
 import { useSanCti } from '../../shared/components/cti/SanCtiProvider';
+import { useAuth } from '../../app/providers/AuthProvider';
+import { invalidateQueueCache } from '../../shared/hooks/useQueueCache';
 
 interface Objection {
   key: string;
@@ -21,21 +27,33 @@ interface Objection {
 export const DwActiveCallFocus: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const isDriverWelcome = user?.role?.includes('DW') || user?.role?.includes('Welcome');
+  const isTransporterWelcome = user?.role?.includes('TW') || user?.role?.includes('Transporter');
+  const isMatchmaking = user?.role?.includes('MM') || user?.role?.includes('Match');
 
   const {
     dial,
     hangup,
     callState,
+    agentState,
     callDuration,
     isMuted: liveMuted,
     isHeld: liveHeld,
     toggleMute: toggleLiveMute,
     toggleHold: toggleLiveHold,
+    isIncomingCall,
+    currentLeadName: incomingLeadName,
+    currentPhoneNumber: incomingPhone,
+    currentLeadId: incomingLeadId,
+    currentLeadLocation: incomingLeadLocation,
+    currentLeadCallStatus: incomingLeadCallStatus,
+    acceptIncoming,
   } = useSanCti();
 
   const [submitCtiFeedback] = useSubmitCtiFeedbackMutation();
   const [submitDwFeedback] = useSubmitDwFeedbackMutation();
-  const [scheduleDwCallback] = useScheduleDwCallbackMutation();
   const [skipDwLead] = useSkipDwLeadMutation();
 
   const [ivrCallId] = useState<number | null>(null);
@@ -44,37 +62,146 @@ export const DwActiveCallFocus: React.FC = () => {
   const stateLead = location.state || {};
   const [userId, setUserId] = useState<number | string>(stateLead.userId || '');
 
-  // Next Lead Query (only runs if no active userId is specified)
-  const { data: nextLeadResponse, isLoading: nextLeadLoading } = useGetDwNextLeadQuery(undefined, {
-    skip: !!userId
-  });
+  // ── Section dialing batch ──
+  // When the agent clicks "Call Now" from a specific queue tab, the whole
+  // currently-loaded page of that tab travels here as a batch, so they can
+  // dial through every lead in that section without ever going back to the
+  // queue screen between calls. queueType is undefined for entry points that
+  // don't carry section context (e.g. an incoming call) — in that case we
+  // fall back to the generic "any next lead" picker, same as before.
+  const [batch, setBatch] = useState<any[]>(stateLead.queueBatch || []);
+  const [batchPos, setBatchPos] = useState<number>(stateLead.batchIndex ?? 0);
+  const [queueType, setQueueType] = useState<string | undefined>(stateLead.queueType);
+  const [queuePage, setQueuePage] = useState<number>(stateLead.queuePage || 1);
+  const queueFiltersRef = React.useRef(stateLead.queueFilters || {});
+  const currentBatchLead = queueType && batch[batchPos] ? batch[batchPos] : null;
+
+  // Next Lead Query (lazy to allow fresh cache bypass) — generic fallback only
+  const [triggerNextLead, { isLoading: nextLeadLoading }] = useLazyGetDwNextLeadQuery();
+
+  // Lazy triggers to pull the next page of the SAME section once the batch runs out
+  const [triggerFreshPage] = useLazyGetDwQueueFreshQuery();
+  const [triggerOldPage] = useLazyGetDwQueueOldQuery();
+  const [triggerUncalledPage] = useLazyGetDwQueueUncalledQuery();
+  const [triggerCallbacksPage] = useLazyGetDwQueueCallbacksQuery();
+  const [triggerCalledPage] = useLazyGetDwQueueCalledQuery();
+  const [triggerCampaignLeads] = useLazyGetDwCampaignLeadsQuery();
+
+  const fetchNextSectionPage = async (): Promise<any[]> => {
+    if (!queueType) return [];
+    const nextPage = queuePage + 1;
+    const params = { page: nextPage, per_page: 20, ...queueFiltersRef.current };
+    let result: any;
+    if (queueType === 'fresh') result = await triggerFreshPage(params).unwrap();
+    else if (queueType === 'old') result = await triggerOldPage(params).unwrap();
+    else if (queueType === 'uncalled') result = await triggerUncalledPage(params).unwrap();
+    else if (queueType === 'callbacks') result = await triggerCallbacksPage(params).unwrap();
+    else if (queueType === 'called') result = await triggerCalledPage(params).unwrap();
+    else if (queueType === 'campaign') result = await triggerCampaignLeads({ page: nextPage, source: queueFiltersRef.current?.source === 'ALL' ? undefined : queueFiltersRef.current?.source }).unwrap();
+    else return [];
+    setQueuePage(nextPage);
+    const leads = result?.data?.data || result?.data?.leads || result?.leads || (Array.isArray(result?.data) ? result.data : []);
+    return leads;
+  };
+
+  const loadNextLead = async () => {
+    if (queueType) {
+      // Stay inside the section the agent started dialing from.
+      const nextPos = batchPos + 1;
+      if (nextPos < batch.length) {
+        setBatchPos(nextPos);
+        setUserId(batch[nextPos].id);
+        return;
+      }
+      try {
+        const nextLeads = await fetchNextSectionPage();
+        if (nextLeads.length > 0) {
+          setBatch(nextLeads);
+          setBatchPos(0);
+          setUserId(nextLeads[0].id);
+          return;
+        }
+      } catch (err) {
+        triggerToast('Failed to load the next lead in this section.');
+        return;
+      }
+      // Section genuinely exhausted.
+      setUserId('');
+      setQueueType(undefined);
+      triggerToast('No more leads in this section.');
+      navigate(stateLead.isCampaign ? '/dw/dw-campaign-leads' : '/dw/dw-call-queue');
+      return;
+    }
+ 
+    // No section context (e.g. incoming call) — generic "any next lead" picker.
+    try {
+      if (stateLead.isCampaign) {
+        setUserId('');
+        triggerToast('No more campaign leads in the queue.');
+        navigate('/dw/dw-campaign-leads');
+        return;
+      }
+      const result = await triggerNextLead(undefined, true).unwrap();
+      if (result?.data) {
+        setUserId(result.data.id);
+      } else {
+        setUserId('');
+        triggerToast('No more leads in the queue.');
+        navigate('/dw/dw-call-queue');
+      }
+    } catch (err) {
+      triggerToast('Failed to load the next lead.');
+    }
+  };
 
   useEffect(() => {
-    if (nextLeadResponse?.data && !userId) {
-      setUserId(nextLeadResponse.data.id);
+    // Skip auto-loading next lead when navigated here for an incoming call
+    if (stateLead.incomingCall) return;
+    if (!userId) {
+      loadNextLead();
     }
-  }, [nextLeadResponse, userId]);
+  }, []);
+
+  // When an incoming caller's DB record resolves, switch userId to their ID
+  useEffect(() => {
+    if (isIncomingCall && incomingLeadId && (callState === 'incoming_ringing' || callState === 'connected')) {
+      setUserId(incomingLeadId);
+      lastDialedUserId.current = incomingLeadId;
+    }
+  }, [isIncomingCall, incomingLeadId, callState]);
 
   // Fetch driver profile details from database
-  const { data: detailResponse, isLoading: profileLoading } = useGetDwLeadDetailQuery(userId, {
+  const { data: detailResponse, isLoading: profileLoading, refetch: refetchDetail } = useGetDwLeadDetailQuery(userId, {
     skip: !userId
   });
-
-  // Fetch live post-call disposition options
-  const { data: dispositionOptions } = useGetDwDispositionOptionsQuery();
 
   const driverProfile = detailResponse?.data?.profile;
   const planCard = detailResponse?.data?.plan_card;
 
-  const leadName = driverProfile?.name || stateLead.name || 'No Active Lead';
-  const leadTmid = driverProfile?.tmid || stateLead.tmid || 'DR-00000';
-  const leadPhone = driverProfile?.mobile || stateLead.phone || '00000 00000';
-  const leadLocation = driverProfile ? `${driverProfile.city}, ${driverProfile.state}` : stateLead.location || 'Unknown';
+  // currentBatchLead covers leads 2+ in the section batch — stateLead only ever
+  // describes the very first lead the agent clicked, so without this fallback
+  // every subsequent lead would briefly (or permanently, on a slow API) show
+  // the first lead's name/phone/tmid instead of its own.
+  const leadName = driverProfile?.name || currentBatchLead?.name || stateLead.name || 'No Active Lead';
+  const leadTmid = driverProfile?.tmid || currentBatchLead?.tmid || stateLead.tmid || 'DR-00000';
+  const leadPhone = driverProfile?.mobile || currentBatchLead?.mobile || currentBatchLead?.phone || stateLead.mobile || '00000 00000';
+  const leadLocation = driverProfile
+    ? `${driverProfile.city}, ${driverProfile.state}`
+    : currentBatchLead?.city
+      ? `${currentBatchLead.city}, ${currentBatchLead.state || ''}`
+      : stateLead.location || 'Unknown';
 
   // Timer state
   const [seconds, setSeconds] = useState(0);
 
-  const [activeTab, setActiveTab] = useState<string>('opening');
+  const [activeTab, setActiveTab] = useState<string>('profile');
+
+  // Auto-switch to profile tab on incoming call ringing or connected
+  useEffect(() => {
+    if (isIncomingCall && (callState === 'incoming_ringing' || callState === 'connected')) {
+      setActiveTab('profile');
+    }
+  }, [isIncomingCall, callState]);
 
   // Note state
   const [quickNote, setQuickNote] = useState('');
@@ -87,54 +214,82 @@ export const DwActiveCallFocus: React.FC = () => {
   // Post-Call Form Modal States
   const [showPostCallModal, setShowPostCallModal] = useState(false);
   const [outcome, setOutcome] = useState<'connected' | 'not_connected' | 'callback_later' | ''>('');
-  const [connectedSubStatus, setConnectedSubStatus] = useState<'interested' | 'not_interested' | 'callback' | 'subscribed' | ''>('');
-  
+
   // Post-Call details
-  const [selectedPlan, setSelectedPlan] = useState('Job Ready ₹199');
-  const [showLinkModal, setShowLinkModal] = useState(false);
-  const [interestedPlan, setInterestedPlan] = useState<'ready' | 'verified' | 'trusted' | ''>('');
-  const [linkSentToggle, setLinkSentToggle] = useState<'yes' | 'no'>('no');
-  const [notInterestedReason, setNotInterestedReason] = useState('');
-  const [callbackDate, setCallbackDate] = useState(new Date().toISOString().split('T')[0]);
-  const [callbackTime, setCallbackTime] = useState('12:00');
+  const [level2Sub, setLevel2Sub] = useState<string>('');
+  const [callbackSub, setCallbackSub] = useState<string>('');
+  const [planSelected, setPlanSelected] = useState<string>('');
+  const [paymentId, setPaymentId] = useState<string>('');
+  const [languageNoted, setLanguageNoted] = useState<string>('');
+  const [feedbackStage, setFeedbackStage] = useState<string>('');
+  const [reason, setReason] = useState<string>('');
+  const [callbackAt, setCallbackAt] = useState<string>('');
   const [dispositionNotes, setDispositionNotes] = useState('');
+
+  // WhatsApp Payment Link Modal States
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState('Job Ready ₹199');
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Fetch queue list for the right sidebar
-  const { data: queueResponse } = useGetDwQueueQuery({ per_page: 15, filter: 'all' });
-  const nextLeads = queueResponse?.data?.leads || [];
+  // Right sidebar: when dialing through a section batch, show the rest of
+  // that same batch (so the agent can see/skip ahead within their section);
+  // otherwise fall back to the generic Fresh leads list.
+  const { data: queueResponse } = useGetDwQueueFreshQuery({ per_page: 15 }, { skip: !!queueType });
+  const nextLeads = queueType ? batch.slice(batchPos) : (queueResponse?.data?.leads || queueResponse?.data || []);
 
   // Ref to prevent dialing the same user during transition states
-  const lastDialedUserId = React.useRef<string | number | null>(null);
+  const lastDialedUserId = React.useRef<string | number | null>(
+    (stateLead.userId && (callState === 'dialing' || callState === 'ringing' || callState === 'connected' || callState === 'disposition_pending'))
+      ? stateLead.userId
+      : null
+  );
 
   // Listen for global disposition modal completion
   useEffect(() => {
     const handleComplete = (e: Event) => {
       const customEvent = e as CustomEvent;
       const loadNext = customEvent.detail?.loadNext ?? true;
-      if (loadNext) {
-        setUserId(''); // Clears userId to fetch the next lead from the queue
+      if (loadNext === true) {
         setSeconds(0);
+        loadNextLead();
+      } else if (loadNext === 'stay') {
+        refetchDetail();
       } else {
         setTimeout(() => {
-          navigate('/dw/dw-call-queue');
+          navigate(stateLead.isCampaign ? '/dw/dw-campaign-leads' : '/dw/dw-call-queue');
         }, 500);
       }
     };
     window.addEventListener('san-disposition-complete', handleComplete);
     return () => window.removeEventListener('san-disposition-complete', handleComplete);
-  }, [navigate]);
+  // loadNextLead must be included: it now closes over batch/batchPos/queueType,
+  // which change as the agent progresses through a section. Without it here,
+  // this listener would keep calling a version of loadNextLead frozen at
+  // whatever the batch looked like on mount.
+  }, [navigate, refetchDetail, loadNextLead]);
 
-  // Auto-dial when lead details are loaded and CTI is idle
+  // Auto-dial when lead details are loaded, CTI is idle, AND SAN is ready
   useEffect(() => {
+    // Don't auto-dial if an incoming call is already in progress
+    if (callState === 'incoming_ringing' || (callState !== 'idle' && isIncomingCall)) return;
+    // Wait until SAN has finished login/ready handshake before dialing
+    // (lead details often load faster than SAN; dialing too early silently fails)
+    if (agentState !== 'ready') return;
     if (leadPhone && leadPhone !== '00000 00000' && userId && callState === 'idle') {
       if (lastDialedUserId.current === userId) {
         return; // Skip auto-dialing since we already dialed this lead
       }
       lastDialedUserId.current = userId;
-      dial(leadPhone, userId, leadName, leadTmid);
+      // Bust the cache the moment a call is attempted, not just on a completed
+      // disposition. A call that connects then drops before disposition is
+      // submitted would otherwise leave this lead stuck looking "uncalled" in
+      // the cached queue lists forever, even though call_history_ivr already
+      // has a row for them.
+      invalidateQueueCache();
+      dial(leadPhone, userId, leadName, leadTmid, stateLead.isCampaign ? 'social_media' : 'driver');
     }
-  }, [userId, leadPhone, callState, dial, leadName, leadTmid]);
+  }, [userId, leadPhone, callState, agentState, dial, leadName, leadTmid, isIncomingCall, stateLead.isCampaign]);
 
   const formatTimer = (secCount: number) => {
     const mins = Math.floor(secCount / 60);
@@ -168,12 +323,12 @@ export const DwActiveCallFocus: React.FC = () => {
 
   const handleSkipLead = async () => {
     if (!userId) return;
-    const reason = prompt('Please enter a skip reason:');
-    if (!reason) return;
+    const reasonText = prompt('Please enter a skip reason:');
+    if (!reasonText) return;
     try {
       await skipDwLead({
         user_id: Number(userId),
-        reason
+        reason: reasonText
       }).unwrap();
       triggerToast('Lead skipped.');
       navigate('/dw/dw-call-queue');
@@ -182,34 +337,117 @@ export const DwActiveCallFocus: React.FC = () => {
     }
   };
 
+  const getCalculatedCallbackTime = (interval: string): string => {
+    const now = new Date();
+    if (interval === 'tomorrow_morning') {
+      const d = new Date(now);
+      d.setDate(d.getDate() + 1);
+      return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}T10:00`;
+    }
+    if (interval === 'tomorrow_evening') {
+      const d = new Date(now);
+      d.setDate(d.getDate() + 1);
+      return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}T17:00`;
+    }
+    if (interval === 'two_days_morning') {
+      const d = new Date(now);
+      d.setDate(d.getDate() + 2);
+      return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}T10:00`;
+    }
+    return '';
+  };
+
+  const canSubmit = () => {
+    if (!outcome) return false;
+    if (!level2Sub) return false;
+
+    if (outcome === 'connected') {
+      if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') {
+        if (!planSelected || !paymentId) return false;
+      }
+      if (level2Sub === 'interested_callback') {
+        if (!callbackSub) return false;
+        if (callbackSub === 'custom' && !callbackAt) return false;
+      }
+      if (level2Sub === 'not_interested' || level2Sub === 'rejected') {
+        if (!reason) return false;
+      }
+      if (level2Sub === 'language_barrier') {
+        if (!languageNoted) return false;
+      }
+      if (level2Sub === 'placement_done') {
+        if (!feedbackStage) return false;
+      }
+    } else if (outcome === 'callback_later') {
+      if (level2Sub === 'custom' && !callbackAt) return false;
+    }
+    return true;
+  };
+
   // Submit post call disposition
-  const handleDispositionSubmit = async (loadNext: boolean) => {
-    if (!userId) return;
+  const handleDispositionSubmit = async (loadNext: boolean | 'stay') => {
+    if (!userId || !canSubmit()) return;
 
     let ctiStatus = 'FAILED';
     if (outcome === 'connected') ctiStatus = 'ANSWER';
     else if (outcome === 'not_connected') ctiStatus = 'NO_ANSWER';
     else if (outcome === 'callback_later') ctiStatus = 'CALLBACK';
 
-    let dbFeedback = 'Ringing - No Answer';
-    if (outcome === 'connected') {
-      if (connectedSubStatus === 'interested') dbFeedback = 'Agree for Subscription';
-      else if (connectedSubStatus === 'not_interested') dbFeedback = notInterestedReason || 'Not Interested';
-      else if (connectedSubStatus === 'callback') dbFeedback = 'Busy Right Now';
-      else if (connectedSubStatus === 'subscribed') dbFeedback = 'Already Subscribed';
-    } else if (outcome === 'not_connected') {
-      dbFeedback = 'Ringing - No Answer';
+    let dbFeedback = '';
+    if (outcome === 'not_connected') {
+      if (level2Sub === 'no_answer') dbFeedback = 'No Answer / Ringing';
+      else if (level2Sub === 'busy') dbFeedback = 'Busy / Call Waiting';
+      else if (level2Sub === 'not_reachable') dbFeedback = 'Not Reachable / Switched Off';
+      else if (level2Sub === 'wrong_number') dbFeedback = 'Wrong Number / Invalid';
+      else if (level2Sub === 'disconnected') dbFeedback = 'Call Disconnected';
+    } else if (outcome === 'callback_later') {
+      dbFeedback = 'Call Back Later';
+    } else if (outcome === 'connected') {
+      if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') dbFeedback = 'Agree for Subscription';
+      else if (level2Sub === 'interested_callback') dbFeedback = 'Interested (Will Pay Later)';
+      else if (level2Sub === 'not_interested') dbFeedback = 'Not Interested';
+      else if (level2Sub === 'already_subscribed') dbFeedback = 'Already Subscribed';
+      else if (level2Sub === 'language_barrier') dbFeedback = 'Language Barrier';
+      else if (level2Sub === 'placement_done') dbFeedback = 'Driver Placement Done';
+      else if (level2Sub === 'callback') dbFeedback = 'Call Back Later';
+      else if (level2Sub === 'rejected') dbFeedback = 'Rejected by Client';
+    }
+
+    let finalCallbackAt = null;
+    let finalCallbackSub = null;
+
+    if (outcome === 'callback_later') {
+      finalCallbackSub = level2Sub;
+      if (level2Sub === 'custom') {
+        finalCallbackAt = callbackAt;
+      } else {
+        finalCallbackAt = getCalculatedCallbackTime(level2Sub);
+      }
+    } else if (outcome === 'connected' && level2Sub === 'interested_callback') {
+      finalCallbackSub = callbackSub;
+      if (callbackSub === 'custom') {
+        finalCallbackAt = callbackAt;
+      } else {
+        finalCallbackAt = getCalculatedCallbackTime(callbackSub);
+      }
     }
 
     try {
       // 1. Submit feedback to DWC CRM table
       await submitDwFeedback({
         user_id: Number(userId),
-        call_status: outcome,
+        call_status: (outcome === 'callback_later' || level2Sub === 'interested_callback' || level2Sub === 'callback') ? 'callback_later' : outcome,
         call_feedback: dbFeedback,
         call_remarks: dispositionNotes || `Logged active call duration ${formatTimer(seconds)}`,
         call_duration: seconds,
-        call_id: ivrCallId || undefined
+        call_id: ivrCallId || undefined,
+        disposition_sub: level2Sub || null,
+        callback_sub: finalCallbackSub || null,
+        callback_at: finalCallbackAt || null,
+        plan_selected: planSelected || null,
+        payment_id: paymentId || null,
+        language_noted: languageNoted || null,
+        feedback_stage: feedbackStage || null,
       }).unwrap();
 
       // 2. Submit CTI feedback sync
@@ -222,20 +460,19 @@ export const DwActiveCallFocus: React.FC = () => {
         }).unwrap();
       }
 
-      // 3. Schedule Callback if callback requested
-      if (connectedSubStatus === 'callback') {
-        await scheduleDwCallback({
-          user_id: Number(userId),
-          reason: `Callback scheduled for ${callbackDate} ${callbackTime}. Note: ${dispositionNotes}`
-        }).unwrap();
-      }
+      // Drop cached queue/uncalled/old lists so this lead's new call_history_ivr
+      // row is reflected next time the agent views the queue, instead of the
+      // stale cached list still showing them as not-yet-called.
+      invalidateQueueCache();
 
       triggerToast('Call disposition saved successfully ✓');
       setShowPostCallModal(false);
 
-      if (loadNext) {
-        setUserId(''); // Clear active lead so the next lead in the queue is loaded
+      if (loadNext === true) {
         setSeconds(0);
+        loadNextLead();
+      } else if (loadNext === 'stay') {
+        refetchDetail();
       } else {
         setTimeout(() => {
           navigate('/dw/dw-call-queue');
@@ -248,6 +485,7 @@ export const DwActiveCallFocus: React.FC = () => {
     }
   };
 
+
   // Hindi objections data
   const objections: Objection[] = [
     { key: 'paisa', question: 'पैसे नहीं हैं', answer: 'राजेश जी, यह एक छोटा निवेश है जो आपके व्यवसाय को कई गुना बढ़ा देगा। केवल ₹199 या ₹299 के निवेश से आपको तुरंत लोड बुकिंग मिलना शुरू हो जाएगी और आप पहले ही दिन अपनी लागत निकाल लेंगे।' },
@@ -259,7 +497,7 @@ export const DwActiveCallFocus: React.FC = () => {
   ];
 
   const toggleBookmark = (key: string) => {
-    setBookmarks(prev => 
+    setBookmarks(prev =>
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     );
   };
@@ -267,8 +505,8 @@ export const DwActiveCallFocus: React.FC = () => {
   const getSortedObjections = () => {
     let list = [...objections];
     if (searchQuery) {
-      list = list.filter(obj => 
-        obj.question.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      list = list.filter(obj =>
+        obj.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
         obj.answer.toLowerCase().includes(searchQuery.toLowerCase()) ||
         obj.key.toLowerCase().includes(searchQuery.toLowerCase())
       );
@@ -293,7 +531,7 @@ export const DwActiveCallFocus: React.FC = () => {
 
   return (
     <main className="h-[calc(100vh-80px)] flex bg-white overflow-hidden border border-gray-200 rounded-xl relative">
-      
+
       {/* Toast Notification */}
       {toastMessage && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2">
@@ -304,31 +542,36 @@ export const DwActiveCallFocus: React.FC = () => {
 
       {/* LEFT COLUMN: Controls & Call Context */}
       <section className="w-[380px] border-r border-gray-200 flex flex-col p-5 bg-gray-50/50 shrink-0 overflow-y-auto">
-        
+
         {/* Top Strip */}
         <div className="bg-white border border-gray-200 p-3 rounded-xl shadow-sm mb-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${
-                callState === 'connected' ? 'bg-green-600 animate-pulse' :
-                callState === 'ringing' || callState === 'dialing' ? 'bg-amber-500 animate-ping' :
-                'bg-gray-400'
-              }`}></span>
+              <span className={`w-2.5 h-2.5 rounded-full ${callState === 'connected' ? 'bg-green-600 animate-pulse' :
+                  callState === 'ringing' || callState === 'dialing' ? 'bg-amber-500 animate-ping' :
+                    callState === 'incoming_ringing' ? 'bg-blue-500 animate-ping' :
+                        'bg-gray-400'
+                }`}></span>
               <span className="font-mono text-xl font-bold text-gray-800">
                 {formatTimer(callState !== 'idle' ? callDuration : 0)}
               </span>
+              {callState === 'incoming_ringing' && (
+                <span className="text-[10px] font-bold bg-blue-500 text-white px-2 py-0.5 rounded-full animate-pulse">
+                  INCOMING CALL
+                </span>
+              )}
             </div>
-            
+
             {/* Audio Toggles */}
             <div className="flex items-center gap-1">
-              <button 
+              <button
                 onClick={() => { toggleLiveMute(); triggerToast(liveMuted ? 'Microphone active' : 'Microphone muted'); }}
                 className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${liveMuted ? 'bg-red-50 border-red-200 text-red-600 font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
                 title="Mute"
               >
                 <span className="material-symbols-outlined text-[18px]">{liveMuted ? 'mic_off' : 'mic'}</span>
               </button>
-              <button 
+              <button
                 onClick={() => { toggleLiveHold(); triggerToast(liveHeld ? 'Call resumed' : 'Call on hold'); }}
                 className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${liveHeld ? 'bg-amber-50 border-amber-200 text-amber-600 font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
                 title="Hold / Speaker"
@@ -337,11 +580,82 @@ export const DwActiveCallFocus: React.FC = () => {
               </button>
             </div>
           </div>
-          
+
           <div className="text-xs text-gray-500 mt-2 font-semibold">
-            Active: <span className="text-gray-800">{leadName}</span> · <span className="font-mono">{leadTmid}</span> · <span className="text-gray-600">{leadPhone}</span> · <span className="text-gray-600">{leadLocation}</span>
+            {isIncomingCall && callState !== 'idle' ? (
+              <>
+                <span className="text-blue-600 font-bold">📲 Incoming:</span>
+                {' '}<span className="text-gray-800">{incomingLeadName || 'Unknown Caller'}</span>
+                {' '}·{' '}<span className="font-mono">{incomingPhone}</span>
+                {incomingLeadLocation ? <>{' '}· <span className="text-gray-600">{incomingLeadLocation}</span></> : null}
+                {incomingLeadCallStatus ? <>{' '}· <span className={`font-bold ${incomingLeadCallStatus === 'done' ? 'text-green-600' : 'text-amber-600'}`}>{incomingLeadCallStatus}</span></> : null}
+              </>
+            ) : (
+              <>Active: <span className="text-gray-800">{leadName}</span> · <span className="font-mono">{leadTmid}</span> · <span className="text-gray-600">{leadPhone}</span> · <span className="text-gray-600">{leadLocation}</span></>
+            )}
           </div>
         </div>
+
+        {/* ── INCOMING CALLER PROFILE CARD ── */}
+        {isIncomingCall && (callState === 'incoming_ringing' || callState === 'connected') && (
+          <div className="bg-blue-50 border-2 border-blue-400 rounded-xl p-4 mb-4 animate-pulse-once">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping shrink-0"></span>
+              <span className="text-[10px] font-extrabold text-blue-700 uppercase tracking-widest">
+                {callState === 'incoming_ringing' ? '📲 Incoming Call — Ringing' : '📞 Incoming Call — Connected'}
+              </span>
+            </div>
+
+            {incomingLeadName && incomingLeadName !== 'Incoming Call' ? (
+              <div className="space-y-2">
+                {/* Name + TMID */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-extrabold text-gray-900">{incomingLeadName}</span>
+                  {incomingLeadLocation && (
+                    <span className="text-[10px] text-blue-700 font-bold bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full">
+                      {incomingLeadLocation}
+                    </span>
+                  )}
+                </div>
+
+                {/* Phone */}
+                <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                  <span className="material-symbols-outlined text-[14px] text-blue-500">call</span>
+                  <span className="font-mono font-semibold">{incomingPhone}</span>
+                </div>
+
+                {/* Call History Status */}
+                {incomingLeadCallStatus && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="material-symbols-outlined text-[14px] text-gray-400">history</span>
+                    <span className="text-gray-500">Previous call status:</span>
+                    <span className={`font-bold capitalize ${
+                      incomingLeadCallStatus === 'done' ? 'text-green-600' :
+                      incomingLeadCallStatus === 'pending' ? 'text-amber-600' :
+                      incomingLeadCallStatus === 'callback_later' ? 'text-blue-600' :
+                      'text-gray-700'
+                    }`}>
+                      {incomingLeadCallStatus.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Number not found in DB */
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                  <span className="material-symbols-outlined text-[14px] text-blue-500">call</span>
+                  <span className="font-mono font-bold text-gray-800">{incomingPhone || 'Unknown Number'}</span>
+                </div>
+                <p className="text-[10px] text-gray-400 italic">
+                  {incomingLeadName === 'Incoming Call'
+                    ? 'Looking up caller details...'
+                    : 'Number not found in the user database.'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Current Subscription Status */}
         {planCard?.has_plan && (
@@ -358,15 +672,15 @@ export const DwActiveCallFocus: React.FC = () => {
           <div className="space-y-1.5 text-xs text-[#7F8C8D]">
             <div className="flex justify-between">
               <span className="font-medium text-[#2C3E50]">Job Ready Plan</span>
-              <span className="font-mono font-bold text-[#D35400]">₹199 / 3 months</span>
+              <span className="font-mono font-bold text-[#D35400]">₹199 / 1 year</span>
             </div>
             <div className="flex justify-between">
               <span className="font-medium text-[#2C3E50]">Verified Plan</span>
-              <span className="font-mono font-bold text-[#D35400]">₹299 / 3 months</span>
+              <span className="font-mono font-bold text-[#D35400]">₹299 / 1 year</span>
             </div>
             <div className="flex justify-between">
               <span className="font-medium text-[#2C3E50]">Trusted Plan</span>
-              <span className="font-mono font-bold text-[#D35400]">₹499 / 3 months</span>
+              <span className="font-mono font-bold text-[#D35400]">₹499 / 1 year</span>
             </div>
           </div>
         </div>
@@ -380,7 +694,7 @@ export const DwActiveCallFocus: React.FC = () => {
               { id: 'not_connected', label: 'No Answer / NR', icon: 'phone_disabled' },
               { id: 'callback_later', label: 'Callback Later', icon: 'timer' }
             ].map(disp => (
-              <button 
+              <button
                 key={disp.id}
                 disabled={callState !== 'idle'}
                 onClick={() => {
@@ -398,7 +712,7 @@ export const DwActiveCallFocus: React.FC = () => {
 
         {/* Send payment link */}
         <div className="mb-4">
-          <button 
+          <button
             onClick={() => setShowLinkModal(true)}
             className="w-full bg-[#FB641B] hover:bg-[#e4540d] text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-[0.98]"
           >
@@ -409,7 +723,7 @@ export const DwActiveCallFocus: React.FC = () => {
 
         {/* Skip Lead option */}
         <div className="mb-4">
-          <button 
+          <button
             onClick={handleSkipLead}
             className="w-full border border-gray-300 text-gray-600 hover:bg-gray-100 h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-transform active:scale-[0.98]"
           >
@@ -434,10 +748,27 @@ export const DwActiveCallFocus: React.FC = () => {
           />
         </div>
 
-        {/* End Call / Dial Call Button */}
+        {/* End Call / Dial Call / Accept Incoming Button */}
         <div className="mt-auto pt-4 border-t border-gray-200">
-          {callState !== 'idle' ? (
-            <button 
+          {callState === 'incoming_ringing' ? (
+            <div className="flex gap-2">
+              <button
+                onClick={acceptIncoming}
+                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md animate-pulse"
+              >
+                <span className="material-symbols-outlined text-[18px]">call</span>
+                Accept Incoming Call
+              </button>
+              <button
+                onClick={hangup}
+                className="flex-1 bg-[#E74C3C] hover:bg-[#c0392b] text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md"
+              >
+                <span className="material-symbols-outlined text-[18px]">call_end</span>
+                Reject
+              </button>
+            </div>
+          ) : callState !== 'idle' ? (
+            <button
               onClick={hangup}
               className="w-full bg-[#E74C3C] hover:bg-[#c0392b] text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md animate-pulse"
             >
@@ -445,9 +776,9 @@ export const DwActiveCallFocus: React.FC = () => {
               Hangup Live Call
             </button>
           ) : (
-            <button 
+            <button
               disabled={!leadPhone || leadPhone === '00000 00000'}
-              onClick={() => dial(leadPhone, userId, leadName, leadTmid)}
+              onClick={() => { invalidateQueueCache(); dial(leadPhone, userId, leadName, leadTmid, stateLead.isCampaign ? 'social_media' : 'driver'); }}
               className="w-full bg-[#27AE60] hover:bg-[#219653] disabled:bg-gray-300 disabled:cursor-not-allowed text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md"
             >
               <span className="material-symbols-outlined text-[18px]">phone</span>
@@ -460,11 +791,12 @@ export const DwActiveCallFocus: React.FC = () => {
 
       {/* RIGHT COLUMN: Script Panel */}
       <section className="flex-1 flex flex-col bg-white overflow-hidden">
-        
+
         {/* Script Tab Bar */}
         <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto scrollbar-none shrink-0">
           {[
-            { key: 'opening', label: 'Opening' },
+            { key: 'profile', label: '👤 Driver Profile & Plans' },
+            { key: 'opening', label: 'Opening Dialogue' },
             { key: 'jobReady', label: 'Job Ready Pitch' },
             { key: 'verified', label: 'Verified Upsell' },
             { key: 'trusted', label: 'Trusted Upsell' },
@@ -474,11 +806,10 @@ export const DwActiveCallFocus: React.FC = () => {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              className={`px-4 py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition-all ${
-                activeTab === tab.key
+              className={`px-4 py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition-all ${activeTab === tab.key
                   ? 'border-[#27AE60] text-[#27AE60] bg-white font-bold'
                   : 'border-transparent text-gray-500 hover:text-gray-800'
-              }`}
+                }`}
             >
               {tab.label}
             </button>
@@ -489,11 +820,222 @@ export const DwActiveCallFocus: React.FC = () => {
         <div className="flex-grow overflow-y-auto p-6 min-h-0">
           <div className="max-w-[480px] mx-auto text-gray-800">
 
+            {activeTab === 'profile' && (
+              <div className="space-y-6 font-sans">
+                {/* 1. Subscription Banner & Brief */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Subscription Status</h3>
+                    {planCard?.has_plan ? (
+                      <span className="bg-green-100 text-green-800 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-green-200 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse"></span>
+                        ACTIVE SUBSCRIBER
+                      </span>
+                    ) : (
+                      <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-amber-200 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse"></span>
+                        FREE PROFILE
+                      </span>
+                    )}
+                  </div>
+
+                  {planCard?.has_plan ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800 space-y-1">
+                      <div className="flex justify-between">
+                        <span className="font-semibold">Plan Name:</span>
+                        <span className="font-bold">{planCard.plan_label}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-semibold">Amount Paid:</span>
+                        <span className="font-mono font-bold">₹{planCard.amount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-semibold">Expires On:</span>
+                        <span className="font-mono font-bold">{planCard.expires_at || 'Never'}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                        This driver does not have any active subscription. Pitch one of our plans below!
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { name: 'Job Ready', price: '₹199', desc: '1 Year Plan' },
+                          { name: 'Verified', price: '₹299', desc: 'Badge (3x)' },
+                          { name: 'Trusted', price: '₹499', desc: 'Protected' }
+                        ].map(p => (
+                          <div key={p.name} className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-center">
+                            <div className="font-bold text-[10px] text-gray-800">{p.name}</div>
+                            <div className="font-mono font-extrabold text-[#D35400] text-xs my-0.5">{p.price}</div>
+                            <div className="text-[8px] text-gray-400 font-semibold">{p.desc}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Complete Driver Profile Details */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-3 mb-3">
+                    Driver Profile Sheet
+                  </h3>
+                  
+                  {driverProfile ? (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Name</span>
+                        <span className="font-bold text-gray-800">{driverProfile.name || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">TMID / Unique ID</span>
+                        <span className="font-mono font-bold text-gray-800">{driverProfile.tmid || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Mobile Number</span>
+                        <span className="font-mono font-bold text-gray-800">{driverProfile.mobile || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Email ID</span>
+                        <span className="font-bold text-gray-800 break-all">{driverProfile.email || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">City / State</span>
+                        <span className="font-bold text-gray-800">
+                          {driverProfile.city || driverProfile.state ? `${driverProfile.city || ''}${driverProfile.city && driverProfile.state ? ', ' : ''}${driverProfile.state || ''}` : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Pincode</span>
+                        <span className="font-mono font-bold text-gray-800">{driverProfile.pincode || '—'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Address</span>
+                        <span className="font-bold text-gray-800">{driverProfile.address || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Father's Name</span>
+                        <span className="font-bold text-gray-800">{driverProfile.father_name || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">DOB / Age</span>
+                        <span className="font-mono font-bold text-gray-800">{driverProfile.dob || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Gender / Marital</span>
+                        <span className="font-bold text-gray-800">
+                          {driverProfile.sex || driverProfile.marital_status ? `${driverProfile.sex || ''}${driverProfile.sex && driverProfile.marital_status ? ' / ' : ''}${driverProfile.marital_status || ''}` : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Education</span>
+                        <span className="font-bold text-gray-800">{driverProfile.education || '—'}</span>
+                      </div>
+                      
+                      <div className="col-span-2 border-t border-gray-100 my-1 pt-2 font-bold text-[10px] text-gray-400 uppercase tracking-wide">
+                        License & Professional details
+                      </div>
+
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">License Type</span>
+                        <span className="font-bold text-gray-800">{driverProfile.license_type || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">License Number</span>
+                        <span className="font-mono font-bold text-gray-800">{driverProfile.license_number || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">License Expiry</span>
+                        <span className="font-mono font-bold text-gray-800">{driverProfile.license_expiry || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Driving Experience</span>
+                        <span className="font-bold text-gray-800">{driverProfile.experience || '—'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Preferred Vehicle Types</span>
+                        <span className="font-bold text-gray-800">{driverProfile.vehicle_type || '—'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Preferred Location / Routes</span>
+                        <span className="font-bold text-gray-800">
+                          {driverProfile.preferred_location || driverProfile.routes ? `${driverProfile.preferred_location || ''}${driverProfile.preferred_location && driverProfile.routes ? ' (' : ''}${driverProfile.routes || ''}${driverProfile.preferred_location && driverProfile.routes ? ')' : ''}` : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Current / Expected Income</span>
+                        <span className="font-bold text-gray-800">
+                          {driverProfile.current_income ? `₹${driverProfile.current_income}` : '—'} / {driverProfile.expected_income ? `₹${driverProfile.expected_income}` : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block text-[10px] uppercase">Registered At</span>
+                        <span className="font-mono font-bold text-gray-800">{driverProfile.registered_at || '—'}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400 italic py-4 text-center">
+                      No profile data loaded. Select or dial a lead.
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Payments Database History mapping */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-3 mb-3">
+                    Payments History (Database Verification)
+                  </h3>
+                  
+                  {detailResponse?.data?.payments && detailResponse.data.payments.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[10px] border-collapse text-left">
+                        <thead>
+                          <tr className="border-b border-gray-100 text-gray-400 uppercase font-semibold">
+                            <th className="pb-2">Date</th>
+                            <th className="pb-2">Plan</th>
+                            <th className="pb-2 text-right">Amount</th>
+                            <th className="pb-2 pl-4">Transaction ID</th>
+                            <th className="pb-2 text-right">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50 text-gray-700">
+                          {detailResponse.data.payments.map((p: any) => (
+                            <tr key={p.id} className="hover:bg-gray-50/50">
+                              <td className="py-2 font-mono">{p.created_at ? p.created_at.substring(0, 10) : '—'}</td>
+                              <td className="py-2 font-semibold text-gray-800">{p.plan_label || '—'}</td>
+                              <td className="py-2 text-right font-mono font-bold text-gray-900">₹{p.amount}</td>
+                              <td className="py-2 pl-4 font-mono text-gray-400 break-all max-w-[80px] truncate" title={p.transaction_id || p.order_id}>
+                                {p.transaction_id || p.order_id || '—'}
+                              </td>
+                              <td className="py-2 text-right">
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-extrabold ${
+                                  p.payment_status === 'captured' ? 'bg-green-50 text-green-700 border border-green-200' :
+                                  p.payment_status === 'failed' ? 'bg-red-50 text-red-700 border border-red-200' :
+                                  'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}>
+                                  {p.payment_status ? p.payment_status.toUpperCase() : '—'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400 italic py-4 text-center">
+                      No payment history logged for this driver.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {activeTab === 'opening' && (
               <div className="space-y-4 font-hindi leading-relaxed text-[15px]">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide font-sans">Greeting Dialogue</h3>
                 <div className="bg-[#EAFAF1]/30 border-l-4 border-[#27AE60] p-4 rounded-r-xl">
-                  "नमस्ते <strong>{leadName}</strong> जी, मैं ट्रक मित्र से बात कर रहा हूँ। आपका नया प्रोफाइल हमारे पोर्टल पर दिखा है, पंजीकरण करने के लिए धन्यवाद! <br/><br/>
+                  "नमस्ते <strong>{leadName}</strong> जी, मैं ट्रक मित्र से बात कर रहा हूँ। आपका नया प्रोफाइल हमारे पोर्टल पर दिखा है, पंजीकरण करने के लिए धन्यवाद! <br /><br />
                   क्या यह सही समय है आपसे बात करने का? मैं आपकी प्रोफाइल को कम्प्लीट करवाने और नौकरी दिलाने के बारे में बातचीत करने के लिए कॉल कर रहा हूँ।"
                 </div>
               </div>
@@ -503,7 +1045,7 @@ export const DwActiveCallFocus: React.FC = () => {
               <div className="space-y-4 font-hindi leading-relaxed text-[15px]">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide font-sans">Job Ready Pitch (₹199)</h3>
                 <div className="bg-[#EAFAF1]/30 border-l-4 border-[#27AE60] p-4 rounded-r-xl">
-                  "राजेश जी, हमारा <strong>'जॉब रेडी'</strong> प्लान सिर्फ <strong>₹199</strong> का है जो 3 महीने के लिए रहेगा। <br/><br/>
+                  "राजेश जी, हमारा <strong>'जॉब रेडी'</strong> प्लान सिर्फ <strong>₹199</strong> का है जो 3 महीने के लिए रहेगा। <br /><br />
                   इसमें आपकी प्रोफाइल को हम डायरेक्ट एक्टिवेट कर देंगे, जिससे आसपास के ऑर्डर्स और कांटेक्ट डिटेल्स आपको तुरंत दिखने लगेंगे। नए ड्राइवर्स के लिए यह सबसे किफायती प्लान है।"
                 </div>
               </div>
@@ -513,7 +1055,7 @@ export const DwActiveCallFocus: React.FC = () => {
               <div className="space-y-4 font-hindi leading-relaxed text-[15px]">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide font-sans">Verified Upsell (₹299)</h3>
                 <div className="bg-[#EAFAF1]/30 border-l-4 border-[#27AE60] p-4 rounded-r-xl">
-                  "राजेश जी, हमारा सबसे लोकप्रिय प्लान <strong>'Verified Plan'</strong> है जो <strong>₹299</strong> का है। <br/><br/>
+                  "राजेश जी, हमारा सबसे लोकप्रिय प्लान <strong>'Verified Plan'</strong> है जो <strong>₹299</strong> का है। <br /><br />
                   इसमें आपकी प्रोफाइल पर <strong>'Verified Badge'</strong> (हरा टिक) लग जाता है। इससे ट्रांसपोर्टर्स और बड़े क्लाइंट्स का भरोसा बढ़ेगा और आपको 3 गुना अधिक बुकिंग मिलेंगी।"
                 </div>
               </div>
@@ -523,7 +1065,7 @@ export const DwActiveCallFocus: React.FC = () => {
               <div className="space-y-4 font-hindi leading-relaxed text-[15px]">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide font-sans">Trusted Upsell (₹499)</h3>
                 <div className="bg-[#EAFAF1]/30 border-l-4 border-[#27AE60] p-4 rounded-r-xl">
-                  "राजेश जी, हमारा सबसे प्रीमियम प्लान <strong>'Trusted Plan'</strong> है जो <strong>₹499</strong> का है। <br/><br/>
+                  "राजेश जी, हमारा सबसे प्रीमियम प्लान <strong>'Trusted Plan'</strong> है जो <strong>₹499</strong> का है। <br /><br />
                   इसमें आपको <strong>100% पेमेंट प्रोटेक्शन (Payment Protection)</strong> मिलता है। यानी आपकी कमाई पूरी तरह से सुरक्षित रहेगी और किसी भी विवाद में हमारी सपोर्ट टीम 24 घंटे आपके साथ खड़ी रहेगी।"
                 </div>
               </div>
@@ -558,7 +1100,7 @@ export const DwActiveCallFocus: React.FC = () => {
                     <div key={obj.key} className="border border-gray-200 rounded-xl p-4 bg-white relative hover:border-[#27AE60] transition-colors">
                       <div className="flex justify-between items-start pr-6">
                         <span className="text-sm font-bold text-red-600">{obj.question}</span>
-                        <button 
+                        <button
                           onClick={() => toggleBookmark(obj.key)}
                           className={`absolute right-3 top-3 text-sm transition-colors ${bookmarks.includes(obj.key) ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-500'}`}
                         >
@@ -578,7 +1120,7 @@ export const DwActiveCallFocus: React.FC = () => {
               <div className="space-y-4 font-hindi leading-relaxed text-[15px]">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide font-sans">Closing Script</h3>
                 <div className="bg-[#EAFAF1]/30 border-l-4 border-[#27AE60] p-4 rounded-r-xl">
-                  "तो राजेश जी, मैं आपके नंबर पर अभी 'Verified' प्लान का <strong>₹299</strong> का सुरक्षित पेमेंट लिंक भेज रहा हूँ। <br/><br/>
+                  "तो राजेश जी, मैं आपके नंबर पर अभी 'Verified' प्लान का <strong>₹299</strong> का सुरक्षित पेमेंट लिंक भेज रहा हूँ। <br /><br />
                   आप Google Pay, PhonePe या Paytm से सिर्फ 1 मिनट में पेमेंट कर सकते हैं। पेमेंट होते ही हमारी टीम आपको कॉल करके पहला लोड बुक करवा देगी।"
                 </div>
               </div>
@@ -605,8 +1147,8 @@ export const DwActiveCallFocus: React.FC = () => {
             <div className="space-y-4 text-xs">
               <div>
                 <label className="text-gray-500 block mb-1 font-semibold">Choose Subscription Plan</label>
-                <select 
-                  value={selectedPlan} 
+                <select
+                  value={selectedPlan}
                   onChange={(e) => setSelectedPlan(e.target.value)}
                   className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800"
                 >
@@ -615,7 +1157,7 @@ export const DwActiveCallFocus: React.FC = () => {
                   <option value="Trusted ₹499">Trusted — ₹499 (3 months)</option>
                 </select>
               </div>
-              
+
               <div className="p-3 bg-gray-50 rounded border border-gray-100 font-mono text-[11px] text-gray-500 leading-normal">
                 💬 <span className="font-bold text-gray-700">WhatsApp Message:</span>
                 <p className="mt-1 font-sans text-xs">
@@ -624,13 +1166,13 @@ export const DwActiveCallFocus: React.FC = () => {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <button 
+                <button
                   onClick={() => setShowLinkModal(false)}
                   className="px-4 py-2 border border-gray-200 text-gray-500 rounded font-bold hover:bg-gray-100 transition-colors"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={handleSendPaymentLink}
                   className="px-4 py-2 bg-[#FB641B] hover:bg-[#e4540d] text-white rounded font-bold transition-all shadow-sm"
                 >
@@ -645,221 +1187,464 @@ export const DwActiveCallFocus: React.FC = () => {
       {/* POST-CALL FORM GATED MODAL OVERLAY */}
       {showPostCallModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto relative">
-            
+          <div className="bg-white rounded-xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto relative text-xs">
+
             {/* Header */}
             <div className="border-b border-gray-100 pb-3 mb-4">
-              <h2 className="text-lg font-bold text-gray-900 flex justify-between items-center">
+              <h2 className="text-sm font-bold text-gray-900 flex justify-between items-center">
                 <span>Log Call — {leadName}</span>
-                <span className="font-mono text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{leadTmid}</span>
+                <span className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{leadTmid}</span>
               </h2>
-              <div className="text-[11px] text-gray-400 mt-1">
+              <div className="text-[10px] text-gray-400 mt-1">
                 Duration: {formatTimer(seconds)}
               </div>
             </div>
 
             {/* Step 1 — Outcome */}
-            <div className="space-y-3">
-              <div className="text-xs font-bold text-gray-700 uppercase tracking-wider">Step 1 — Call Outcome *</div>
+            <div className="space-y-2 mb-4">
+              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Step 1 — Call Outcome *</div>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: 'connected', label: 'Connected', desc: 'Call successfully answered' },
-                  { id: 'not_connected', label: 'No Answer / NR', desc: 'No response/Switch off' },
-                  { id: 'callback_later', label: 'Callback Later', desc: 'Wants callback later' }
+                  { id: 'connected', label: 'Connected', desc: 'कॉल जुड़ गया' },
+                  { id: 'not_connected', label: 'Not Connected', desc: 'कॉल नहीं जुड़ा' },
+                  { id: 'callback_later', label: 'Callback Later', desc: 'बाद में कॉल करें' }
                 ].map(op => (
                   <button
                     key={op.id}
+                    type="button"
                     onClick={() => {
                       setOutcome(op.id as any);
-                      if (op.id !== 'connected') setConnectedSubStatus('');
+                      setLevel2Sub('');
+                      setCallbackSub('');
                     }}
-                    className={`p-3 border rounded-xl text-left transition-all ${
-                      outcome === op.id 
-                        ? 'border-[#27AE60] bg-[#EAFAF1]/30 ring-1 ring-[#27AE60]' 
+                    className={`p-2.5 border rounded-lg text-left transition-all ${outcome === op.id
+                        ? 'border-[#27AE60] bg-[#EAFAF1]/30 ring-1 ring-[#27AE60]'
                         : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
-                    <div className="font-bold text-xs text-gray-800">{op.label}</div>
-                    <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">{op.desc}</div>
+                    <div className="font-bold text-[11px] text-gray-800">{op.label}</div>
+                    <div className="text-[9px] text-gray-400 mt-0.5 leading-tight">{op.desc}</div>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Step 2 — Conditional on Connected */}
-            {outcome === 'connected' && (
-              <div className="space-y-3 mt-4">
-                <div className="text-xs font-bold text-gray-700 uppercase tracking-wider">Step 2 — Client Response *</div>
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { id: 'interested', label: 'Interested / Converted' },
-                    { id: 'not_interested', label: 'Not Interested' },
-                    { id: 'callback', label: 'Callback Requested' },
-                    { id: 'subscribed', label: 'Already Subscribed' }
-                  ].map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => setConnectedSubStatus(sub.id as any)}
-                      className={`p-2.5 border rounded-lg text-center font-semibold text-[11px] transition-all ${
-                        connectedSubStatus === sub.id
-                          ? 'border-[#27AE60] bg-[#EAFAF1]/30 text-[#27AE60]'
-                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Step 3a — Interested Sub-Form */}
-            {outcome === 'connected' && connectedSubStatus === 'interested' && (
-              <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-100 mt-4 text-xs">
-                <div className="font-bold text-gray-700 uppercase tracking-wider">Subscription Selection</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'ready', label: 'Job Ready ₹199' },
-                    { id: 'verified', label: 'Verified ₹299' },
-                    { id: 'trusted', label: 'Trusted ₹499' }
-                  ].map(plan => (
-                    <button
-                      key={plan.id}
-                      onClick={() => setInterestedPlan(plan.id as any)}
-                      className={`p-3 border rounded-lg font-bold text-center transition-all ${
-                        interestedPlan === plan.id 
-                          ? 'bg-[#27AE60] text-white border-[#27AE60]' 
-                          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      {plan.label}
-                    </button>
-                  ))}
-                </div>
-                
-                <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-100">
-                  <span className="font-semibold text-gray-600">Payment link sent via WhatsApp?</span>
-                  <div className="flex gap-1.5">
-                    <button 
-                      onClick={() => setLinkSentToggle('yes')}
-                      className={`px-3 py-1 text-[11px] rounded font-bold transition-all ${linkSentToggle === 'yes' ? 'bg-[#27AE60] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                    >
-                      Yes
-                    </button>
-                    <button 
-                      onClick={() => setLinkSentToggle('no')}
-                      className={`px-3 py-1 text-[11px] rounded font-bold transition-all ${linkSentToggle === 'no' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                    >
-                      No
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3b — Not Interested Sub-Form */}
-            {outcome === 'connected' && connectedSubStatus === 'not_interested' && (
-              <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-100 mt-4 text-xs">
-                <div>
-                  <label className="font-bold text-gray-700 block mb-1">Reason for rejection *</label>
-                  <select 
-                    value={notInterestedReason}
-                    onChange={(e) => setNotInterestedReason(e.target.value)}
-                    className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs text-gray-800"
-                  >
-                    <option value="">Select Reason...</option>
-                    {dispositionOptions?.data?.feedbacks.map(f => (
-                      <option key={f.value} value={f.value}>{f.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3c — Callback Requested Sub-Form */}
-            {(connectedSubStatus === 'callback' || outcome === 'callback_later') && (
-              <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-100 mt-4 text-xs">
+            {/* Step 2 — Level 2 options based on Outcome */}
+            {outcome === 'not_connected' && (
+              <div className="space-y-2 mb-4">
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Step 2 — Reconnection State *</div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-gray-500 block mb-1 font-semibold">Callback Date</label>
-                    <input 
-                      type="date" 
-                      value={callbackDate} 
-                      onChange={(e) => setCallbackDate(e.target.value)}
-                      className="w-full border border-gray-200 rounded px-2 py-1"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-gray-500 block mb-1 font-semibold">Callback Time</label>
-                    <input 
-                      type="time" 
-                      value={callbackTime} 
-                      onChange={(e) => setCallbackTime(e.target.value)}
-                      className="w-full border border-gray-200 rounded px-2 py-1"
-                    />
-                  </div>
+                  {[
+                    { value: 'no_answer', label: 'No Answer / Ringing', label_hi: 'कॉल नहीं उठाया' },
+                    { value: 'busy', label: 'Busy / Call Waiting', label_hi: 'व्यस्त है' },
+                    { value: 'not_reachable', label: 'Not Reachable / Switched Off', label_hi: 'बंद/नेटवर्क से बाहर' },
+                    { value: 'wrong_number', label: 'Wrong Number / Invalid', label_hi: 'गलत नंबर' },
+                    { value: 'disconnected', label: 'Call Disconnected', label_hi: 'कॉल कट गया' }
+                  ].map(item => (
+                    <label
+                      key={item.value}
+                      className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-red-500 bg-red-50/20' : 'border-gray-200 bg-white hover:bg-gray-50'
+                        }`}
+                    >
+                      <input
+                        type="radio"
+                        name="level2Sub"
+                        value={item.value}
+                        checked={level2Sub === item.value}
+                        onChange={() => setLevel2Sub(item.value)}
+                        className="accent-red-500 mr-2"
+                      />
+                      <div>
+                        <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                        <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                      </div>
+                    </label>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Step 4 — Remarks */}
-            {outcome && (
-              <div className="space-y-2 mt-4 text-xs">
+            {outcome === 'callback_later' && (
+              <div className="space-y-2 mb-4">
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Step 2 — Callback Interval *</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'tomorrow_morning', label: 'Call Tomorrow Morning', label_hi: 'कल सुबह (10 AM)' },
+                    { value: 'tomorrow_evening', label: 'Call Tomorrow Evening', label_hi: 'कल शाम (5 PM)' },
+                    { value: 'two_days_morning', label: 'Call in 2 Days', label_hi: '2 दिन बाद (10 AM)' },
+                    { value: 'custom', label: 'Custom Date & Time', label_hi: 'कस्टम समय चुनें' }
+                  ].map(item => (
+                    <label
+                      key={item.value}
+                      className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-blue-500 bg-blue-50/20' : 'border-gray-200 bg-white hover:bg-gray-50'
+                        }`}
+                    >
+                      <input
+                        type="radio"
+                        name="level2Sub"
+                        value={item.value}
+                        checked={level2Sub === item.value}
+                        onChange={() => setLevel2Sub(item.value)}
+                        className="accent-blue-500 mr-2"
+                      />
+                      <div>
+                        <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                        <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {level2Sub === 'custom' && (
+                  <div className="mt-2">
+                    <input
+                      type="datetime-local"
+                      value={callbackAt}
+                      onChange={e => setCallbackAt(e.target.value)}
+                      className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800 text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {outcome === 'connected' && (
+              <div className="space-y-2 mb-4">
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Step 2 — Connected Outcome *</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(isDriverWelcome || (!isTransporterWelcome && !isMatchmaking)) && (
+                    <>
+                      {[
+                        { value: 'agree_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
+                        { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
+                        { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
+                        { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' },
+                        { value: 'language_barrier', label: 'Language Barrier', label_hi: 'भाषा की समस्या' }
+                      ].map(item => (
+                        <label
+                          key={item.value}
+                          className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-[#27AE60] bg-[#EAFAF1]/30' : 'border-gray-200 bg-white hover:bg-gray-50'
+                            }`}
+                        >
+                          <input
+                            type="radio"
+                            name="level2Sub"
+                            value={item.value}
+                            checked={level2Sub === item.value}
+                            onChange={() => setLevel2Sub(item.value)}
+                            className="accent-[#27AE60] mr-2"
+                          />
+                          <div>
+                            <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                            <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </>
+                  )}
+
+                  {isTransporterWelcome && (
+                    <>
+                      {[
+                        { value: 'agree_tr_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
+                        { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
+                        { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
+                        { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' }
+                      ].map(item => (
+                        <label
+                          key={item.value}
+                          className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-[#27AE60] bg-[#EAFAF1]/30' : 'border-gray-200 bg-white hover:bg-gray-50'
+                            }`}
+                        >
+                          <input
+                            type="radio"
+                            name="level2Sub"
+                            value={item.value}
+                            checked={level2Sub === item.value}
+                            onChange={() => setLevel2Sub(item.value)}
+                            className="accent-[#27AE60] mr-2"
+                          />
+                          <div>
+                            <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                            <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </>
+                  )}
+
+                  {isMatchmaking && (
+                    <>
+                      {[
+                        { value: 'placement_done', label: 'Driver Placement Done', label_hi: 'ड्राइवर प्लेसमेंट हो गया' },
+                        { value: 'callback', label: 'Call Back Later', label_hi: 'बाद में कॉल करें' },
+                        { value: 'rejected', label: 'Rejected by Driver/Transporter', label_hi: 'रिजेक्ट हो गया' }
+                      ].map(item => (
+                        <label
+                          key={item.value}
+                          className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-[#27AE60] bg-[#EAFAF1]/30' : 'border-gray-200 bg-white hover:bg-gray-50'
+                            }`}
+                        >
+                          <input
+                            type="radio"
+                            name="level2Sub"
+                            value={item.value}
+                            checked={level2Sub === item.value}
+                            onChange={() => setLevel2Sub(item.value)}
+                            className="accent-[#27AE60] mr-2"
+                          />
+                          <div>
+                            <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                            <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Level 3 conditional inputs based on selected Connected Outcome */}
+            {outcome === 'connected' && (
+              <div className="space-y-3 mb-4">
+
+                {/* Subscription Flow */}
+                {(level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') && (
+                  <>
+                    <div>
+                      <label className="text-gray-500 block mb-1 font-semibold">Select Subscription Plan *</label>
+                      <select
+                        value={planSelected}
+                        onChange={e => setPlanSelected(e.target.value)}
+                        className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs"
+                      >
+                        <option value="">Choose a subscription plan...</option>
+                        {isDriverWelcome && [
+                          { value: 'job_ready', label: 'Job Ready Driver (₹199 Plan)' },
+                          { value: 'verified', label: 'Verified Driver (₹299 Plan)' },
+                          { value: 'trusted', label: 'Trusted Driver (₹499 Plan)' }
+                        ].map(p => (
+                          <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                        {isTransporterWelcome && [
+                          { value: 'tr_subscription', label: 'Transporter Subscription (₹999 Plan)' },
+                          { value: 'premium_posting', label: 'Premium Job Posting (₹1,999 Plan)' },
+                          { value: 'sp_posting', label: 'Super Premium Posting (₹2,999 Plan)' }
+                        ].map(p => (
+                          <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                        {!isDriverWelcome && !isTransporterWelcome && [
+                          { value: '199_plan', label: '₹199 Basic' },
+                          { value: '299_plan', label: '₹299 Standard' },
+                          { value: '499_plan', label: '₹499 Premium' },
+                          { value: '1999_plan', label: '₹1,999 Pro' },
+                          { value: '2999_plan', label: '₹2,999 Super Pro' }
+                        ].map(p => (
+                          <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-gray-500 block mb-1 font-semibold">Payment Transaction ID *</label>
+                      <input
+                        type="text"
+                        placeholder="Enter payment transaction ID..."
+                        value={paymentId}
+                        onChange={e => setPaymentId(e.target.value)}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Callback Requested Flow */}
+                {level2Sub === 'interested_callback' && (
+                  <>
+                    <div>
+                      <label className="text-gray-500 block mb-1 font-semibold">Callback Schedule Interval *</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { value: 'tomorrow_morning', label: 'Tomorrow Morning', label_hi: 'कल सुबह (10 AM)' },
+                          { value: 'tomorrow_evening', label: 'Tomorrow Evening', label_hi: 'कल शाम (5 PM)' },
+                          { value: 'two_days_morning', label: 'In 2 Days', label_hi: '2 दिन बाद (10 AM)' },
+                          { value: 'custom', label: 'Custom Date & Time', label_hi: 'कस्टम समय चुनें' }
+                        ].map(item => (
+                          <label
+                            key={item.value}
+                            className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${callbackSub === item.value ? 'border-blue-500 bg-blue-50/20' : 'border-gray-200 bg-white hover:bg-gray-50'
+                              }`}
+                          >
+                            <input
+                              type="radio"
+                              name="callbackSub"
+                              value={item.value}
+                              checked={callbackSub === item.value}
+                              onChange={() => setCallbackSub(item.value)}
+                              className="accent-blue-500 mr-2"
+                            />
+                            <div>
+                              <div className="font-semibold text-[10px] text-gray-800">{item.label}</div>
+                              <div className="text-[8px] text-gray-400">{item.label_hi}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    {callbackSub === 'custom' && (
+                      <div>
+                        <label className="text-gray-500 block mb-1 font-semibold">Select Custom Date & Time *</label>
+                        <input
+                          type="datetime-local"
+                          value={callbackAt}
+                          onChange={e => setCallbackAt(e.target.value)}
+                          className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800 text-xs"
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Rejection / Not Interested Flow */}
+                {(level2Sub === 'not_interested' || level2Sub === 'rejected') && (
+                  <div>
+                    <label className="text-gray-500 block mb-1 font-semibold">Reason for Rejection *</label>
+                    <select
+                      value={reason}
+                      onChange={e => setReason(e.target.value)}
+                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs"
+                    >
+                      <option value="">Select a reason...</option>
+                      {isMatchmaking
+                        ? [
+                          { value: 'not_interested_in_location', label: 'Not Interested in Location' },
+                          { value: 'salary_too_low', label: 'Salary Too Low' },
+                          { value: 'already_employed', label: 'Already Employed' },
+                          { value: 'dont_like_transporter', label: 'Don\'t Like Transporter' },
+                          { value: 'other', label: 'Other' }
+                        ].map(r => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))
+                        : [
+                          { value: 'already_have_loads', label: 'Already Have Loads' },
+                          { value: 'using_other_app', label: 'Using Other App' },
+                          { value: 'dont_trust_online', label: 'Don\'t Trust Online' },
+                          { value: 'no_smartphone', label: 'No Smartphone' },
+                          { value: 'price_too_high', label: 'Price Too High' },
+                          { value: 'will_think', label: 'Will Think About It' },
+                          { value: 'other', label: 'Other' }
+                        ].map(r => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))
+                      }
+                    </select>
+                  </div>
+                )}
+
+                {/* Language Barrier Flow */}
+                {level2Sub === 'language_barrier' && (
+                  <div>
+                    <label className="text-gray-500 block mb-1 font-semibold">Select Language Noted *</label>
+                    <select
+                      value={languageNoted}
+                      onChange={e => setLanguageNoted(e.target.value)}
+                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs"
+                    >
+                      <option value="">Select driver's language...</option>
+                      <option value="tamil">Tamil (தமிழ்)</option>
+                      <option value="telugu">Telugu (తెలుగు)</option>
+                      <option value="kannada">Kannada (ಕನ್ನಡ)</option>
+                      <option value="malayalam">Malayalam (മലയാളം)</option>
+                      <option value="bengali">Bengali (বাংলা)</option>
+                      <option value="marathi">Marathi (मराठी)</option>
+                      <option value="gujarati">Gujarati (ગુજરાતી)</option>
+                      <option value="punjabi">Punjabi (ਪੰਜਾਬी)</option>
+                      <option value="odia">Odia (ଓଡ଼ିଆ)</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Matchmaking Placement Done Flow */}
+                {level2Sub === 'placement_done' && (
+                  <div>
+                    <label className="text-gray-500 block mb-1 font-semibold">Verify Placement Stage *</label>
+                    <select
+                      value={feedbackStage}
+                      onChange={e => setFeedbackStage(e.target.value)}
+                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs"
+                    >
+                      <option value="">Choose placement stage...</option>
+                      {[
+                        { value: '1', label: 'Stage 1: Profile Assessment' },
+                        { value: '2', label: 'Stage 2: Document Verification' },
+                        { value: '3', label: 'Stage 3: Interview Scheduled' },
+                        { value: '4', label: 'Stage 4: Trial Drive' },
+                        { value: '5', label: 'Stage 5: Background Check' },
+                        { value: '6', label: 'Stage 6: Job Offer Extended' },
+                        { value: '7', label: 'Stage 7: Offer Accepted' },
+                        { value: '8', label: 'Stage 8: Final Placement Confirmed' }
+                      ].map(s => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Remarks / Notes */}
+            {level2Sub && (
+              <div className="space-y-1 mb-4">
                 <label className="font-bold text-gray-700 block">General Remarks / Notes</label>
                 <textarea
                   value={dispositionNotes}
                   onChange={(e) => setDispositionNotes(e.target.value)}
-                  placeholder="Enter call remarks..."
-                  className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-[#27AE60] min-h-[60px]"
+                  placeholder="Enter call remarks (Hindi mein bhi)..."
+                  className="w-full border border-gray-200 rounded-lg p-2 outline-none focus:ring-1 focus:ring-[#27AE60] min-h-[60px]"
                 />
               </div>
             )}
 
             {/* Submit Actions */}
-            <div className="border-t border-gray-100 pt-4 mt-6 flex justify-end gap-2">
-              <button 
-                onClick={() => setShowPostCallModal(false)}
-                className="px-4 py-2 border border-gray-200 text-gray-500 hover:bg-gray-100 rounded-lg text-xs font-bold"
-              >
-                Back to Softphone
-              </button>
-              
-              <button
-                onClick={() => handleDispositionSubmit(false)}
-                disabled={
-                  !outcome || 
-                  (outcome === 'connected' && !connectedSubStatus) ||
-                  (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
-                  (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason)
-                }
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                  (!outcome || 
-                   (outcome === 'connected' && !connectedSubStatus) ||
-                   (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
-                   (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason))
-                    ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
-                    : 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold'
-                }`}
-              >
-                Save & Close
-              </button>
+            <div className="border-t border-gray-100 pt-4 mt-6 flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowPostCallModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-500 hover:bg-gray-100 rounded-lg text-xs font-bold"
+                >
+                  Back to Softphone
+                </button>
+
+                <button
+                  onClick={() => handleDispositionSubmit('stay')}
+                  disabled={!canSubmit()}
+                  className={`flex-1 px-4 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm ${!canSubmit()
+                      ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                      : 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold'
+                    }`}
+                >
+                  Save & Stay on Lead
+                </button>
+
+                <button
+                  onClick={() => handleDispositionSubmit(false)}
+                  disabled={!canSubmit()}
+                  className={`flex-1 px-4 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm ${!canSubmit()
+                      ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                      : 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold'
+                    }`}
+                >
+                  Save & Close
+                </button>
+              </div>
 
               <button
                 onClick={() => handleDispositionSubmit(true)}
-                disabled={
-                  !outcome || 
-                  (outcome === 'connected' && !connectedSubStatus) ||
-                  (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
-                  (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason)
-                }
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                  (!outcome || 
-                   (outcome === 'connected' && !connectedSubStatus) ||
-                   (outcome === 'connected' && connectedSubStatus === 'interested' && !interestedPlan) ||
-                   (outcome === 'connected' && connectedSubStatus === 'not_interested' && !notInterestedReason))
+                disabled={!canSubmit()}
+                className={`w-full px-4 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm ${!canSubmit()
                     ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
                     : 'bg-[#27AE60] hover:bg-[#219653] text-white font-bold'
-                }`}
+                  }`}
               >
                 Save & Load Next Lead
               </button>
@@ -873,25 +1658,30 @@ export const DwActiveCallFocus: React.FC = () => {
         <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
           Queue (Next Leads)
         </h3>
-        
+
         {nextLeads.length > 0 ? (
           <div className="space-y-2">
             {nextLeads.map((lead: any) => {
               const isActive = userId === lead.id;
               return (
-                <div 
+                <div
                   key={lead.id}
                   onClick={() => {
                     if (!isActive && callState === 'idle') {
+                      if (queueType) {
+                        // Keep batchPos in sync so "Load Next Lead" continues
+                        // forward from wherever the agent just skipped to.
+                        const idx = batch.findIndex((l: any) => l.id === lead.id);
+                        if (idx >= 0) setBatchPos(idx);
+                      }
                       setUserId(lead.id);
                       setSeconds(0);
                     }
                   }}
-                  className={`p-3 rounded-lg border text-xs transition-all cursor-pointer ${
-                    isActive 
-                      ? 'border-[#27AE60] bg-[#EAFAF1] font-bold text-[#27AE60] shadow-sm' 
+                  className={`p-3 rounded-lg border text-xs transition-all cursor-pointer ${isActive
+                      ? 'border-[#27AE60] bg-[#EAFAF1] font-bold text-[#27AE60] shadow-sm'
                       : 'border-gray-200 bg-white hover:bg-gray-50 text-gray-700 hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   <div className="flex justify-between items-start">
                     <span className="font-semibold truncate max-w-[140px]">{lead.name || 'Unknown'}</span>

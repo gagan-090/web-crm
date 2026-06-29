@@ -93,7 +93,10 @@ export const DwHomeDashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         
         {/* Card 1 — Today's Earnings */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px]">
+        <div 
+          onClick={() => navigate('/dw/dw-performance-stats')}
+          className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px] cursor-pointer hover:border-[#27AE60]/40 hover:shadow transition-all duration-200"
+        >
           <div>
             <span className="text-xs text-gray-500 uppercase font-semibold">Today's Earnings (Incentives)</span>
             <div className="text-2xl font-bold text-[#27AE60] mt-1">₹{todayEarnings}</div>
@@ -117,7 +120,10 @@ export const DwHomeDashboard: React.FC = () => {
         </div>
 
         {/* Card 2 — Base Salary Gate */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px]">
+        <div 
+          onClick={() => navigate('/dw/dw-performance-stats')}
+          className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px] cursor-pointer hover:border-[#27AE60]/40 hover:shadow transition-all duration-200"
+        >
           <div>
             <div className="flex justify-between items-start">
               <span className={`text-xs uppercase font-semibold ${isSalaryGateCrossed ? 'text-[#27AE60]' : 'text-gray-500'}`}>
@@ -148,7 +154,10 @@ export const DwHomeDashboard: React.FC = () => {
         </div>
 
         {/* Card 3 — Incentives Gate */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px]">
+        <div 
+          onClick={() => navigate('/dw/dw-performance-stats')}
+          className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[160px] cursor-pointer hover:border-[#27AE60]/40 hover:shadow transition-all duration-200"
+        >
           <div>
             <div className="flex justify-between items-start">
               <span className={`text-xs uppercase font-semibold ${isIncentiveGateCrossed ? 'text-[#27AE60]' : 'text-gray-500'}`}>
@@ -199,7 +208,7 @@ export const DwHomeDashboard: React.FC = () => {
       </div>
 
       {/* Incentive Gate Progress Widget */}
-      <GateProgressWidget />
+      <GateProgressWidget onClick={() => navigate('/dw/dw-performance-stats')} />
 
       {/* Secondary Dashboard Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">

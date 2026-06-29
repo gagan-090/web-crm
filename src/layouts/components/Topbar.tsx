@@ -13,7 +13,7 @@ export const Topbar: React.FC = () => {
   const screenName = currentRoute ? currentRoute.name : 'Dashboard';
 
   return (
-    <header className="fixed top-0 left-[240px] w-[calc(100%-240px)] h-[56px] bg-surface border-b border-outline-variant flex items-center justify-between px-md z-40">
+    <header className="fixed top-0 left-[240px] w-[calc(100%-240px)] h-[56px] bg-white border-b border-outline-variant flex items-center justify-between px-md z-40">
       {/* Left side: Screen Name */}
       <div className="flex items-center">
         <h1 className="text-sm font-bold text-on-surface tracking-tight">

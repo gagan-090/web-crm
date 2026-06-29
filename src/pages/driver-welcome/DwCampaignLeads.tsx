@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGetDwCampaignLeadsQuery, useUpdateDwCampaignLeadNotesMutation } from '../../services/api/webCrmApi';
 
 interface CallHistory {
   date: string;
@@ -42,194 +43,74 @@ interface CampaignLead {
 export const DwCampaignLeads: React.FC = () => {
   const navigate = useNavigate();
 
-  // Mock Campaign Leads Data matching Specification
-  const [leads, setLeads] = useState<CampaignLead[]>([
-    {
-      id: 'CL1',
-      tmid: 'DR-CMP-001',
-      name: 'Ramesh Singh',
-      phone: '+91-98765-11111',
-      city: 'Delhi',
-      state: 'Delhi',
-      capturedTime: '12 mins ago',
-      capturedTimestamp: Date.now() - 12 * 60000,
-      source: 'META ADS',
-      campaignName: 'Free HMV License Upgrade Promo',
-      adSet: 'Delhi HMV Drivers - 25-45 age',
-      leadForm: 'HMV Drivers Enrollment Form v2',
-      utmSource: 'facebook',
-      utmMedium: 'cpc',
-      utmCampaign: 'delhi_hmv_upgrade',
-      temperature: 'HOT',
-      vehicleType: 'Heavy Multi-axle Truck',
-      licenseType: 'HMV',
-      experience: '8 years',
-      preferredRoute: 'Delhi–Mumbai Express',
-      subscribed: false,
-      whatsapp: true,
-      notes: 'Driver clicked the Meta Ad for Free License Upgrade. Interested in immediate verified plan.',
-      isConverted: false,
-      isCallback: false,
-      openingScript: 'Namaste Ramesh ji, main TruckMitr se bol raha hu. Aapne Facebook par hamara Heavy License Upgrade ka vigyapan dekha tha...',
-      history: [
-        { date: '21 Jun, 4:30 PM', duration: '0m 0s', status: 'NR', caller: 'You' }
-      ]
-    },
-    {
-      id: 'CL2',
-      tmid: 'DR-CMP-002',
-      name: 'Balwinder Singh',
-      phone: '+91-98123-22222',
-      city: 'Amritsar',
-      state: 'Punjab',
-      capturedTime: '45 mins ago',
-      capturedTimestamp: Date.now() - 45 * 60000,
-      source: 'GOOGLE ADS',
-      campaignName: 'Truck Driver High Salary Placement',
-      adSet: 'Search - Punjab Truckers',
-      leadForm: 'Google Lead Extension - Punjab',
-      utmSource: 'google',
-      utmMedium: 'search_cpc',
-      utmCampaign: 'punjab_placement_leads',
-      temperature: 'HOT',
-      vehicleType: 'Heavy Truck (14 Wheeler)',
-      licenseType: 'HMV',
-      experience: '12 years',
-      preferredRoute: 'Punjab–Gujarat Route',
-      subscribed: false,
-      whatsapp: true,
-      notes: 'High experience driver searching for high salary job. Google search lead.',
-      isConverted: false,
-      isCallback: false,
-      openingScript: 'Namaste Balwinder ji, main TruckMitr se baat kar raha hu. Aapne Google par naukri ki khoj karte samay apna number choda tha...',
-      history: []
-    },
-    {
-      id: 'CL3',
-      tmid: 'DR-CMP-003',
-      name: 'Manoj Kumar',
-      phone: '+91-99887-33333',
-      city: 'Gurugram',
-      state: 'Haryana',
-      capturedTime: '2 hours ago',
-      capturedTimestamp: Date.now() - 120 * 60000,
-      source: 'INSTAGRAM',
-      campaignName: 'Driver Benefits & Insurance Drive',
-      adSet: 'Instagram Reels - Driver Life',
-      leadForm: 'Instagram Instant Form',
-      utmSource: 'instagram',
-      utmMedium: 'story_ads',
-      utmCampaign: 'insurance_drive_reels',
-      temperature: 'WARM',
-      vehicleType: 'Tata Ace (Chota Hathi)',
-      licenseType: 'LMV',
-      experience: '3 years',
-      preferredRoute: 'Delhi NCR Local',
-      subscribed: true,
-      whatsapp: true,
-      notes: 'Warm lead. Inquired about accident cover of 5 lakhs. Has Tata Ace.',
-      isConverted: false,
-      isCallback: true,
-      callbackTime: 'Today, 4:00 PM',
-      openingScript: 'Namaste Manoj ji, main TruckMitr se baat kar raha hu. Aapne Instagram Story par Bima yojana wala post dekha tha...',
-      history: [
-        { date: '22 Jun, 10:00 AM', duration: '1m 20s', status: 'Connected', caller: 'You' }
-      ]
-    },
-    {
-      id: 'CL4',
-      tmid: 'DR-CMP-004',
-      name: 'Dinesh Prasad',
-      phone: '+91-77665-44444',
-      city: 'Lucknow',
-      state: 'Uttar Pradesh',
-      capturedTime: '1 day ago',
-      capturedTimestamp: Date.now() - 1440 * 60000,
-      source: 'FB COMMENT',
-      campaignName: 'Direct Sourced FB Group Comments',
-      adSet: 'UP Truckers Association Group',
-      leadForm: 'Comment Scraping tool',
-      utmSource: 'facebook_groups',
-      utmMedium: 'organic_comment',
-      utmCampaign: 'direct_scraping_v1',
-      temperature: 'COLD',
-      vehicleType: 'Container Truck',
-      licenseType: 'HMV',
-      experience: '5 years',
-      preferredRoute: 'Lucknow–Kolkata',
-      subscribed: false,
-      whatsapp: false,
-      notes: 'Direct scrap from comment saying "Job needed HMV license Lucknow". Dialing cold.',
-      isConverted: false,
-      isCallback: false,
-      openingScript: 'Namaste Dinesh ji, kya aap Lucknow se Container chalane ki naukri dhoond rahe hain? Aapne FB par comment kiya tha...',
-      history: []
-    },
-    {
-      id: 'CL5',
-      tmid: 'DR-CMP-005',
-      name: 'Satnam Singh',
-      phone: '+91-99881-55555',
-      city: 'Ludhiana',
-      state: 'Punjab',
-      capturedTime: '2 days ago',
-      capturedTimestamp: Date.now() - 2880 * 60000,
-      source: 'FACEBOOK',
-      campaignName: 'Free HMV License Upgrade Promo',
-      adSet: 'Punjab HMV Drivers',
-      leadForm: 'HMV Enrollment Form v2',
-      utmSource: 'facebook',
-      utmMedium: 'cpc',
-      utmCampaign: 'punjab_hmv_upgrade',
-      temperature: 'WARM',
-      vehicleType: 'Trailer Truck',
-      licenseType: 'HMV',
-      experience: '10 years',
-      preferredRoute: 'Punjab–Maharashtra Route',
-      subscribed: true,
-      whatsapp: true,
-      notes: 'Lead successfully called and converted. verified plan active.',
-      isConverted: true,
-      isCallback: false,
-      openingScript: 'Namaste Satnam ji, TruckMitr se baat kar raha hu...',
-      history: [
-        { date: '20 Jun, 12:00 PM', duration: '3m 45s', status: 'Connected', caller: 'You' }
-      ]
-    }
-  ]);
-
   // UI States
-  const [selectedId, setSelectedId] = useState<string>('CL1');
+  const [selectedId, setSelectedId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'all' | 'hot' | 'warm' | 'cold' | 'callbacks' | 'converted'>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<'temperature' | 'newest' | 'oldest' | 'callbacks'>('temperature');
   const [toast, setToast] = useState<string | null>(null);
+  const [page, setPage] = useState<number>(1);
 
   // Notes Auto-Save
   const [notesText, setNotesText] = useState<string>('');
   const [saveTimestamp, setSaveTimestamp] = useState<string>('');
   const saveTimerRef = useRef<any | null>(null);
 
+  // RTK Query API calls
+  const { data: campaignData, isLoading, refetch } = useGetDwCampaignLeadsQuery({
+    source: sourceFilter === 'ALL' ? undefined : sourceFilter,
+    page: page,
+  });
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [sourceFilter, activeTab, sortBy]);
+
+  const [updateNotes] = useUpdateDwCampaignLeadNotesMutation();
+
+  const leads: CampaignLead[] = (campaignData?.leads || []).map((l: any) => ({
+    ...l,
+    id: String(l.id),
+  }));
+
+  // Auto-select first lead
+  useEffect(() => {
+    if (leads.length > 0) {
+      const activeIds = leads.map(l => l.id);
+      if (!selectedId || !activeIds.includes(selectedId)) {
+        setSelectedId(leads[0].id);
+      }
+    } else {
+      setSelectedId('');
+    }
+  }, [leads, selectedId]);
+
   const selectedLead = leads.find(l => l.id === selectedId) || leads[0];
 
   useEffect(() => {
     if (selectedLead) {
-      setNotesText(selectedLead.notes);
+      setNotesText(selectedLead.notes || '');
       setSaveTimestamp('');
     }
-  }, [selectedId]);
+  }, [selectedId, selectedLead]);
 
   const handleNotesChange = (val: string) => {
     setNotesText(val);
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
-    saveTimerRef.current = setTimeout(() => {
-      setLeads(prevLeads =>
-        prevLeads.map(l => (l.id === selectedLead.id ? { ...l, notes: val } : l))
-      );
-      const now = new Date();
-      setSaveTimestamp(`Saved at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`);
+    saveTimerRef.current = setTimeout(async () => {
+      if (!selectedLead) return;
+      try {
+        await updateNotes({ id: selectedLead.id, notes: val }).unwrap();
+        const now = new Date();
+        setSaveTimestamp(`Saved at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`);
+        // Refetch to sync notes list in parent
+        refetch();
+      } catch (_) {
+        setSaveTimestamp('Failed to save notes');
+      }
     }, 2000);
   };
 
@@ -305,13 +186,17 @@ export const DwCampaignLeads: React.FC = () => {
   // Active call trigger
   const handleCallNow = (lead: CampaignLead) => {
     triggerToast(`Initiating outbound call to ${lead.name}...`);
+    
+    // Pass mobile to state lead
     navigate('/dw/dw-active-call-focus', {
       state: {
+        userId: lead.id,
         leadId: lead.id,
         tmid: lead.tmid,
         name: lead.name,
         phone: lead.phone,
-        location: `${lead.city}, ${lead.state}`,
+        mobile: lead.phone,
+        location: lead.city && lead.state ? `${lead.city}, ${lead.state}` : 'Unknown',
         vehicleType: lead.vehicleType,
         licenseType: lead.licenseType,
         experience: lead.experience,
@@ -320,6 +205,11 @@ export const DwCampaignLeads: React.FC = () => {
         whatsapp: lead.whatsapp,
         history: lead.history,
         isCampaign: true,
+        queueBatch: filteredLeads.map(l => ({ ...l, id: Number(l.id) })), // Map string IDs back to numbers for DwActiveCallFocus state compatibility
+        batchIndex: filteredLeads.findIndex(l => l.id === lead.id),
+        queueType: 'campaign',
+        queuePage: page,
+        queueFilters: { source: sourceFilter },
         campaignContext: {
           source: lead.source,
           campaignName: lead.campaignName,
@@ -334,6 +224,12 @@ export const DwCampaignLeads: React.FC = () => {
         }
       }
     });
+
+    // If live SAN dialer is ready, trigger dial immediately (aligns with queue click-to-call flow)
+    if ((window as any)._sanDial) {
+      const numericId = parseInt(String(lead.id).replace(/\D/g, ''), 10) || 0;
+      (window as any)._sanDial(lead.phone, numericId, lead.name, lead.tmid, 'social_media');
+    }
   };
 
   return (
@@ -361,7 +257,16 @@ export const DwCampaignLeads: React.FC = () => {
         {/* Filters and Sort Header */}
         <div className="p-3 border-b border-gray-200 shrink-0 bg-white space-y-2.5">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Campaign Queue</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Campaign Queue</span>
+              <button
+                onClick={() => refetch()}
+                className="text-gray-400 hover:text-gray-650 hover:bg-gray-100 rounded-full p-0.5 flex items-center justify-center transition-all active:scale-90"
+                title="Refresh Campaign Queue"
+              >
+                <span className="material-symbols-outlined text-[15px] font-bold">refresh</span>
+              </button>
+            </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-gray-400">Sort:</span>
               <select 
@@ -423,7 +328,12 @@ export const DwCampaignLeads: React.FC = () => {
 
         {/* Lead Card List */}
         <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-gray-100">
-          {filteredLeads.length > 0 ? (
+          {isLoading ? (
+            <div className="p-8 text-center text-gray-500 text-xs flex flex-col items-center justify-center gap-2">
+              <span className="animate-spin border-2 border-red-500 border-t-transparent rounded-full w-5 h-5"></span>
+              <span>Loading campaign leads...</span>
+            </div>
+          ) : filteredLeads.length > 0 ? (
             filteredLeads.map(l => (
               <div 
                 key={l.id}
@@ -444,7 +354,7 @@ export const DwCampaignLeads: React.FC = () => {
                   </div>
 
                   <div className="text-[12px] text-gray-500 mt-1 flex justify-between">
-                    <span>{l.city}, {l.state}</span>
+                    <span>{[l.city, l.state].filter(Boolean).join(', ')}</span>
                     <span className="text-[10px] text-gray-400 bg-gray-100 px-1 rounded font-mono">{l.tmid}</span>
                   </div>
 
@@ -490,13 +400,44 @@ export const DwCampaignLeads: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {campaignData?.pagination && campaignData.pagination.last_page > 1 && (
+          <div className="p-3 bg-white border-t border-gray-100 flex items-center justify-between gap-2 shrink-0">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              className="px-2.5 py-1 text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-[14px]">chevron_left</span>
+              Prev
+            </button>
+            <span className="text-[10px] text-gray-500 font-medium">
+              Page {page} of {campaignData.pagination.last_page}
+            </span>
+            <button
+              disabled={page >= campaignData.pagination.last_page}
+              onClick={() => setPage(p => p + 1)}
+              className="px-2.5 py-1 text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+            >
+              Next
+              <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Right Panel - Campaign Lead Details Profile Cockpit */}
       <section className="flex-1 flex flex-col bg-white overflow-hidden min-w-0">
         
-        {/* Detail Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {!selectedLead ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 p-8">
+            <span className="material-symbols-outlined text-[48px] text-gray-300 mb-2">campaign</span>
+            <p className="text-sm font-medium">Select a campaign lead from the queue to view details</p>
+          </div>
+        ) : (
+          /* Detail Body */
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
           
           {/* Header Block */}
           <div className="flex justify-between items-start gap-4">
@@ -518,7 +459,11 @@ export const DwCampaignLeads: React.FC = () => {
                   {selectedLead.temperature} LEAD
                 </span>
               </div>
-              <p className="text-sm text-gray-500 mt-1">{selectedLead.city}, {selectedLead.state} | {selectedLead.phone}</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {[selectedLead.city, selectedLead.state].filter(Boolean).join(', ')}
+                {([selectedLead.city, selectedLead.state].filter(Boolean).length > 0) ? ' | ' : ''}
+                {selectedLead.phone}
+              </p>
             </div>
 
             <button 
@@ -533,60 +478,64 @@ export const DwCampaignLeads: React.FC = () => {
           <hr className="border-gray-200" />
 
           {/* Campaign Context Strip Card */}
-          <div className="bg-gradient-to-r from-red-500/5 to-amber-500/5 border border-red-500/20 rounded-xl p-4 space-y-3">
-            <h2 className="text-xs font-bold text-red-800 uppercase tracking-wider flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[16px] text-red-500">campaign</span>
-              Meta/Google Campaign Attribution Details
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
-              <div>
-                <span className="text-gray-400 block mb-0.5">Campaign Name</span>
-                <span className="font-bold text-gray-800">{selectedLead.campaignName}</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block mb-0.5">Ad Set Group</span>
-                <span className="font-semibold text-gray-800">{selectedLead.adSet}</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block mb-0.5">Lead Capture Form</span>
-                <span className="font-semibold text-gray-800">{selectedLead.leadForm}</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block mb-0.5">UTM Source</span>
-                <span className="font-mono text-gray-700 bg-gray-100 px-1 py-0.5 rounded">{selectedLead.utmSource}</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block mb-0.5">UTM Medium</span>
-                <span className="font-mono text-gray-700 bg-gray-100 px-1 py-0.5 rounded">{selectedLead.utmMedium}</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block mb-0.5">UTM Campaign</span>
-                <span className="font-mono text-gray-700 bg-gray-100 px-1 py-0.5 rounded">{selectedLead.utmCampaign}</span>
+          {selectedLead.campaignName && (
+            <div className="bg-gradient-to-r from-red-500/5 to-amber-500/5 border border-red-500/20 rounded-xl p-4 space-y-3">
+              <h2 className="text-xs font-bold text-red-800 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-red-500">campaign</span>
+                Meta/Google Campaign Attribution Details
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <span className="text-gray-400 block mb-0.5">Campaign Name</span>
+                  <span className="font-bold text-gray-800">{selectedLead.campaignName}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">Ad Set Group</span>
+                  <span className="font-semibold text-gray-800">{selectedLead.adSet}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">Lead Capture Form</span>
+                  <span className="font-semibold text-gray-800">{selectedLead.leadForm}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">UTM Source</span>
+                  <span className="font-mono text-gray-700 bg-gray-100 px-1 py-0.5 rounded">{selectedLead.utmSource}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">UTM Medium</span>
+                  <span className="font-mono text-gray-700 bg-gray-100 px-1 py-0.5 rounded">{selectedLead.utmMedium}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">UTM Campaign</span>
+                  <span className="font-mono text-gray-700 bg-gray-100 px-1 py-0.5 rounded">{selectedLead.utmCampaign}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Profile Details & Preferences */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Caller Data */}
-            <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
-              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-100 pb-2">
-                <span className="material-symbols-outlined text-[16px] text-primary">person</span>
-                Driver Profile Details
-              </h3>
-              <table className="w-full text-xs text-left">
-                <tbody>
-                  <tr className="border-b border-gray-50"><td className="py-2 text-gray-400">Vehicle Preference</td><td className="py-2 font-bold text-gray-800">{selectedLead.vehicleType}</td></tr>
-                  <tr className="border-b border-gray-50"><td className="py-2 text-gray-400">License Type</td><td className="py-2 font-bold text-gray-800">{selectedLead.licenseType}</td></tr>
-                  <tr className="border-b border-gray-50"><td className="py-2 text-gray-400">Experience</td><td className="py-2 font-bold text-gray-800">{selectedLead.experience}</td></tr>
-                  <tr><td className="py-2 text-gray-400">Preferred Route</td><td className="py-2 font-bold text-gray-800">{selectedLead.preferredRoute}</td></tr>
-                </tbody>
-              </table>
-            </div>
+            {(selectedLead.vehicleType || selectedLead.licenseType || selectedLead.experience || selectedLead.preferredRoute) ? (
+              <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
+                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-100 pb-2">
+                  <span className="material-symbols-outlined text-[16px] text-primary">person</span>
+                  Driver Profile Details
+                </h3>
+                <table className="w-full text-xs text-left">
+                  <tbody>
+                    {selectedLead.vehicleType && <tr className="border-b border-gray-50"><td className="py-2 text-gray-400">Vehicle Preference</td><td className="py-2 font-bold text-gray-800">{selectedLead.vehicleType}</td></tr>}
+                    {selectedLead.licenseType && <tr className="border-b border-gray-50"><td className="py-2 text-gray-400">License Type</td><td className="py-2 font-bold text-gray-800">{selectedLead.licenseType}</td></tr>}
+                    {selectedLead.experience && <tr className="border-b border-gray-50"><td className="py-2 text-gray-400">Experience</td><td className="py-2 font-bold text-gray-800">{selectedLead.experience}</td></tr>}
+                    {selectedLead.preferredRoute && <tr><td className="py-2 text-gray-400">Preferred Route</td><td className="py-2 font-bold text-gray-800">{selectedLead.preferredRoute}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
 
             {/* Script Opening Assist */}
-            <div className="border border-red-200 rounded-xl p-4 space-y-3 bg-red-50/20">
+            <div className={`border border-red-200 rounded-xl p-4 space-y-3 bg-red-50/20 ${(selectedLead.vehicleType || selectedLead.licenseType || selectedLead.experience || selectedLead.preferredRoute) ? '' : 'col-span-2'}`}>
               <h3 className="text-xs font-bold text-red-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-red-100 pb-2">
                 <span className="material-symbols-outlined text-[16px] text-red-500">rate_review</span>
                 Campaign Opening Script Assist
@@ -644,6 +593,7 @@ export const DwCampaignLeads: React.FC = () => {
           </div>
 
         </div>
+        )}
       </section>
     </main>
   );

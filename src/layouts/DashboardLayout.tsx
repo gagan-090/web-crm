@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import FloatingDialer from '../shared/components/business/FloatingDialer';
@@ -7,8 +7,36 @@ import { useClickToCall } from '../shared/hooks/useClickToCall';
 import { useGlobalOverlays } from '../shared/context/GlobalOverlaysContext';
 import { useAuth } from '../app/providers/AuthProvider';
 import { Role } from '../shared/constants/roles';
-import { SanCtiProvider, CallControlBar, PostCallDispositionModal } from '../shared/components/cti';
+import { SanCtiProvider, CallControlBar, PostCallDispositionModal, useSanCti } from '../shared/components/cti';
 import ConversionConfirmationToast from '../shared/components/incentive/ConversionConfirmationToast';
+
+// Navigates to the active call focus screen when an incoming call rings OR connects.
+// Must be rendered inside SanCtiProvider.
+function IncomingCallNavigator({ user }: { user: any }) {
+  const { callState, isIncomingCall, currentLeadId } = useSanCti();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const isActiveIncoming =
+      isIncomingCall &&
+      (callState === 'incoming_ringing' || callState === 'connected');
+
+    if (isActiveIncoming) {
+      const alreadyOnFocusPage = location.pathname.includes('active-call-focus');
+      if (!alreadyOnFocusPage) {
+        const isWct = user?.role?.includes('WCT') || user?.role?.includes('Transporter');
+        const targetPath = isWct ? '/wct/wct-active-call-focus' : '/dw/dw-active-call-focus';
+        navigate(targetPath, {
+          state: { incomingCall: true, userId: currentLeadId || '' },
+          replace: false,
+        });
+      }
+    }
+  }, [callState, isIncomingCall, currentLeadId, location.pathname, navigate, user]);
+
+  return null;
+}
 
 export const DashboardLayout: React.FC = () => {
   const { triggerCall } = useClickToCall();
@@ -123,6 +151,7 @@ export const DashboardLayout: React.FC = () => {
   if (isCtiRole) {
     return (
       <SanCtiProvider>
+        <IncomingCallNavigator user={user} />
         {layoutContent}
       </SanCtiProvider>
     );

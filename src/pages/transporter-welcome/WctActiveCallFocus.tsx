@@ -98,7 +98,7 @@ export const WctActiveCallFocus: React.FC = () => {
       assigned_number: '178',
       did_number: '4310735',
       process: 'wct',
-      call_type: 'Outgoing'
+      call_type: 'web-ivr'
     }).unwrap()
       .then((res) => {
         if (res.success && res.data) {

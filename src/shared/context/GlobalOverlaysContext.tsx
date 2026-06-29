@@ -380,25 +380,7 @@ export const GlobalOverlaysProvider: React.FC<{ children: React.ReactNode }> = (
       alert(`CTI Status: Manual Dial Mode ${isManual ? 'ON' : 'OFF'}`);
     };
 
-    (window as any).dialAgentCall = (number?: string) => {
-      const targetNumber = number || '99xxxxxx35';
-      console.log(`[CTI Window Command] dialAgentCall() called. Target: ${targetNumber}`);
-      
-      // Trigger Outbound Dialing status CTI event
-      if (typeof (window as any).SANAppOutgoingEvent === 'function') {
-        (window as any).SANAppOutgoingEvent({
-          trunk_channel: 'SIP/1004-00009394',
-          exten: '178',
-          caller_id: targetNumber,
-          did: '4310735',
-          call_type: 'Outgoing',
-          exten_status: 'Dialing',
-          ts: new Date().toISOString()
-        });
-      }
 
-      startCall('CTI Caller', targetNumber, 'DR-178', 'dw', 'Outbound Dial');
-    };
 
 
 

@@ -8,6 +8,7 @@ export const DwCallHistory: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [playingId, setPlayingId] = useState<number | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
+  const [directionFilter, setDirectionFilter] = useState<'all' | 'incoming' | 'outgoing'>('all');
 
   // Fetch call history from backend
   const { data: response, isLoading, isFetching } = useGetDwCallHistoryQuery({
@@ -18,6 +19,13 @@ export const DwCallHistory: React.FC = () => {
 
   const records = response?.data || [];
   const pagination = response?.pagination || { total: 0, per_page: 15, current_page: 1, last_page: 1 };
+
+  const filteredRecords = records.filter((r: any) => {
+    const isIncoming = r.process?.toLowerCase() === 'incoming';
+    if (directionFilter === 'incoming') return isIncoming;
+    if (directionFilter === 'outgoing') return !isIncoming;
+    return true;
+  });
 
   const handleCallNow = (record: any) => {
     navigate('/dw/dw-active-call-focus', {
@@ -59,19 +67,30 @@ export const DwCallHistory: React.FC = () => {
           <h2 className="text-2xl font-bold text-gray-800">Completed Call Logs & Feedback</h2>
         </div>
         
-        {/* Search input */}
-        <div className="relative w-full md:w-80">
-          <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-lg">search</span>
-          <input
-            type="text"
-            placeholder="Search by name, TM ID, mobile, status..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all"
-          />
+        {/* Search & Filter controls */}
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <select
+            value={directionFilter}
+            onChange={(e) => setDirectionFilter(e.target.value as any)}
+            className="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all font-semibold text-gray-700"
+          >
+            <option value="all">All Directions</option>
+            <option value="incoming">Incoming</option>
+            <option value="outgoing">Outgoing</option>
+          </select>
+          <div className="relative w-full md:w-80">
+            <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-lg">search</span>
+            <input
+              type="text"
+              placeholder="Search by name, TM ID, mobile, status..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all"
+            />
+          </div>
         </div>
       </section>
 
@@ -82,12 +101,13 @@ export const DwCallHistory: React.FC = () => {
             <div className="w-8 h-8 border-4 border-t-[#27AE60] border-gray-200 rounded-full animate-spin"></div>
             <p className="text-xs text-gray-400 mt-2">Retrieving call history...</p>
           </div>
-        ) : records.length > 0 ? (
+        ) : filteredRecords.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="bg-gray-50/75 border-b border-gray-200 text-xs font-bold text-gray-600 uppercase tracking-wider">
                   <th className="px-6 py-4">Driver Details</th>
+                  <th className="px-6 py-4">Direction</th>
                   <th className="px-6 py-4">Call Status</th>
                   <th className="px-6 py-4">Feedback</th>
                   <th className="px-6 py-4">Remarks</th>
@@ -99,7 +119,7 @@ export const DwCallHistory: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
-                {records.map((r) => (
+                {filteredRecords.map((r: any) => (
                   <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="font-semibold text-gray-900">{r.name}</div>
@@ -108,6 +128,19 @@ export const DwCallHistory: React.FC = () => {
                         <span>•</span>
                         <span>{r.mobile}</span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {r.process?.toLowerCase() === 'incoming' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+                          <span className="material-symbols-outlined text-[13px] font-bold">call_received</span>
+                          Incoming
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
+                          <span className="material-symbols-outlined text-[13px] font-bold">call_made</span>
+                          Outgoing
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border uppercase tracking-wide ${getStatusBadgeClass(r.call_status)}`}>
@@ -274,14 +307,27 @@ export const DwCallHistory: React.FC = () => {
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-150 space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
+                      <label className="text-[10.5px] text-gray-400 font-bold block">Call Direction</label>
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border mt-1.5 uppercase tracking-wide ${
+                        selectedRecord.process?.toLowerCase() === 'incoming'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-blue-50 text-blue-700 border-blue-200'
+                      }`}>
+                        <span className="material-symbols-outlined text-[12px] font-bold">
+                          {selectedRecord.process?.toLowerCase() === 'incoming' ? 'call_received' : 'call_made'}
+                        </span>
+                        {selectedRecord.process?.toLowerCase() === 'incoming' ? 'Incoming' : 'Outgoing'}
+                      </span>
+                    </div>
+                    <div>
                       <label className="text-[10.5px] text-gray-400 font-bold block">Call Status</label>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border uppercase tracking-wide mt-1 ${getStatusBadgeClass(selectedRecord.call_status)}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border uppercase tracking-wide mt-1.5 ${getStatusBadgeClass(selectedRecord.call_status)}`}>
                         {selectedRecord.call_status?.replace('_', ' ') || '—'}
                       </span>
                     </div>
                     <div>
                       <label className="text-[10.5px] text-gray-400 font-bold block">Feedback Sub-Stage</label>
-                      <span className="text-sm font-bold text-gray-800">{selectedRecord.call_feedback || '—'}</span>
+                      <span className="text-sm font-bold text-gray-800 block mt-1">{selectedRecord.call_feedback || '—'}</span>
                     </div>
                   </div>
                   <div>

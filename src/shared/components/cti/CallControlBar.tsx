@@ -21,6 +21,7 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
     currentPhoneNumber,
     currentLeadName,
     isIncomingCall,
+    acceptIncoming,
   } = useSanCti();
 
   const activeName = driverName || currentLeadName || currentPhoneNumber || 'Unknown';
@@ -100,22 +101,13 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
 
       {/* Call controls */}
       <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        {/* No Answer button here on purpose: answering from this bar only ever
-            sent a postMessage from OUTSIDE the SAN iframe, which can never
-            carry a real/trusted click into SAN's document — that's the exact
-            gap that broke inbound audio on incoming calls. The SAN Softphone
-            widget (bottom-left) is now always visible specifically so the
-            agent's real click lands inside SAN's own iframe and answers
-            natively. This is just a pointer to it, not a second Answer button. */}
         {callState === 'incoming_ringing' && (
-          <span style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: '#FCD34D',
-            whiteSpace: 'nowrap',
+          <button onClick={acceptIncoming} style={{
+            ...btnStyle,
+            backgroundColor: '#22C55E',
           }}>
-            👈 Answer from the SAN Softphone widget
-          </span>
+            Answer
+          </button>
         )}
 
         {callState === 'connected' && (

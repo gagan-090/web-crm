@@ -80,10 +80,14 @@ export default function SanCtiProvider({
   const { user } = useAuth();
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Resolve credentials from Auth Context if not provided as props
+  // Resolve credentials from Auth Context if not provided as props.
+  // 'Agent1@Demo' is permanently logged in on another machine on SAN's
+  // server (confirmed directly against their login API — it rejects every
+  // attempt with "You are already login on another machine"), so it must
+  // never be used. 'Agent2@Demo' is the verified-working fallback.
   const bearerToken = propBearerToken || user?.token || '';
   const agentId = propAgentId || user?.id || 0;
-  const sanUsername = propSanUsername || (user?.san_username === 'Agent2@Demo' ? 'Agent1@Demo' : user?.san_username) || 'Agent1@Demo';
+  const sanUsername = propSanUsername || user?.san_username || 'Agent2@Demo';
   const sanPassword = propSanPassword || user?.san_password || 'NzJTQ1JCa2hEa2FKNzRMWXNzYzg5Zz09';
 
   // Check if there is a pending disposition stored in localStorage
@@ -126,7 +130,11 @@ export default function SanCtiProvider({
   // ── Microphone & Iframe Loading states ──
   const isMicPermissionChecked = true;
   const [isIframeLoaded, setIsIframeLoaded] = useState<boolean>(false);
-  const [isCtiMinimized, setIsCtiMinimized] = useState<boolean>(false);
+  // Widget stays minimized (90px header bar only) by default — the agent
+  // answers/dials from the CRM's own buttons via acceptIncoming()/dial(),
+  // not by clicking inside SAN's iframe, so there's no need to ever expand
+  // it automatically.
+  const [isCtiMinimized, setIsCtiMinimized] = useState<boolean>(true);
 
   // ── Disposition ──
   const [showDispositionForm, setShowDispositionForm] = useState<boolean>(pending ? true : false);
@@ -280,7 +288,7 @@ export default function SanCtiProvider({
       type: 'login',
       user_name: sanUsername,
       password: sanPassword,
-      uniqueId: String(agentId),
+      uniqueId: agentId && agentId !== 0 ? String(agentId) : '',
     });
   }, [sanUsername, sanPassword, agentId, postToSan]);
 
@@ -352,7 +360,7 @@ export default function SanCtiProvider({
     postToSan({
       type: 'dial',
       number: phoneNumber,
-      uniqueId: String(leadUserId),
+      uniqueId: leadUserId && leadUserId !== 0 ? String(leadUserId) : '',
     });
 
     // 2. Start a dialing timeout: if no SAN event comes in 60s, auto-reset to idle
@@ -420,9 +428,8 @@ export default function SanCtiProvider({
     // a [Verb]Call convention (HoldCall/UnholdCall, MuteCall/UnmuteCall); send
     // all three variants — harmless, and maximizes the chance SAN's own SIP
     // session actually tears down server-side.
-    postToSan({ type: 'HangupCall' });
+    // Tell SAN to hang up.
     postToSan({ type: 'Hangup' });
-    postToSan({ type: 'hangup' });
     stopTimer();
 
     if (!hasDialedThisSession.current) {
@@ -537,13 +544,46 @@ export default function SanCtiProvider({
    * Sends to BOTH SAN (so their system records it) AND Laravel (our system).
    */
   const submitDisposition = useCallback(async (dispositionData: DispositionData) => {
-    // 1. Send to SAN iframe (only for outgoing calls)
-    if (currentCallId !== -999 && !isIncomingCall) {
+    // 1. Send to SAN iframe — for BOTH outgoing and incoming calls. SAN's own
+    // wrap-up/manual-mode state machine needs this regardless of direction;
+    // skipping it for incoming calls (as the previous version did) leaves
+    // SAN's agent state stuck in wrap-up after every incoming call, which is
+    // why disposition appeared to "not submit" once incoming pickup started
+    // actually working.
+    // Verified directly against SAN's own init.js: their postMessage listener
+    // only recognizes type 'SubmitDisposition' (not 'SEND_DISPOSITION', which
+    // matches no case and is silently dropped), and dispositionFormSubmit's
+    // formData merge expects 'Phone_No' / 'Remark' / 'sub_disposition' /
+    // 'callback_time' — not 'phone_number' / 'remarks'.
+    //
+    // The "stuck on Processing" bug is separate: SAN's saveAgentForm rejects
+    // the request server-side when 'disposition' doesn't match one of ITS
+    // own known disposition labels (returned at login — e.g. "Connected",
+    // "Not Connected", "Call back" — not our internal lowercase values like
+    // 'connected'/'callback_later'), and their own success-handler then
+    // crashes reading resp.result.crmstates off that error response instead
+    // of showing a clean failure — which is what leaves the spinner stuck
+    // forever. sanDispositionOptions holds SAN's real list for this agent;
+    // map our value onto the closest match instead of sending it raw.
+    const SAN_DISPOSITION_FALLBACK: Record<string, string> = {
+      connected: 'Connected',
+      not_connected: 'Not Connected',
+      callback_later: 'Call back',
+    };
+    const sanDisposition = sanDispositionOptions.find(
+      (opt) => opt.toLowerCase().replace(/\s+/g, '_') === dispositionData.disposition?.toLowerCase()
+    ) || SAN_DISPOSITION_FALLBACK[dispositionData.disposition || ''] || dispositionData.disposition;
+
+    if (currentCallId !== -999) {
       postToSan({
         type: 'SubmitDisposition',
-        disposition: dispositionData.disposition,
-        remark: dispositionData.notes || '',
-        phone_number: currentPhoneNumber,
+        disposition: sanDisposition,
+        sub_disposition: dispositionData.disposition_sub || '',
+        Remark: dispositionData.notes || '',
+        Phone_No: currentPhoneNumber,
+        callback_time: dispositionData.callback_at || '',
+        agent_id: agentId && agentId !== 0 ? String(agentId) : '',
+        uniqueId: currentLeadId && currentLeadId !== 0 ? String(currentLeadId) : '',
       });
     }
 
@@ -608,7 +648,7 @@ export default function SanCtiProvider({
 
     return result;
     // callDuration intentionally omitted — use callDurationRef.current instead
-  }, [postToSan, apiCall, currentCallId, currentLeadId, currentPhoneNumber, isIncomingCall]);
+  }, [postToSan, apiCall, currentCallId, currentLeadId, currentPhoneNumber, isIncomingCall, sanDispositionOptions]);
 
   // ═══════════════════════════════════════════════════════════
   // SAN EVENT LISTENERS
@@ -834,9 +874,10 @@ export default function SanCtiProvider({
           break;
         }
 
-        // ── HOLD ──
+        // ── HOLD ── matches SAN's own reference exactly: `data.set == 1`
+        // (their `set` field arrives as either a number or a numeric string).
         case 'SANAppHoldEvent':
-          setIsHeld(payload?.hold === 1 || payload?.set === '1' || payload?.set === 1);
+          setIsHeld(payload?.set === 1 || payload?.set === '1');
           break;
 
         // ── BREAK ──
@@ -963,15 +1004,35 @@ export default function SanCtiProvider({
   // Guarded: only logs in if agentStateRef.current is 'logged_out' to prevent
   // duplicate login messages from resetting active SIP sessions when credentials
   // or other state changes trigger a re-render.
+  //
+  // Retries every 2s (up to 5 times) as long as agentState is still
+  // 'logged_out': the iframe's `load` event firing does not guarantee SAN's
+  // own window.addEventListener('message', ...) has been registered yet —
+  // a login sent in that gap is silently dropped, leaving the agent stuck on
+  // SAN's raw login screen with no SIP session, so dialing/answering never
+  // does anything real. A few retries make that race harmless.
   useEffect(() => {
-    if (!sanUsername || !isIframeLoaded) return;
+    if (!user || !sanUsername || !isIframeLoaded) return;
     if (agentStateRef.current !== 'logged_out') {
       console.log('[SAN CTI] Skip auto-login: agentState is already', agentStateRef.current);
       return;
     }
-    console.log('[SAN CTI] Iframe loaded and mic permission resolved. Performing initial login...');
+    console.log('[SAN CTI] Iframe loaded and user profile resolved. Performing initial login...');
     login();
-  }, [login, sanUsername, isIframeLoaded]);
+
+    let attempts = 1;
+    const retryTimer = setInterval(() => {
+      if (agentStateRef.current !== 'logged_out' || attempts >= 5) {
+        clearInterval(retryTimer);
+        return;
+      }
+      attempts += 1;
+      console.log('[SAN CTI] Still logged_out after previous attempt — retrying login, attempt', attempts);
+      login();
+    }, 2000);
+
+    return () => clearInterval(retryTimer);
+  }, [login, sanUsername, isIframeLoaded, user]);
 
   // ── Monitor SanCtiProvider lifecycle ──
   useEffect(() => {
@@ -1005,8 +1066,14 @@ export default function SanCtiProvider({
 
   // ── Expose global dial, hold, and mute functions for lead cards and CRM toolbar ──
   useEffect(() => {
-    (window as any)._sanDial = (phoneNumber: string, leadUserId: number | string, name?: string, tmid?: string, leadType?: string) => {
+    const handleDial = (phoneNumber: string, leadUserId: number | string = 0, name?: string, tmid?: string, leadType?: string) => {
       dial(phoneNumber, leadUserId, name, tmid, leadType);
+    };
+    (window as any)._sanDial = handleDial;
+    (window as any).dialAgentCall = (number?: string) => {
+      if (number) {
+        handleDial(number.trim(), 0, 'Manual Outbound');
+      }
     };
     (window as any).toggleHold = () => {
       toggleHold();
@@ -1016,6 +1083,7 @@ export default function SanCtiProvider({
     };
     return () => {
       delete (window as any)._sanDial;
+      delete (window as any).dialAgentCall;
       delete (window as any).toggleHold;
       delete (window as any).toggleMute;
     };
@@ -1064,27 +1132,20 @@ export default function SanCtiProvider({
     <SanCtiContext.Provider value={value}>
       {children}
 
-      {/* ── SAN Softphone Iframe Container ──
+      {/* ── SAN Softphone Iframe ──
           Mounts only after the mic permission check finishes so that the iframe's
           SIP engine doesn't attempt registration before mic access is determined.
 
-          Sizing/pointer-events while ringing: a cross-origin iframe can NEVER
-          receive a "trusted" gesture forwarded from the parent via postMessage
-          — that's a deliberate browser security boundary, confirmed by SAN's
-          own widget working fine with full audio both ways when opened
-          standalone (real clicks land directly in their document there) but
-          failing one-directional when embedded invisibly here (clicks only
-          ever hit our React button, never SAN's document). So instead of
-          trying to message our way around it, we make the iframe itself the
-          actual click target at the one moment that matters: while an
-          incoming call is ringing, it expands to cover the same screen
-          region as CallControlBar's Answer button and becomes clickable.
-          The agent's real, physical click then lands as a genuine trusted
-          event inside SAN's own document — satisfying whatever per-frame
-          audio-unlock requirement their page has — while our onClick below
-          still drives the same acceptIncoming() the visible button would
-          have called. At every other time it's back to a 150x150 sliver in
-          the corner, invisible and non-interactive, same as before.
+          Stays minimized to a small 90px header bar by default — dialing,
+          hold, mute and disposition all go through the CRM's own buttons
+          (dial/toggleHold/toggleMute/submitDisposition, all postMessage to
+          SAN). Answering an incoming call is the one exception: it auto-
+          expands to full size while callState is 'incoming_ringing' so the
+          agent can click SAN's own native Answer button directly — a real,
+          trusted click inside SAN's own document, not a postMessage from
+          outside it. It collapses back to minimized as soon as the call
+          state moves past ringing. The agent can also expand it manually
+          via the +/− button at any other time.
       ──────────────────────────────────────────────────────────────── */}
       {isMicPermissionChecked && (
         <div style={{
@@ -1092,7 +1153,11 @@ export default function SanCtiProvider({
           bottom: 25,
           left: 25,
           width: 320,
-          height: (callState === 'incoming_ringing') ? 440 : (isCtiMinimized ? 90 : 440),
+          // 90, not 40 — the header bar alone is 40px, so anything lower
+          // than 90 squashes the iframe content area to ~0px height. SAN's
+          // own internal call handling appears to depend on the iframe
+          // actually having a real rendered size even while minimized.
+          height: callState === 'incoming_ringing' ? 440 : (isCtiMinimized ? 90 : 440),
           zIndex: 9999,
           borderRadius: 12,
           boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
@@ -1113,27 +1178,17 @@ export default function SanCtiProvider({
             alignItems: 'center',
             justifyContent: 'space-between',
             userSelect: 'none',
+            flexShrink: 0,
           }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: '#F3F4F6' }}>
-              SAN Softphone
+              SAN Softphone — {agentState}
             </span>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <button
-                onClick={logout}
-                style={{
-                  padding: '2px 8px',
-                  borderRadius: 4,
-                  border: '1px solid #EF4444',
-                  backgroundColor: '#991B1B',
-                  color: '#fff',
-                  fontSize: 10,
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                }}
-                title="Logout CTI"
-              >
-                Logout
-              </button>
+              {/* No Logout button: SAN's own init.js logOut() unconditionally
+                  reads currentAgent.name off its internal state and throws
+                  if that was never populated (e.g. login never completed) —
+                  a bug in their script we can't fix from here. Ending the
+                  session by navigating away/refreshing is the safe path. */}
               <button
                 onClick={() => setIsCtiMinimized(!isCtiMinimized)}
                 style={{
@@ -1203,7 +1258,8 @@ export default function SanCtiProvider({
               }}
               title="SAN CTI"
               onLoad={() => {
-                console.log('[SAN IFRAME] loaded successfully');
+                console.log('[SAN IFRAME] loaded successfully. Resetting agentState to logged_out to force login handshake.');
+                setAgentState('logged_out');
                 setIsIframeLoaded(true);
               }}
               onError={() => console.error('[SAN IFRAME] failed to load')}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useGetTeamSummaryQuery, useGetTeamParityQuery } from '../../services/api/incentiveApi';
+import { PageCardSkeleton } from '../../components/PageSkeleton';
 
 export default function IncentiveCommandCenter() {
   const [activeProcess, setActiveProcess] = useState<string>('all');
@@ -7,11 +8,7 @@ export default function IncentiveCommandCenter() {
   const { data: parities, isLoading: isParityLoading } = useGetTeamParityQuery();
 
   if (isCallersLoading || isParityLoading || !callers || !parities) {
-    return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
-        <div className="text-gray-500 font-medium animate-pulse">Loading Incentive Command Center...</div>
-      </div>
-    );
+    return <PageCardSkeleton cards={6} title="Incentive Command Center" />;
   }
 
   // Heatmap: Caller-Day conversions matrix simulation

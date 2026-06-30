@@ -1,4 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useGetThLeadManagementQuery, useGetThTelecallersQuery, useTransferThLeadsMutation, useReassignThColdLeadsMutation } from '../../services/api/teleheadApi';
+import { PageTableSkeleton } from '../../components/PageSkeleton';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type LeadStatus = 'HOT' | 'WARM' | 'COLD';
@@ -66,20 +68,41 @@ const COLD_LEADS_SEED: ColdLead[] = [
 ];
 
 const STATUS_FILTERS = ['All', 'HOT', 'WARM', 'COLD'] as const;
-const DATE_FILTERS = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days', 'All Time'] as const;
+const DATE_FILTERS = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days', 'All Time', 'Custom'] as const;
 const CALLERS = ['All Callers', 'Animesh Roy', 'Sunita Sharma', 'Preeti Jain', 'Unassigned'];
 const ROWS_OPTIONS = [5, 10, 25, 50] as const;
 
 type StatusFilter = typeof STATUS_FILTERS[number];
 type DateFilter = typeof DATE_FILTERS[number];
 
+const getTodayDateString = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const getDateNDaysAgo = (days: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // ── Component ───────────────────────────────────────────────────────────────
 export const ThLeadManagementConsole: React.FC = () => {
-  // Filters
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
-  const [dateFilter, setDateFilter] = useState<DateFilter>('Last 7 Days');
-  const [callerFilter, setCallerFilter] = useState('All Callers');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Draft Filters (bound to UI inputs)
+  const [draftStatus, setDraftStatus] = useState<StatusFilter>('All');
+  const [draftDateFilter, setDraftDateFilter] = useState<DateFilter>('Last 7 Days');
+  const [draftCustomFromDate, setDraftCustomFromDate] = useState('');
+  const [draftCustomToDate, setDraftCustomToDate] = useState('');
+  const [draftCaller, setDraftCaller] = useState<number | 'unassigned' | 'ALL'>('ALL');
+  const [draftSearch, setDraftSearch] = useState('');
+
+  // Applied Filters (used for API query)
+  const [appliedStatus, setAppliedStatus] = useState<StatusFilter>('All');
+  const [appliedDateFilter, setAppliedDateFilter] = useState<DateFilter>('Last 7 Days');
+  const [appliedCustomFromDate, setAppliedCustomFromDate] = useState('');
+  const [appliedCustomToDate, setAppliedCustomToDate] = useState('');
+  const [appliedCaller, setAppliedCaller] = useState<number | 'unassigned' | 'ALL'>('ALL');
+  const [appliedSearch, setAppliedSearch] = useState('');
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -90,7 +113,7 @@ export const ThLeadManagementConsole: React.FC = () => {
 
   // Cold-lead drawer
   const [drawerOpen, setDrawerOpen] = useState(true);
-  const [coldLeads, setColdLeads] = useState<ColdLead[]>(COLD_LEADS_SEED);
+  const [coldLeads, setColdLeads] = useState<ColdLead[]>([]);
   const [visibleColdCount, setVisibleColdCount] = useState(6);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
@@ -102,15 +125,154 @@ export const ThLeadManagementConsole: React.FC = () => {
   const [newCaller, setNewCaller] = useState('Animesh Roy');
   const [newProcess, setNewProcess] = useState<Process>('Driver Registration');
 
+  const dateParams = useMemo(() => {
+    const today = getTodayDateString();
+    if (appliedDateFilter === 'Last 7 Days') {
+      return { from: getDateNDaysAgo(7), to: today };
+    }
+    if (appliedDateFilter === 'Last 14 Days') {
+      return { from: getDateNDaysAgo(14), to: today };
+    }
+    if (appliedDateFilter === 'Last 30 Days') {
+      return { from: getDateNDaysAgo(30), to: today };
+    }
+    if (appliedDateFilter === 'Custom') {
+      return { from: appliedCustomFromDate || undefined, to: appliedCustomToDate || undefined };
+    }
+    return { from: undefined, to: undefined };
+  }, [appliedDateFilter, appliedCustomFromDate, appliedCustomToDate]);
+
+  const { data: apiResponse, isLoading, error, refetch } = useGetThLeadManagementQuery({
+    page: page + 1,
+    per_page: rowsPerPage,
+    search: appliedSearch.trim() || undefined,
+    status: appliedStatus === 'All' ? undefined : appliedStatus.toLowerCase(),
+    caller_id: appliedCaller === 'ALL' ? undefined : appliedCaller,
+    from: dateParams.from,
+    to: dateParams.to,
+  });
+
+  // Query cold leads
+  const { data: coldLeadsApiResponse, refetch: refetchColdLeads } = useGetThLeadManagementQuery({
+    status: 'cold',
+    per_page: 100,
+    search: appliedSearch.trim() || undefined,
+    caller_id: appliedCaller === 'ALL' ? undefined : appliedCaller,
+    from: dateParams.from,
+    to: dateParams.to,
+  });
+
+  useEffect(() => {
+    if (coldLeadsApiResponse?.data) {
+      const mapped = coldLeadsApiResponse.data.map((l: any) => {
+        // extract days number from last_called string (e.g. "24 days ago" -> 24)
+        let days = 30;
+        if (l.last_called) {
+          const match = l.last_called.match(/(\d+)/);
+          if (match) {
+            days = parseInt(match[1], 10);
+          }
+        }
+        return {
+          id: (l.tmid || l.id || '').toString(),
+          name: l.lead_name || '—',
+          tmId: l.tmid || l.id?.toString() || '—',
+          type: (l.type || 'TR') as LeadType,
+          lastCalledDays: days,
+          selected: false,
+        };
+      });
+      setColdLeads(mapped);
+    }
+  }, [coldLeadsApiResponse]);
+
+  const isFilterChanged = useMemo(() => {
+    return (
+      draftStatus !== appliedStatus ||
+      draftDateFilter !== appliedDateFilter ||
+      draftCustomFromDate !== appliedCustomFromDate ||
+      draftCustomToDate !== appliedCustomToDate ||
+      draftCaller !== appliedCaller ||
+      draftSearch !== appliedSearch
+    );
+  }, [
+    draftStatus, appliedStatus,
+    draftDateFilter, appliedDateFilter,
+    draftCustomFromDate, appliedCustomFromDate,
+    draftCustomToDate, appliedCustomToDate,
+    draftCaller, appliedCaller,
+    draftSearch, appliedSearch
+  ]);
+
+  const handleApplyFilters = () => {
+    setAppliedStatus(draftStatus);
+    setAppliedDateFilter(draftDateFilter);
+    setAppliedCustomFromDate(draftCustomFromDate);
+    setAppliedCustomToDate(draftCustomToDate);
+    setAppliedCaller(draftCaller);
+    setAppliedSearch(draftSearch);
+    setPage(0);
+  };
+
+  const isAnyFilterActive = useMemo(() => {
+    return (
+      appliedStatus !== 'All' ||
+      appliedDateFilter !== 'Last 7 Days' ||
+      appliedCaller !== 'ALL' ||
+      appliedSearch !== ''
+    );
+  }, [appliedStatus, appliedDateFilter, appliedCaller, appliedSearch]);
+
+  const handleClearFilters = () => {
+    setDraftStatus('All');
+    setDraftDateFilter('Last 7 Days');
+    setDraftCustomFromDate('');
+    setDraftCustomToDate('');
+    setDraftCaller('ALL');
+    setDraftSearch('');
+
+    setAppliedStatus('All');
+    setAppliedDateFilter('Last 7 Days');
+    setAppliedCustomFromDate('');
+    setAppliedCustomToDate('');
+    setAppliedCaller('ALL');
+    setAppliedSearch('');
+    setPage(0);
+  };
+
+  const { data: telecallersData } = useGetThTelecallersQuery();
+  const [transferThLeads, { isLoading: isTransferring }] = useTransferThLeadsMutation();
+  const [reassignThColdLeads, { isLoading: isReassigningCold }] = useReassignThColdLeadsMutation();
+
+  const telecallers = useMemo(() => {
+    return Array.isArray(telecallersData) ? telecallersData : (telecallersData?.data || []);
+  }, [telecallersData]);
+
   // Leads list
-  const [leads, setLeads] = useState<Lead[]>(() =>
-    ALL_LEADS.map(l => ({ ...l, notes: [] as string[] }))
-  );
+  const [leads, setLeads] = useState<Lead[]>([]);
+
+  useEffect(() => {
+    if (apiResponse?.data) {
+      const mapped = apiResponse.data.map((l: any) => ({
+        id: l.tmid || l.id?.toString() || '—',
+        name: l.lead_name || l.name || '—',
+        mobile: l.mobile || '—',
+        type: (l.type || 'DR') as LeadType,
+        status: (l.status || 'WARM').toUpperCase() as LeadStatus,
+        assignedCaller: l.assigned_caller || 'Unassigned',
+        process: l.process || 'Unassigned',
+        regDate: l.registration_date || l.reg_date || '—',
+        lastCalled: l.last_called || '—',
+        notes: [] as string[]
+      }));
+      setLeads(mapped);
+    }
+  }, [apiResponse]);
 
   // Reassign Modal State
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [reassignTargetIds, setReassignTargetIds] = useState<string[]>([]);
-  const [reassignTargetCaller, setReassignTargetCaller] = useState('Animesh Roy');
+  const [reassignTargetCallerId, setReassignTargetCallerId] = useState<number | ''>('');
 
   // Lead Details Modal State
   const [selectedLeadForView, setSelectedLeadForView] = useState<Lead | null>(null);
@@ -119,20 +281,24 @@ export const ThLeadManagementConsole: React.FC = () => {
   // ── Derived data ─────────────────────────────────────────────────────────
   const filteredLeads = useMemo(() =>
     leads.filter(l => {
-      if (statusFilter !== 'All' && l.status !== statusFilter) return false;
-      if (callerFilter !== 'All Callers' && l.assignedCaller !== callerFilter) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+      if (apiResponse?.pagination) return true; // Handled backend-side if API loaded
+      if (appliedStatus !== 'All' && l.status !== appliedStatus) return false;
+      if (appliedCaller !== 'ALL') {
+        const callerName = appliedCaller === 'unassigned' ? 'Unassigned' : telecallers.find((c: any) => c.id === appliedCaller)?.name;
+        if (l.assignedCaller !== callerName) return false;
+      }
+      if (appliedSearch.trim()) {
+        const q = appliedSearch.toLowerCase();
         return l.name.toLowerCase().includes(q) || l.id.toLowerCase().includes(q) || l.mobile.includes(q);
       }
       return true;
     }),
-    [leads, statusFilter, callerFilter, searchQuery]
+    [leads, appliedStatus, appliedCaller, appliedSearch, apiResponse, telecallers]
   );
 
-  const totalLeads = filteredLeads.length;
-  const totalPages = Math.ceil(totalLeads / rowsPerPage);
-  const pagedLeads = filteredLeads.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+  const totalLeads = apiResponse?.pagination ? apiResponse.pagination.total : filteredLeads.length;
+  const totalPages = apiResponse?.pagination ? apiResponse.pagination.last_page : Math.ceil(totalLeads / rowsPerPage);
+  const pagedLeads = apiResponse?.pagination ? filteredLeads : filteredLeads.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
 
   // ── Selection helpers ────────────────────────────────────────────────────
   const allPageSelected = pagedLeads.length > 0 && pagedLeads.every(l => selectedIds.has(l.id));
@@ -159,17 +325,39 @@ export const ThLeadManagementConsole: React.FC = () => {
 
   const openReassignModal = (ids: string[]) => {
     setReassignTargetIds(ids);
-    setReassignTargetCaller(CALLERS.filter(c => c !== 'All Callers' && c !== 'Unassigned')[0] || 'Animesh Roy');
+    setReassignTargetCallerId(telecallers[0]?.id || '');
     setReassignModalOpen(true);
   };
 
-  const handleConfirmReassign = () => {
-    setLeads(prev => prev.map(l => reassignTargetIds.includes(l.id) ? { ...l, assignedCaller: reassignTargetCaller } : l));
-    if (selectedLeadForView && reassignTargetIds.includes(selectedLeadForView.id)) {
-      setSelectedLeadForView(prev => prev ? { ...prev, assignedCaller: reassignTargetCaller } : null);
+  const handleConfirmReassign = async () => {
+    if (!reassignTargetCallerId) {
+      alert('Please select a caller agent.');
+      return;
     }
-    setSelectedIds(new Set());
-    setReassignModalOpen(false);
+    
+    // Check if the reassigned leads belong to the cold leads array
+    const isColdLeadTransfer = reassignTargetIds.some(id => coldLeads.some(cl => cl.tmId === id));
+    
+    try {
+      if (isColdLeadTransfer) {
+        await reassignThColdLeads({
+          to_admin_id: Number(reassignTargetCallerId),
+          user_ids: reassignTargetIds,
+        }).unwrap();
+      } else {
+        await transferThLeads({
+          to_admin_id: Number(reassignTargetCallerId),
+          user_ids: reassignTargetIds,
+        }).unwrap();
+      }
+      
+      setSelectedIds(new Set());
+      setReassignModalOpen(false);
+      refetch();
+      refetchColdLeads();
+    } catch (err: any) {
+      alert(err?.data?.message || err?.message || 'Failed to transfer leads.');
+    }
   };
 
   const handleReassign = () => {
@@ -212,17 +400,9 @@ export const ThLeadManagementConsole: React.FC = () => {
   const handleAddToReactivation = () => {
     const sel = coldLeads.filter(cl => cl.selected);
     if (!sel.length) { alert('Select at least one cold lead first.'); return; }
-    setLeads(prev => [
-      ...sel.map(cl => ({
-        id: cl.tmId, name: cl.name, mobile: '+91 99000-00000',
-        type: cl.type, status: 'WARM' as LeadStatus,
-        assignedCaller: 'Animesh Roy', process: 'KYC Verification' as Process,
-        regDate: '01 Oct, 2023', lastCalled: 'Just now',
-      })),
-      ...prev,
-    ]);
-    setColdLeads(prev => prev.filter(cl => !cl.selected));
-    alert(`${sel.length} lead(s) added to Reactivation Campaign!`);
+    
+    // Open reassign modal with the selected cold leads' TMIDs!
+    openReassignModal(sel.map(cl => cl.tmId));
   };
 
   const handleUpdateLeadField = (leadId: string, field: keyof Lead, value: any) => {
@@ -283,6 +463,10 @@ export const ThLeadManagementConsole: React.FC = () => {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
+  if (isLoading) {
+    return <PageTableSkeleton rows={10} cols={7} title="Lead Management Console" />;
+  }
+
   return (
     <main className="flex flex-col h-full bg-background relative">
 
@@ -297,12 +481,12 @@ export const ThLeadManagementConsole: React.FC = () => {
             <input
               type="text"
               placeholder="Search Name/ID/Mobile..."
-              value={searchQuery}
-              onChange={e => { setSearchQuery(e.target.value); setPage(0); }}
+              value={draftSearch}
+              onChange={e => { setDraftSearch(e.target.value); }}
               className="pl-8 pr-3 py-1 bg-gray-100 border border-gray-300 rounded-full text-[11px] outline-none focus:border-blue-500 focus:bg-white w-48 transition-all"
             />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2.5 text-gray-400 hover:text-gray-600">
+            {draftSearch && (
+              <button onClick={() => setDraftSearch('')} className="absolute right-2.5 text-gray-400 hover:text-gray-600">
                 <span className="material-symbols-outlined text-[14px]">close</span>
               </button>
             )}
@@ -310,18 +494,18 @@ export const ThLeadManagementConsole: React.FC = () => {
 
           {/* Status */}
           <label className={`relative inline-flex items-center gap-1 px-3 py-1 rounded-full border text-[11px] font-semibold cursor-pointer select-none transition-colors
-            ${statusFilter !== 'All' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-600 hover:border-blue-400'}`}>
-            Status: {statusFilter === 'All' ? 'All' : statusFilter}
-            {statusFilter !== 'All' && (
+            ${draftStatus !== 'All' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-600 hover:border-blue-400'}`}>
+            Status: {draftStatus === 'All' ? 'All' : draftStatus}
+            {draftStatus !== 'All' && (
               <span
                 className="ml-0.5 text-[12px] font-bold text-blue-500 hover:text-red-500 leading-none"
-                onClick={e => { e.preventDefault(); setStatusFilter('All'); setPage(0); }}
+                onClick={e => { e.preventDefault(); setDraftStatus('All'); }}
               >✕</span>
             )}
             <svg className="w-3 h-3 ml-0.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             <select
-              value={statusFilter}
-              onChange={e => { setStatusFilter(e.target.value as StatusFilter); setPage(0); }}
+              value={draftStatus}
+              onChange={e => { setDraftStatus(e.target.value as StatusFilter); }}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             >
               {STATUS_FILTERS.map(s => <option key={s} value={s}>{s === 'All' ? 'All Statuses' : s}</option>)}
@@ -330,35 +514,82 @@ export const ThLeadManagementConsole: React.FC = () => {
 
           {/* Date range */}
           <label className="relative inline-flex items-center gap-1 px-3 py-1 rounded-full border border-gray-300 bg-gray-100 text-gray-600 text-[11px] font-semibold cursor-pointer hover:border-blue-400 transition-colors">
-            📅 {dateFilter}
+            📅 {draftDateFilter}
             <svg className="w-3 h-3 ml-0.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             <select
-              value={dateFilter}
-              onChange={e => { setDateFilter(e.target.value as DateFilter); setPage(0); }}
+              value={draftDateFilter}
+              onChange={e => { setDraftDateFilter(e.target.value as DateFilter); }}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             >
               {DATE_FILTERS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </label>
 
+          {draftDateFilter === 'Custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={draftCustomFromDate}
+                onChange={e => { setDraftCustomFromDate(e.target.value); }}
+                className="px-2.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-[11px] font-semibold outline-none focus:border-blue-500"
+              />
+              <span className="text-[10px] text-gray-400 font-bold">TO</span>
+              <input
+                type="date"
+                value={draftCustomToDate}
+                onChange={e => { setDraftCustomToDate(e.target.value); }}
+                className="px-2.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-[11px] font-semibold outline-none focus:border-blue-500"
+              />
+            </div>
+          )}
+
           {/* Caller */}
           <label className={`relative inline-flex items-center gap-1 px-3 py-1 rounded-full border text-[11px] font-semibold cursor-pointer select-none transition-colors
-            ${callerFilter !== 'All Callers' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-600 hover:border-blue-400'}`}>
-            {callerFilter}
+            ${draftCaller !== 'ALL' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-600 hover:border-blue-400'}`}>
+            {draftCaller === 'ALL' ? 'All Callers' : draftCaller === 'unassigned' ? 'Unassigned' : telecallers.find((c: any) => c.id === Number(draftCaller))?.name || 'All Callers'}
             <svg className="w-3 h-3 ml-0.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             <select
-              value={callerFilter}
-              onChange={e => { setCallerFilter(e.target.value); setPage(0); }}
+              value={draftCaller}
+              onChange={e => {
+                const val = e.target.value;
+                setDraftCaller(val === 'ALL' ? 'ALL' : val === 'unassigned' ? 'unassigned' : Number(val));
+              }}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             >
-              {CALLERS.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="ALL">All Callers</option>
+              <option value="unassigned">Unassigned</option>
+              {telecallers.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
             </select>
           </label>
+
+          {/* Apply Filters Button */}
+          {isFilterChanged && (
+            <button
+              onClick={handleApplyFilters}
+              className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded-full text-[11px] font-bold shadow-md transition-all animate-bounce"
+            >
+              <span className="material-symbols-outlined text-[14px]">done</span>
+              Apply Filters
+            </button>
+          )}
+
+          {/* Clear Filters Button */}
+          {isAnyFilterActive && (
+            <button
+              onClick={handleClearFilters}
+              className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded-full text-[11px] font-bold shadow-md transition-all"
+            >
+              <span className="material-symbols-outlined text-[14px]">close</span>
+              Clear Filters
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => { setLeads([...ALL_LEADS]); setSelectedIds(new Set()); setPage(0); }}
+            onClick={() => { refetch(); setSelectedIds(new Set()); setPage(0); }}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded text-[11px] font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
           >
             <span className="material-symbols-outlined text-[16px]">refresh</span>
@@ -385,13 +616,35 @@ export const ThLeadManagementConsole: React.FC = () => {
                     <input type="checkbox" checked={allPageSelected} onChange={toggleAll}
                       className="rounded border-gray-300 text-blue-600 w-4 h-4 cursor-pointer" />
                   </th>
-                  {['TMID', 'Lead Name', 'Mobile', 'Type', 'Status', 'Assigned Caller', 'Process', 'Reg Date', 'Last Called', ''].map(h => (
-                    <th key={h} className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  {['TMID', 'Lead Name', 'Mobile', 'Type', 'Status', 'Assigned Caller', 'Process', 'Reg Date', 'Last Called', 'REASSIGN'].map(h => (
+                    <th key={h} className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h === 'REASSIGN' ? 'REASSIGN' : h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {pagedLeads.length === 0 ? (
+                {isLoading ? (
+                  Array.from({ length: rowsPerPage }).map((_, idx) => (
+                    <tr key={idx} className="animate-pulse">
+                      <td className="px-3 py-3.5"><div className="h-3.5 w-4 bg-gray-200 rounded"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-16"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-28"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-24"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-8"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-14"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-24"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-28"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-20"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-16"></div></td>
+                      <td className="px-3 py-3.5"></td>
+                    </tr>
+                  ))
+                ) : error ? (
+                  <tr>
+                    <td colSpan={11} className="text-center py-20 text-red-600 font-bold">
+                      ⚠️ Error loading leads from the database. Please try again.
+                    </td>
+                  </tr>
+                ) : pagedLeads.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="text-center py-20 text-gray-400 text-sm">
                       No leads match the current filters.
@@ -400,8 +653,7 @@ export const ThLeadManagementConsole: React.FC = () => {
                 ) : pagedLeads.map(lead => (
                   <tr
                     key={lead.id}
-                    onClick={() => setSelectedLeadForView(lead)}
-                    className={`group cursor-pointer transition-colors hover:bg-blue-50/40 ${selectedIds.has(lead.id) ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''}`}
+                    className={`group transition-colors hover:bg-slate-50/60 ${selectedIds.has(lead.id) ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''}`}
                   >
                     <td className="px-3 py-2" onClick={e => { e.stopPropagation(); toggleOne(lead.id); }}>
                       <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => {}}
@@ -417,14 +669,7 @@ export const ThLeadManagementConsole: React.FC = () => {
                     <td className="px-3 py-2 text-[11px] text-gray-500">{lead.regDate}</td>
                     <td className="px-3 py-2 text-[11px] text-gray-500">{lead.lastCalled}</td>
                     <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => setSelectedLeadForView(lead)}
-                          className="text-gray-400 hover:text-blue-600"
-                          title="View Details"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">visibility</span>
-                        </button>
+                      <div className="flex justify-end gap-2">
                         <button
                           onClick={() => openReassignModal([lead.id])}
                           className="text-gray-400 hover:text-blue-600"
@@ -691,23 +936,30 @@ export const ThLeadManagementConsole: React.FC = () => {
               <div>
                 <label className="block font-semibold text-gray-500 mb-1 uppercase text-[10px] tracking-wider">Select Caller</label>
                 <select 
-                  value={reassignTargetCaller} 
-                  onChange={e => setReassignTargetCaller(e.target.value)}
+                  value={reassignTargetCallerId} 
+                  onChange={e => setReassignTargetCallerId(Number(e.target.value))}
                   className="w-full h-9 border border-gray-300 px-2 rounded bg-white focus:border-blue-500 outline-none"
+                  disabled={isTransferring}
                 >
-                  {CALLERS.filter(c => c !== 'All Callers').map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value="" disabled>Select Caller...</option>
+                  {telecallers.map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="pt-3 border-t border-gray-200 flex justify-end gap-2">
-                <button type="button" onClick={() => setReassignModalOpen(false)}
-                  className="px-5 py-2 border border-gray-300 hover:bg-gray-100 text-gray-700 font-semibold rounded transition-colors text-[11px]">
+                <button type="button" onClick={() => setReassignModalOpen(false)} disabled={isTransferring}
+                  className="px-5 py-2 border border-gray-300 hover:bg-gray-100 text-gray-700 font-semibold rounded transition-colors text-[11px] disabled:opacity-50">
                   Cancel
                 </button>
                 <button 
                   onClick={handleConfirmReassign}
-                  className="px-5 py-2 bg-blue-600 text-white hover:bg-blue-700 font-bold rounded shadow-sm transition-colors text-[11px]"
+                  disabled={isTransferring || !reassignTargetCallerId}
+                  className="px-5 py-2 bg-blue-600 text-white hover:bg-blue-700 font-bold rounded shadow-sm transition-colors text-[11px] disabled:opacity-50"
                 >
-                  Confirm Transfer
+                  {isTransferring ? 'Transferring...' : 'Confirm Transfer'}
                 </button>
               </div>
             </div>

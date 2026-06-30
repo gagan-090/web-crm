@@ -8,7 +8,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://192.168.29.240',
+        target: 'http://192.168.1.37/truckmitr',
         changeOrigin: true,
       }
     }

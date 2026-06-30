@@ -1,11 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useGetTargetQuery, useSetTargetMutation } from '../../services/api/webCrmApi';
+import {
+  useGetThBacklogStatsQuery,
+  useLaunchThSprintMutation,
+  useGetThTelecallersQuery,
+  useUpdateThSprintProgressMutation,
+} from '../../services/api/teleheadApi';
+import { PageCardSkeleton } from '../../components/PageSkeleton';
 
 export const ThBacklogSprintManager: React.FC = () => {
   const [team, setTeam] = useState('Level 2 Support (14 Callers)');
   const [dateRange, setDateRange] = useState('Oct 24 - Oct 31');
   const [callLimit, setCallLimit] = useState('150');
   const [sprintActive, setSprintActive] = useState(true);
+  const [selectedCallers, setSelectedCallers] = useState<number[]>([]);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Backend backlog API integration
+  const { data: backlogData, refetch: refetchBacklog, isLoading: isBacklogLoading } = useGetThBacklogStatsQuery();
+  const { data: telecallersData } = useGetThTelecallersQuery();
+  const [launchSprint] = useLaunchThSprintMutation();
+  const [updateSprintProgress] = useUpdateThSprintProgressMutation();
+
+  console.log('Backlog statistics data payload:', backlogData);
 
   // Backend target sync
   const { data: sprintConfigData } = useGetTargetQuery('tm_th_backlog_sprint');
@@ -20,10 +37,39 @@ export const ThBacklogSprintManager: React.FC = () => {
     }
   }, [sprintConfigData]);
 
+  const callersListRaw = Array.isArray(backlogData?.callers)
+    ? backlogData.callers
+    : (Array.isArray(backlogData?.data?.callers)
+      ? backlogData.data.callers
+      : (Array.isArray(telecallersData)
+        ? telecallersData
+        : (telecallersData?.data || [
+            { id: 1, name: 'Animesh Kumar' },
+            { id: 2, name: 'Sunita Devi' },
+            { id: 3, name: 'Rahul Prasad' },
+            { id: 4, name: 'Sonam' },
+            { id: 5, name: 'Ankit Singh' }
+          ])));
+
+  const callersList = callersListRaw.map((c: any) => ({
+    id: Number(c.id ?? c.admin_id ?? c.caller_id),
+    name: c.name ?? c.caller_name ?? c.admin_name ?? 'Caller'
+  })).filter((c: any) => !isNaN(c.id) && c.id !== 0);
+
   // Derived callers count and capacity
-  const callersCount = team.includes('14') ? 14 : team.includes('8') ? 8 : 5;
+  const callersCount = selectedCallers.length;
   const limitNum = parseInt(callLimit) || 0;
   const projectedCapacity = callersCount * limitNum;
+
+
+
+  const handleToggleCaller = (id: any) => {
+    const numericId = Number(id);
+    if (isNaN(numericId)) return;
+    setSelectedCallers(prev =>
+      prev.includes(numericId) ? prev.filter(cId => cId !== numericId) : [...prev, numericId]
+    );
+  };
 
   // Active callers performance list
   const [callersData, setCallersData] = useState([
@@ -32,6 +78,37 @@ export const ThBacklogSprintManager: React.FC = () => {
     { name: 'Rahul Prasad', code: 'RP', avatarBg: 'bg-error-container', attempted: 12, conversion: 2.4, status: 'IDLE / ALERT' },
   ]);
 
+  // Synchronize callers from backlog Stats API if available
+  useEffect(() => {
+    const rawCallers = 
+      backlogData?.callers ?? 
+      backlogData?.data?.callers ?? 
+      backlogData?.active_callers ?? 
+      backlogData?.data?.active_callers ?? 
+      backlogData?.sprint_callers ?? 
+      backlogData?.data?.sprint_callers ?? 
+      backlogData?.telecallers ?? 
+      backlogData?.data?.telecallers ?? 
+      backlogData?.performance ?? 
+      backlogData?.data?.performance ?? 
+      backlogData?.sprint_performance ?? 
+      backlogData?.data?.sprint_performance;
+
+    if (rawCallers && Array.isArray(rawCallers)) {
+      setCallersData(rawCallers.map((c: any) => {
+        const name = c.name ?? c.caller_name ?? c.admin_name ?? c.userName ?? 'Caller';
+        return {
+          name,
+          code: c.code ?? (name ? name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : 'C'),
+          avatarBg: c.avatarBg ?? 'bg-secondary-fixed',
+          attempted: Number(c.attempted ?? c.calls_count ?? c.calls ?? c.attempted_count ?? c.total_calls ?? c.total_attempted ?? 0),
+          conversion: Number(c.conversion ?? c.conversion_rate ?? c.conversion_percentage ?? c.conv_pct ?? c.success_rate ?? 0),
+          status: c.status ?? 'IN PROGRESS'
+        };
+      }));
+    }
+  }, [backlogData]);
+
   // Adjust attempts and statuses when limit changes or sprint status changes
   useEffect(() => {
     if (!sprintActive) {
@@ -39,11 +116,7 @@ export const ThBacklogSprintManager: React.FC = () => {
       return;
     }
 
-    setCallersData([
-      { name: 'Animesh Kumar', code: 'AK', avatarBg: 'bg-secondary-fixed', attempted: Math.min(142, limitNum), conversion: 12.4, status: 'COMPLETING' },
-      { name: 'Sunita Devi', code: 'SD', avatarBg: 'bg-tertiary-fixed', attempted: Math.min(88, limitNum), conversion: 8.1, status: 'IN PROGRESS' },
-      { name: 'Rahul Prasad', code: 'RP', avatarBg: 'bg-error-container', attempted: Math.min(12, limitNum), conversion: 2.4, status: 'IDLE / ALERT' },
-    ].map(c => {
+    setCallersData(prev => prev.map(c => {
       let status = c.status;
       if (c.attempted >= limitNum) {
         status = 'COMPLETED';
@@ -65,6 +138,13 @@ export const ThBacklogSprintManager: React.FC = () => {
 
   const handleDeploy = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const selectedCallerIds = selectedCallers;
+
+    // Default start/end dates
+    const startDate = new Date().toISOString().split('T')[0];
+    const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
     const config = {
       team,
       dateRange,
@@ -72,13 +152,33 @@ export const ThBacklogSprintManager: React.FC = () => {
       sprintActive: true,
       lastUpdated: new Date().toLocaleString()
     };
+
     try {
+      if (sprintActive) {
+        // Call backend POST /webcrm/telehead/backlog/sprint-progress
+        await updateSprintProgress({
+          caller_ids: selectedCallerIds.length > 0 ? selectedCallerIds : [1],
+          daily_cap: limitNum
+        }).unwrap();
+      } else {
+        // Call backend POST /webcrm/telehead/backlog/launch-sprint
+        await launchSprint({
+          caller_ids: selectedCallerIds.length > 0 ? selectedCallerIds : [1],
+          start_date: startDate,
+          end_date: endDate,
+          daily_cap: limitNum,
+          process_filter: 'all'
+        }).unwrap();
+      }
+
+      // Persist UI config target
       await saveSprintConfig({ key: 'tm_th_backlog_sprint', value: config }).unwrap();
+      
       setSprintActive(true);
-      alert('Backlog sprint deployed successfully!');
+      refetchBacklog();
+      alert(sprintActive ? 'Backlog sprint updated successfully!' : 'Backlog sprint deployed successfully!');
     } catch (err) {
-      alert('Failed to deploy sprint on backend. Saving state locally.');
-      setSprintActive(true);
+      alert('Failed to execute sprint operation: ' + JSON.stringify(err));
     }
   };
 
@@ -93,12 +193,17 @@ export const ThBacklogSprintManager: React.FC = () => {
     try {
       await saveSprintConfig({ key: 'tm_th_backlog_sprint', value: config }).unwrap();
       setSprintActive(false);
+      refetchBacklog();
       alert('Backlog sprint has been ended/cancelled.');
     } catch (err) {
       alert('Failed to cancel sprint on backend. Ending state locally.');
       setSprintActive(false);
     }
   };
+
+  if (isBacklogLoading) {
+    return <PageCardSkeleton cards={4} title="Backlog Sprint Manager" />;
+  }
 
   return (
     <main className=" p-md min-h-[calc(100vh-56px)]">
@@ -108,22 +213,36 @@ export const ThBacklogSprintManager: React.FC = () => {
           <div className="z-10">
             <p className="text-label-caps text-on-surface-variant uppercase tracking-wider mb-1">Backlog Sprint Health</p>
             <div className="flex items-baseline gap-4">
-              <h2 className="text-[42px] font-extrabold text-primary leading-none">37,384</h2>
+              <h2 className="text-[42px] font-extrabold text-primary leading-none">
+                {(backlogData?.data?.total_backlog ?? backlogData?.total_backlog ?? backlogData?.data?.uncalled_leads ?? backlogData?.uncalled_leads ?? backlogData?.data?.total ?? backlogData?.total ?? 37384).toLocaleString()}
+              </h2>
               <span className="text-lg font-bold text-on-surface-variant">Uncalled Leads</span>
             </div>
             <p className="mt-2 text-sm text-on-surface-variant flex items-center gap-1">
-              <span className="text-error font-bold">+12%</span> volume increase from last 48 hours
+              <span className="text-error font-bold">
+                {backlogData?.data?.volume_increase_percentage ?? backlogData?.volume_increase_percentage ?? backlogData?.data?.volume_increase_pct ?? backlogData?.volume_increase_pct ?? backlogData?.data?.volume_increase ?? backlogData?.volume_increase
+                  ? `+${backlogData?.data?.volume_increase_percentage ?? backlogData?.volume_increase_percentage ?? backlogData?.data?.volume_increase_pct ?? backlogData?.volume_increase_pct ?? backlogData?.data?.volume_increase ?? backlogData?.volume_increase}%`
+                  : '+12%'}
+              </span> volume increase from last 48 hours
               <span className="material-symbols-outlined text-error text-[18px]">trending_up</span>
             </p>
           </div>
           <div className="flex gap-lg z-10">
             <div className="text-center px-lg border-l border-outline-variant">
               <p className="text-label-caps text-on-surface-variant">Est. Clearance</p>
-              <p className="text-xl font-bold">4.2 Days</p>
+              <p className="text-xl font-bold">
+                {backlogData?.data?.est_clearance_days ?? backlogData?.est_clearance_days ?? backlogData?.data?.est_clearance ?? backlogData?.est_clearance
+                  ? `${backlogData?.data?.est_clearance_days ?? backlogData?.est_clearance_days ?? backlogData?.data?.est_clearance ?? backlogData?.est_clearance} Days`
+                  : '4.2 Days'}
+              </p>
             </div>
             <div className="text-center px-lg border-l border-outline-variant">
               <p className="text-label-caps text-on-surface-variant">Avg. Aging</p>
-              <p className="text-xl font-bold">18 Days</p>
+              <p className="text-xl font-bold">
+                {backlogData?.data?.avg_aging_days ?? backlogData?.avg_aging_days ?? backlogData?.data?.avg_aging ?? backlogData?.avg_aging
+                  ? `${backlogData?.data?.avg_aging_days ?? backlogData?.avg_aging_days ?? backlogData?.data?.avg_aging ?? backlogData?.avg_aging} Days`
+                  : '18 Days'}
+              </p>
             </div>
           </div>
         </div>
@@ -148,17 +267,43 @@ export const ThBacklogSprintManager: React.FC = () => {
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-md mb-lg">
-            <div className="space-y-1">
-              <label className="text-label-caps text-[11px] text-on-surface-variant">SELECT CALLER TEAM</label>
-              <select 
-                value={team}
-                onChange={(e) => setTeam(e.target.value)}
-                className="w-full bg-surface-container border border-outline-variant rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none"
+            <div className="space-y-1 relative">
+              <label className="text-label-caps text-[11px] text-on-surface-variant">SELECT CALLERS</label>
+              <div 
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                className="w-full bg-surface-container border border-outline-variant rounded px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none cursor-pointer flex justify-between items-center min-h-[38px]"
               >
-                <option>Level 2 Support (14 Callers)</option>
-                <option>High Velocity Team (8 Callers)</option>
-                <option>Retention Specialists (5 Callers)</option>
-              </select>
+                <span className="truncate">
+                  {selectedCallers.length === 0 
+                    ? 'Select Callers...' 
+                    : `${selectedCallers.length} Callers Selected`}
+                </span>
+                <span className="material-symbols-outlined text-[18px]">
+                  {dropdownOpen ? 'expand_less' : 'expand_more'}
+                </span>
+              </div>
+              
+              {dropdownOpen && (
+                <div className="absolute left-0 right-0 mt-1 bg-white border border-outline-variant rounded shadow-lg z-50 max-h-48 overflow-y-auto p-xs space-y-xs">
+                  {callersList.map((c: any) => {
+                    const isChecked = selectedCallers.includes(Number(c.id));
+                    return (
+                      <label 
+                        key={c.id} 
+                        className="flex items-center gap-sm px-sm py-1.5 hover:bg-surface-container rounded cursor-pointer select-none text-xs font-semibold"
+                      >
+                        <input 
+                          type="checkbox" 
+                          checked={isChecked}
+                          onChange={() => handleToggleCaller(c.id)}
+                          className="w-4 h-4 accent-primary rounded border-outline-variant"
+                        />
+                        <span>{c.name || 'Caller'}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div className="space-y-1">
               <label className="text-label-caps text-[11px] text-on-surface-variant">DATE RANGE</label>

@@ -1,16 +1,13 @@
 import { useState } from 'react';
 import { useGetTeamSummaryQuery } from '../../services/api/incentiveApi';
+import { PageTableSkeleton } from '../../components/PageSkeleton';
 
 export default function PayrollExport() {
   const { data: callers, isLoading } = useGetTeamSummaryQuery('all');
   const [exporting, setExporting] = useState<string | null>(null);
 
   if (isLoading || !callers) {
-    return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
-        <div className="text-gray-500 font-medium animate-pulse">Loading Payroll ledger...</div>
-      </div>
-    );
+    return <PageTableSkeleton rows={8} cols={9} title="Payroll Export Console" />;
   }
 
   // Calculate full payouts per caller

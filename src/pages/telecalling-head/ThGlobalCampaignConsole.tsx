@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useGetTargetQuery, useSetTargetMutation } from '../../services/api/webCrmApi';
+import { PageCardSkeleton } from '../../components/PageSkeleton';
 
 interface Campaign {
   id: string;
@@ -17,8 +18,8 @@ export const ThGlobalCampaignConsole: React.FC = () => {
   const [consoleTab, setConsoleTab] = useState<'CAMPAIGNS' | 'QUEUE' | 'ANALYTICS' | 'QUALITY' | 'SPEND_ROI' | 'OVERRIDE_LOG' | 'TARGETS'>('CAMPAIGNS');
 
   // Backend target sync
-  const { data: adminTargetsData } = useGetTargetQuery('tm_admin_th_targets');
-  const { data: tlTargetsData } = useGetTargetQuery('tm_th_tl_targets');
+  const { data: adminTargetsData, isLoading: isAdminTargetsLoading } = useGetTargetQuery('tm_admin_th_targets');
+  const { data: tlTargetsData, isLoading: isTlTargetsLoading } = useGetTargetQuery('tm_th_tl_targets');
   const [saveTarget] = useSetTargetMutation();
 
   // Target delegation states
@@ -341,6 +342,10 @@ export const ThGlobalCampaignConsole: React.FC = () => {
     campaigns.reduce((acc, c) => acc + c.conversionRate * c.connectedLeads, 0) /
     (totalConnectedLeads || 1)
   ).toFixed(1);
+
+  if (isAdminTargetsLoading && isTlTargetsLoading) {
+    return <PageCardSkeleton cards={6} title="Global Campaign Console" />;
+  }
 
   return (
     <main className="flex flex-col min-h-screen bg-background relative">

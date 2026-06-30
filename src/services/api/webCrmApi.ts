@@ -164,7 +164,10 @@ export interface DwLeadDetailResponse {
       call_remarks: string | null;
       call_recording: string | null;
       created_at: string;
+      active_time?: number;
     }>;
+    mm_history?: Array<any>;
+    applied_jobs?: Array<any>;
     payments: Array<{
       id: number;
       subscription_plan_id: string | null;
@@ -548,11 +551,34 @@ export interface TlDashboardResponse {
   status: boolean;
   data: {
     kpis: {
-      activeCallers: number;
-      slaBreaches: number;
-      callsToday: number;
-      unresolvedCalls: number;
+      currentRevenue: number;
+      targetRevenue: number;
+      efficiency: number;
+      totalCalls: number;
+      callsTrend: number;
+      avgHandling: string;
+      slaCompliance: number;
+      conversion: number;
     };
+    roster: Array<{
+      id: number;
+      name: string;
+      role: string;
+      status: string;
+      calls: number;
+      rev: number;
+      queue: number;
+      conv: number;
+    }>;
+    callbacks: Array<{
+      id: number;
+      user_id: string;
+      user_name: string;
+      time: string;
+      is_expired: boolean;
+      assigned_name: string;
+      priority: string;
+    }>;
   };
 }
 
@@ -773,8 +799,11 @@ export const webCrmApi = baseApi.injectEndpoints({
     }),
 
     // TL Endpoint
-    getTlDashboard: builder.query<TlDashboardResponse, void>({
-      query: () => '/web-crm/tl/dashboard',
+    getTlDashboard: builder.query<TlDashboardResponse, { department?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/tl/dashboard',
+        params: params || undefined,
+      }),
     }),
     getTlRoster: builder.query<TlRosterResponse, void>({
       query: () => '/web-crm/tl/roster',
@@ -818,6 +847,7 @@ export const webCrmApi = baseApi.injectEndpoints({
 export const {
   useGetDwDashboardQuery,
   useGetDwQueueQuery,
+  useLazyGetDwQueueQuery,
   useGetDwQueueCountsQuery,
   useGetDwQueueFreshQuery,
   useGetDwQueueOldQuery,

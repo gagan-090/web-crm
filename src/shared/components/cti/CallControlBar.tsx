@@ -21,7 +21,6 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
     currentPhoneNumber,
     currentLeadName,
     isIncomingCall,
-    acceptIncoming,
   } = useSanCti();
 
   const activeName = driverName || currentLeadName || currentPhoneNumber || 'Unknown';
@@ -101,13 +100,21 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
 
       {/* Call controls */}
       <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        {/* No Answer button: the SAN widget auto-expands to full size while
+            incoming_ringing specifically so the agent answers with a real
+            click on SAN's own native button — the only path that reliably
+            carries two-way audio. A postMessage-only Answer button here
+            would either replace that (losing the real click) or fire
+            alongside it (a double-answer that corrupts the call setup). */}
         {callState === 'incoming_ringing' && (
-          <button onClick={acceptIncoming} style={{
-            ...btnStyle,
-            backgroundColor: '#22C55E',
+          <span style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: '#FCD34D',
+            whiteSpace: 'nowrap',
           }}>
-            Answer
-          </button>
+            👈 Answer from the SAN Softphone widget
+          </span>
         )}
 
         {callState === 'connected' && (

@@ -4,6 +4,7 @@ import {
   useSubmitDwFeedbackMutation
 } from '../../services/api/webCrmApi';
 import { useQueueCache, useQueueCountsCache, invalidateQueueCache } from '../../shared/hooks/useQueueCache';
+import type { QueueType } from '../../shared/hooks/useQueueCache';
 import { useSanCti } from '../../shared/components/cti/SanCtiProvider';
 
 const SkeletonCard = () => (
@@ -24,7 +25,14 @@ export const DwCallQueue: React.FC = () => {
   const { dial, callState } = useSanCti();
 
   // Search, Tab, Sort & Pagination States
-  const [activeTab, setActiveTab] = useState<'fresh' | 'old' | 'uncalled' | 'callbacks' | 'called'>('fresh');
+  const [activeTab, setActiveTab] = useState<QueueType>(
+    (sessionStorage.getItem('dw_queue_tab') as QueueType) || 'fresh'
+  );
+
+  useEffect(() => {
+    sessionStorage.setItem('dw_queue_tab', activeTab);
+  }, [activeTab]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
@@ -123,13 +131,16 @@ export const DwCallQueue: React.FC = () => {
   // ever having navigated away to do it.
   useEffect(() => {
     const handleDispositionComplete = () => {
-      if (selectedId) {
-        removeLead(Number(selectedId));
-      }
       invalidateQueueCache();
       refetchCounts();
       refetchQueue();
-      refetchDetail();
+      if (selectedId) {
+        // useGetDwLeadDetailQuery is skip:true when selectedId is empty —
+        // refetch() throws "Cannot refetch a query that has not been
+        // started yet" if called while skipped.
+        removeLead(Number(selectedId));
+        refetchDetail();
+      }
     };
     window.addEventListener('san-disposition-complete', handleDispositionComplete);
     return () => window.removeEventListener('san-disposition-complete', handleDispositionComplete);
@@ -138,19 +149,21 @@ export const DwCallQueue: React.FC = () => {
   const driverProfile = detailResponse?.data?.profile;
   const planCard = detailResponse?.data?.plan_card;
   const ivrHistory = detailResponse?.data?.ivr_history || [];
+  const mmHistory = detailResponse?.data?.mm_history || [];
+  const appliedJobs = detailResponse?.data?.applied_jobs || [];
 
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
-  const getBorderColorClass = (lead: any) => {
-    if (lead.last_status === 'callback_later') {
-      return 'border-[#27AE60]'; // Green
-    }
-    if (!lead.last_status) {
-      return 'border-[#3498DB]'; // Blue (Fresh)
-    }
+  const getBorderColorClass = (l: any) => {
+    if (activeTab === 'all') return 'border-gray-300';
+    if (activeTab === 'fresh') return 'border-[#3498DB]'; // Blue
+    if (activeTab === 'old') return 'border-[#9B59B6]'; // Purple
+    if (activeTab === 'uncalled') return 'border-[#E67E22]'; // Orange
+    if (activeTab === 'callbacks') return l.overdue ? 'border-[#E74C3C]' : 'border-[#F1C40F]'; // Red or Yellow
+    if (activeTab === 'called') return 'border-[#27AE60]'; // Green
     return 'border-gray-200';
   };
 
@@ -209,19 +222,20 @@ export const DwCallQueue: React.FC = () => {
     }
   };
 
-  // Call timeline — sourced solely from call_history_ivr.
-  // status stays as the raw lowercase DB value (e.g. 'connected',
-  // 'not_connected', 'callback_later') so the badge color lookup below
-  // doesn't depend on any pre-formatted display string.
-  const combinedHistory = [...ivrHistory]
+  // Call timeline — sourced from call_history_ivr and jobs_match_making.
+  const combinedHistory = [
+    ...ivrHistory.map((h: any) => ({ ...h, _source: 'IVR' })),
+    ...mmHistory.map((h: any) => ({ ...h, _source: 'Matchmaking' }))
+  ]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .map(h => ({
       date: new Date(h.created_at).toLocaleString(),
-      duration: `${Math.floor(((h as any).active_time || 0) / 60)}m ${((h as any).active_time || 0) % 60}s`,
+      duration: `${Math.floor(((h as any).active_time || (h as any).call_duration || 0) / 60)}m ${((h as any).active_time || (h as any).call_duration || 0) % 60}s`,
       status: h.call_status || '',
-      caller: h.assigned_name || 'IVR System',
+      caller: h.assigned_name || 'Admin',
       feedback: h.call_feedback || '',
-      remarks: h.call_remarks || ''
+      remarks: h.call_remarks || '',
+      source: h._source,
     }));
 
   const getStatusBadge = (status: string) => {
@@ -400,31 +414,32 @@ export const DwCallQueue: React.FC = () => {
           )}
 
           {/* Filter Tab Row */}
-          <div className="flex flex-wrap gap-1 pb-1">
+          <div className="flex overflow-x-auto pb-1 gap-1.5 scrollbar-hide shrink-0">
             {[
               { id: 'fresh', label: `Fresh (${counts?.fresh ?? 0})` },
-              { id: 'old', label: `Old Leads (${counts?.old ?? 0})` },
+              { id: 'all', label: `All (${counts?.total ?? 0})` },
+              { id: 'old', label: `Old (${counts?.old ?? 0})` },
               { id: 'uncalled', label: `Uncalled (${counts?.uncalled ?? 0})` },
               { 
                 id: 'callbacks', 
                 label: (
                   <span className="flex items-center gap-1">
-                    Callbacks ({counts?.callbacks ?? 0})
+                    CB ({counts?.callbacks ?? 0})
                     {counts?.overdue_callbacks && counts.overdue_callbacks > 0 ? (
                       <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" title={`${counts.overdue_callbacks} Overdue`}></span>
                     ) : null}
                   </span>
                 )
               },
-              { id: 'called', label: `Called Today (${counts?.called_today ?? 0})` }
+              { id: 'called', label: `Today (${counts?.called_today ?? 0})` }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id as any); setCurrentPage(1); }}
-                className={`px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap border transition-colors ${
+                className={`px-3 py-1.5 rounded-md text-[11px] font-semibold whitespace-nowrap border transition-all ${
                   activeTab === tab.id
-                    ? 'bg-[#27AE60] text-white border-[#27AE60]'
-                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-sm'
+                    : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
                 }`}
               >
                 {tab.label}
@@ -681,6 +696,61 @@ export const DwCallQueue: React.FC = () => {
               </div>
             </div>
 
+            {/* Applied Jobs Section */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 shadow-sm mb-8">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[16px]">work</span> Applied Jobs ({appliedJobs.length})
+              </h3>
+              {appliedJobs.length > 0 ? (
+                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+                  {appliedJobs.map((job: any, idx: number) => (
+                    <div key={idx} className="border border-gray-200 rounded p-3 bg-white text-xs">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-bold text-gray-900">{job.job_title || 'N/A'} (ID: {job.job_id})</span>
+                        <span className="text-gray-500">{new Date(job.applied_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase">Transporter</span>
+                          <span className="font-semibold text-gray-800">{job.transporter_name || 'N/A'} <span className="font-mono text-[9px] text-gray-400 bg-gray-100 px-1 rounded">{job.transporter_tmid}</span></span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase">Assigned Telecaller</span>
+                          <span className="font-semibold text-gray-800">{job.assigned_telecaller || 'Unassigned'}</span>
+                        </div>
+                      </div>
+                      
+                      {/* Transporter Call History */}
+                      <div>
+                        <span className="text-gray-400 block text-[9px] uppercase mb-1">Transporter Call History</span>
+                        {job.transporter_call_history && job.transporter_call_history.length > 0 ? (
+                          <div className="bg-gray-50 border border-gray-100 rounded p-2 space-y-2">
+                            {job.transporter_call_history.map((th: any, tidx: number) => (
+                              <div key={tidx} className="flex justify-between border-b border-gray-100 last:border-0 pb-1 last:pb-0">
+                                <div>
+                                  <span className="font-semibold text-gray-700 capitalize">{th.call_status}</span>
+                                  {th.call_feedback && <span className="text-gray-500 ml-1 text-[10px]">({th.call_feedback})</span>}
+                                  {th.call_remarks && <div className="text-gray-400 text-[10px] italic mt-0.5 truncate max-w-[200px]" title={th.call_remarks}>"{th.call_remarks}"</div>}
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-gray-500 block text-[10px]">{new Date(th.created_at).toLocaleDateString()}</span>
+                                  <span className="text-gray-400 text-[9px]">{th.assigned_name}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="italic text-gray-400">No recent calls recorded.</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No job applications found.</p>
+              )}
+            </div>
+
             {/* History and Notes Column Layout */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
               
@@ -697,7 +767,12 @@ export const DwCallQueue: React.FC = () => {
                       return (
                         <div key={idx} className="py-2.5 first:pt-0 last:pb-0 text-xs">
                           <div className="flex justify-between items-center mb-1 font-semibold">
-                            <span className="text-gray-800">{hist.date} — {hist.duration}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-800">{hist.date} — {hist.duration}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold ${hist.source === 'Matchmaking' ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
+                                {hist.source}
+                              </span>
+                            </div>
                             <span className={`px-1.5 py-0.5 rounded text-[10px] ${badge.cls}`}>
                               {badge.label}
                             </span>

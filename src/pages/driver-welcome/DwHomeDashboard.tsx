@@ -198,7 +198,10 @@ export const DwHomeDashboard: React.FC = () => {
             </div>
           </div>
           <button 
-            onClick={() => navigate('/dw/dw-call-queue')}
+            onClick={() => {
+              sessionStorage.setItem('dw_queue_tab', 'fresh');
+              navigate('/dw/dw-call-queue');
+            }}
             className="w-full bg-[#27AE60] hover:bg-[#219653] text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 shadow-sm transition-transform active:scale-[0.98] mt-3"
           >
             Start Calling →

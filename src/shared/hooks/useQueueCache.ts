@@ -1,14 +1,15 @@
+import { useLazyGetDwQueueCallbacksQuery } from '../../services/api/webCrmApi';
 import { useState, useEffect, useCallback } from 'react';
 import {
   useLazyGetDwQueueFreshQuery,
   useLazyGetDwQueueOldQuery,
   useLazyGetDwQueueUncalledQuery,
-  useLazyGetDwQueueCallbacksQuery,
   useLazyGetDwQueueCalledQuery,
-  useLazyGetDwQueueCountsQuery
+  useLazyGetDwQueueCountsQuery,
+  useLazyGetDwQueueQuery
 } from '../../services/api/webCrmApi';
 
-export type QueueType = 'fresh' | 'old' | 'uncalled' | 'callbacks' | 'called';
+export type QueueType = 'all' | 'fresh' | 'old' | 'uncalled' | 'callbacks' | 'called';
 
 export interface CacheData {
   leads: any[];
@@ -78,6 +79,7 @@ export const useQueueCache = (
   const [triggerUncalled] = useLazyGetDwQueueUncalledQuery();
   const [triggerCallbacks] = useLazyGetDwQueueCallbacksQuery();
   const [triggerCalled] = useLazyGetDwQueueCalledQuery();
+  const [triggerAll] = useLazyGetDwQueueQuery();
 
   const fetchQueue = useCallback(async (_force = false) => {
     setIsFetching(true);
@@ -98,7 +100,9 @@ export const useQueueCache = (
         ...filters
       };
 
-      if (type === 'fresh') {
+      if (type === 'all') {
+        result = await triggerAll(queryParams).unwrap();
+      } else if (type === 'fresh') {
         result = await triggerFresh(queryParams).unwrap();
       } else if (type === 'old') {
         result = await triggerOld(queryParams).unwrap();
@@ -191,7 +195,7 @@ export const useQueueCache = (
 // the backend response), it's treated as no-cache so a real fetch happens —
 // otherwise a stale cache can silently mask a field as 0 forever, since
 // nothing ever invalidates it on a time basis anymore.
-const COUNTS_FIELDS = ['fresh', 'old', 'uncalled', 'callbacks', 'called_today', 'overdue_callbacks'] as const;
+const COUNTS_FIELDS = ['total', 'fresh', 'old', 'uncalled', 'callbacks', 'called_today', 'overdue_callbacks'] as const;
 const isCompleteCounts = (data: any): boolean =>
   !!data && COUNTS_FIELDS.every((key) => typeof data[key] !== 'undefined');
 
@@ -199,6 +203,7 @@ export const useQueueCountsCache = () => {
   const [triggerCounts] = useLazyGetDwQueueCountsQuery();
   const cacheKey = 'dw_counts_data';
   const [counts, setCounts] = useState<{
+    total: number;
     fresh: number;
     old: number;
     uncalled: number;

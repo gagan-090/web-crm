@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head><title>SAN Test</title></head>
+<body>
+<iframe id="san" src="https://ccsslb.sansoftwares.com/callerMini" allow="microphone; camera" style="width:400px; height:500px;"></iframe>
+<script>
+  window.SANAppInitEvent = function(data) { console.log('INIT', data); }
+  window.SANAppReadyEvent = function(data) { console.log('READY', data); }
+  window.SANAppOutgoingEvent = function(data) { console.log('OUTGOING', data); }
+  window.addEventListener('message', e => console.log('MSG', e.data));
+
+  setTimeout(() => {
+    console.log('Sending login (lowercase)');
+    document.getElementById('san').contentWindow.postMessage({ type: 'login', user_name: 'Agent2@Demo', password: 'NzJTQ1JCa2hEa2FKNzRMWXNzYzg5Zz09', uniqueId: '' }, '*');
+  }, 3000);
+</script>
+</body>
+</html>

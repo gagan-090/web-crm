@@ -288,9 +288,9 @@ export default function SanCtiProvider({
       type: 'login',
       user_name: sanUsername,
       password: sanPassword,
-      uniqueId: agentId && agentId !== 0 ? String(agentId) : '',
+      uniqueId: '',
     });
-  }, [sanUsername, sanPassword, agentId, postToSan]);
+  }, [sanUsername, sanPassword, postToSan]);
 
   /**
    * Go ready (live). Called after SANAppInitEvent with status='1'.
@@ -333,6 +333,9 @@ export default function SanCtiProvider({
     // Detect if we should use simulated call flow (offline or local/mock environment)
     const isSimulated = !window.navigator.onLine || bearerToken === 'mock_sanctum_token_12345';
 
+    // 1. Tell SAN to dial (sanitized to 10 digits)
+    const cleanNumber = phoneNumber.replace(/\D/g, '').slice(-10);
+
     if (isSimulated) {
       console.log('[SAN CTI] Offline/Simulation mode detected. Initiating simulated call sequence...');
       setCurrentCallId(-999); // Magic mock ID for simulated calls
@@ -359,7 +362,7 @@ export default function SanCtiProvider({
     // 1. Tell SAN to dial
     postToSan({
       type: 'dial',
-      number: phoneNumber,
+      number: cleanNumber,
       uniqueId: leadUserId && leadUserId !== 0 ? String(leadUserId) : '',
     });
 
@@ -460,18 +463,31 @@ export default function SanCtiProvider({
 
   /**
    * Toggle hold.
+   *
+   * SAN's own HoldCall/UnholdCall handler calls a function (HoldUnhold)
+   * that's commented out in their hosted script — confirmed by reading
+   * their source directly. There's no message we can send that reaches a
+   * working hold implementation on their end. The closest approximation we
+   * can do entirely from our own UI is the same mechanism Mute already
+   * uses (MuteCall/UnmuteCall, which IS a real, working function on their
+   * side): it silences the agent's outgoing audio. It's not a true two-way
+   * SIP hold (the caller hears silence, not hold music, and still hears
+   * nothing from the agent — same as Mute), so isHeld and isMuted are kept
+   * in lockstep here to avoid the two controls disagreeing about whether
+   * the mic is live.
    */
   const toggleHold = useCallback(() => {
     if (isHeld) {
-      postToSan({ type: 'UnholdCall' });
+      postToSan({ type: 'UnmuteCall' });
     } else {
-      postToSan({ type: 'HoldCall' });
+      postToSan({ type: 'MuteCall' });
     }
     setIsHeld(prev => !prev);
+    setIsMuted(prev => !prev);
   }, [isHeld, postToSan]);
 
   /**
-   * Toggle mute.
+   * Toggle mute. Kept in lockstep with isHeld — see toggleHold comment.
    */
   const toggleMute = useCallback(() => {
     if (isMuted) {
@@ -480,6 +496,7 @@ export default function SanCtiProvider({
       postToSan({ type: 'MuteCall' });
     }
     setIsMuted(prev => !prev);
+    setIsHeld(prev => !prev);
   }, [isMuted, postToSan]);
 
   /**
@@ -582,7 +599,12 @@ export default function SanCtiProvider({
         Remark: dispositionData.notes || '',
         Phone_No: currentPhoneNumber,
         callback_time: dispositionData.callback_at || '',
-        agent_id: agentId && agentId !== 0 ? String(agentId) : '',
+        // No agent_id here — confirmed via live log that sending our own
+        // CRM admin id (e.g. '14') overwrites SAN's own correct internal
+        // logged_agent['agent']['agent_id'] (e.g. '2544') in their object
+        // merge, so their server rejects the save with "Agent not Login"
+        // and their own crmstates-reading code crashes on the error
+        // response. Let SAN use its own already-correct value.
         uniqueId: currentLeadId && currentLeadId !== 0 ? String(currentLeadId) : '',
       });
     }
@@ -1042,19 +1064,6 @@ export default function SanCtiProvider({
     };
   }, []);
 
-  // ── Detect real clicks inside cross-origin iframe to satisfy autoplay policies ──
-  useEffect(() => {
-    const handleBlur = () => {
-      // Focus shifts from main window to iframe when the user clicks inside it
-      if (callStateRef.current === 'incoming_ringing' && document.activeElement === iframeRef.current) {
-        console.log('[SAN CTI] Focus shifted to SAN iframe (real user click inside iframe) — triggering acceptIncoming');
-        acceptIncoming();
-      }
-    };
-    window.addEventListener('blur', handleBlur);
-    return () => window.removeEventListener('blur', handleBlur);
-  }, [acceptIncoming]);
-
   // ── Restore focus to parent window upon call connection to enable immediate typing ──
   useEffect(() => {
     if (callState === 'connected') {
@@ -1136,35 +1145,38 @@ export default function SanCtiProvider({
           Mounts only after the mic permission check finishes so that the iframe's
           SIP engine doesn't attempt registration before mic access is determined.
 
-          Stays minimized to a small 90px header bar by default — dialing,
-          hold, mute and disposition all go through the CRM's own buttons
-          (dial/toggleHold/toggleMute/submitDisposition, all postMessage to
-          SAN). Answering an incoming call is the one exception: it auto-
-          expands to full size while callState is 'incoming_ringing' so the
-          agent can click SAN's own native Answer button directly — a real,
-          trusted click inside SAN's own document, not a postMessage from
-          outside it. It collapses back to minimized as soon as the call
-          state moves past ringing. The agent can also expand it manually
-          via the +/− button at any other time.
+          Fully invisible (parked off-screen) at all times except while an
+          incoming call is ringing — it then slides on-screen so the agent
+          can click SAN's own native Answer button directly: a real, trusted
+          click inside SAN's own document, not a postMessage from outside it.
+          The iframe's own rendered SIZE never changes (always 320x440) —
+          only its on-screen POSITION toggles. Resizing it (even just
+          shrinking the visible area) has repeatedly broken SAN's internal
+          call handling in earlier testing; moving it off-screen leaves its
+          actual layout/rendering completely undisturbed, which is what
+          keeps its SIP session alive in the background while hidden. The
+          agent can also bring it on-screen manually via the +/− button.
       ──────────────────────────────────────────────────────────────── */}
-      {isMicPermissionChecked && (
+      {isMicPermissionChecked && (() => {
+        // Visible only while an incoming call is ringing (plus whenever the
+        // agent manually shows it via +/−) — invisible the rest of the
+        // time, including during connected calls, since Hold/Mute now both
+        // go through postToSan's MuteCall/UnmuteCall from our own buttons
+        // and don't need SAN's real UI to be on-screen.
+        const isVisible = callState === 'incoming_ringing' || !isCtiMinimized;
+        return (
         <div style={{
           position: 'fixed',
           bottom: 25,
-          left: 25,
+          left: isVisible ? 25 : -9999,
           width: 320,
-          // 90, not 40 — the header bar alone is 40px, so anything lower
-          // than 90 squashes the iframe content area to ~0px height. SAN's
-          // own internal call handling appears to depend on the iframe
-          // actually having a real rendered size even while minimized.
-          height: callState === 'incoming_ringing' ? 440 : (isCtiMinimized ? 90 : 440),
+          height: 440,
           zIndex: 9999,
           borderRadius: 12,
           boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
           backgroundColor: '#111827',
           border: '1px solid #374151',
           overflow: 'hidden',
-          transition: 'height 0.3s ease-in-out',
           display: 'flex',
           flexDirection: 'column',
         }}>
@@ -1205,68 +1217,45 @@ export default function SanCtiProvider({
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
-                title={isCtiMinimized ? 'Maximize' : 'Minimize'}
+                title={isCtiMinimized ? 'Show' : 'Hide'}
               >
                 {isCtiMinimized ? '+' : '−'}
               </button>
             </div>
           </div>
 
-          {/* Iframe Content */}
+          {/* Iframe Content.
+              src has NO trailing slash and allow is exactly "microphone;
+              camera" — confirmed via direct A/B testing earlier in this
+              project to be the one configuration that gives two-way audio.
+              The iframe is always fully opaque/visible at real size here;
+              a near-zero-opacity iframe with a fake overlay on top (as this
+              briefly was) was tried multiple times and reproduces one-way
+              audio every time — the agent's real click needs to land on
+              SAN's own actual, visible button, not an invisible stand-in. */}
           <div style={{ flex: 1, backgroundColor: '#000', position: 'relative' }}>
-            {callState === 'incoming_ringing' && (
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#10B981',
-                color: '#fff',
-                fontSize: 16,
-                fontWeight: 'bold',
-                textAlign: 'center',
-                padding: 20,
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-              }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 32, animation: 'bounce 1s infinite' }}>📞</span>
-                  <span>INCOMING CALL</span>
-                  <span style={{ fontSize: 12, opacity: 0.8, textDecoration: 'underline' }}>CLICK HERE TO ANSWER</span>
-                </div>
-              </div>
-            )}
             <iframe
               ref={iframeRef}
               id="childIframe"
-              src="https://ccsslb.sansoftwares.com/callerMini/"
-              allow="microphone; camera; autoplay; speaker-selection; encrypted-media"
+              src="https://ccsslb.sansoftwares.com/callerMini"
+              allow="microphone; camera"
               style={{
                 width: '100%',
                 height: '100%',
                 border: 'none',
                 display: 'block',
-                position: 'relative',
-                zIndex: 2,
-                opacity: callState === 'incoming_ringing' ? 0.01 : 1,
-                cursor: 'pointer',
               }}
               title="SAN CTI"
               onLoad={() => {
-                console.log('[SAN IFRAME] loaded successfully. Resetting agentState to logged_out to force login handshake.');
-                setAgentState('logged_out');
+                console.log('[SAN IFRAME] loaded successfully');
                 setIsIframeLoaded(true);
               }}
               onError={() => console.error('[SAN IFRAME] failed to load')}
             />
           </div>
         </div>
-      )}
+        );
+      })()}
     </SanCtiContext.Provider>
   );
 }

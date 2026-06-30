@@ -4,7 +4,6 @@ import { useSubmitCtiFeedbackMutation } from '../../services/api/ctiApi';
 import {
   useGetDwLeadDetailQuery,
   useLazyGetDwNextLeadQuery,
-  useGetDwQueueFreshQuery,
   useLazyGetDwQueueFreshQuery,
   useLazyGetDwQueueOldQuery,
   useLazyGetDwQueueUncalledQuery,
@@ -16,7 +15,8 @@ import {
 } from '../../services/api/webCrmApi';
 import { useSanCti } from '../../shared/components/cti/SanCtiProvider';
 import { useAuth } from '../../app/providers/AuthProvider';
-import { invalidateQueueCache } from '../../shared/hooks/useQueueCache';
+import { invalidateQueueCache, useQueueCache } from '../../shared/hooks/useQueueCache';
+import type { QueueType } from '../../shared/hooks/useQueueCache';
 
 interface Objection {
   key: string;
@@ -49,7 +49,6 @@ export const DwActiveCallFocus: React.FC = () => {
     currentLeadId: incomingLeadId,
     currentLeadLocation: incomingLeadLocation,
     currentLeadCallStatus: incomingLeadCallStatus,
-    acceptIncoming,
   } = useSanCti();
 
   const [submitCtiFeedback] = useSubmitCtiFeedbackMutation();
@@ -235,8 +234,9 @@ export const DwActiveCallFocus: React.FC = () => {
   // Right sidebar: when dialing through a section batch, show the rest of
   // that same batch (so the agent can see/skip ahead within their section);
   // otherwise fall back to the generic Fresh leads list.
-  const { data: queueResponse } = useGetDwQueueFreshQuery({ per_page: 15 }, { skip: !!queueType });
-  const nextLeads = queueType ? batch.slice(batchPos) : (queueResponse?.data?.leads || queueResponse?.data || []);
+  const fallbackTab = (sessionStorage.getItem('dw_queue_tab') as QueueType) || 'all';
+  const { data: queueCache } = useQueueCache(fallbackTab, { page: 1, search: '', per_page: 15 });
+  const nextLeads = queueType ? batch.slice(batchPos) : (queueCache?.leads || []);
 
   // Ref to prevent dialing the same user during transition states
   const lastDialedUserId = React.useRef<string | number | null>(
@@ -269,27 +269,8 @@ export const DwActiveCallFocus: React.FC = () => {
   // whatever the batch looked like on mount.
   }, [navigate, refetchDetail, loadNextLead]);
 
-  // Auto-dial when lead details are loaded, CTI is idle, AND SAN is ready
-  useEffect(() => {
-    // Don't auto-dial if an incoming call is already in progress
-    if (callState === 'incoming_ringing' || (callState !== 'idle' && isIncomingCall)) return;
-    // Wait until SAN has finished login/ready handshake before dialing
-    // (lead details often load faster than SAN; dialing too early silently fails)
-    if (agentState !== 'ready') return;
-    if (leadPhone && leadPhone !== '00000 00000' && userId && callState === 'idle') {
-      if (lastDialedUserId.current === userId) {
-        return; // Skip auto-dialing since we already dialed this lead
-      }
-      lastDialedUserId.current = userId;
-      // Bust the cache the moment a call is attempted, not just on a completed
-      // disposition. A call that connects then drops before disposition is
-      // submitted would otherwise leave this lead stuck looking "uncalled" in
-      // the cached queue lists forever, even though call_history_ivr already
-      // has a row for them.
-      invalidateQueueCache();
-      dial(leadPhone, userId, leadName, leadTmid, stateLead.isCampaign ? 'social_media' : 'driver');
-    }
-  }, [userId, leadPhone, callState, agentState, dial, leadName, leadTmid, isIncomingCall, stateLead.isCampaign]);
+  // The auto-dial useEffect has been removed to stop instantaneous dialing when focusing on a lead.
+  // The agent will now manually click 'Dial Lead Call' to initiate the call.
 
   const formatTimer = (secCount: number) => {
     const mins = Math.floor(secCount / 60);
@@ -574,7 +555,7 @@ export const DwActiveCallFocus: React.FC = () => {
               <button
                 onClick={() => { toggleLiveHold(); triggerToast(liveHeld ? 'Call resumed' : 'Call on hold'); }}
                 className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${liveHeld ? 'bg-amber-50 border-amber-200 text-amber-600 font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
-                title="Hold / Speaker"
+                title="Hold"
               >
                 <span className="material-symbols-outlined text-[18px]">{liveHeld ? 'play_arrow' : 'pause'}</span>
               </button>
@@ -751,14 +732,17 @@ export const DwActiveCallFocus: React.FC = () => {
         {/* End Call / Dial Call / Accept Incoming Button */}
         <div className="mt-auto pt-4 border-t border-gray-200">
           {callState === 'incoming_ringing' ? (
-            <div className="flex gap-2">
-              <button
-                onClick={acceptIncoming}
-                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md animate-pulse"
-              >
+            <div className="flex gap-2 items-center">
+              {/* The SAN widget auto-expands to full size while
+                  incoming_ringing so the agent can click its own native
+                  Answer button directly — a real click landing inside
+                  SAN's own document, the only path that reliably carries
+                  two-way audio. A postMessage Answer here would either
+                  bypass that real click or double-fire alongside it. */}
+              <span className="flex-1 text-xs font-bold text-amber-600 flex items-center gap-1.5 animate-pulse">
                 <span className="material-symbols-outlined text-[18px]">call</span>
-                Accept Incoming Call
-              </button>
+                👈 Answer from the SAN Softphone widget
+              </span>
               <button
                 onClick={hangup}
                 className="flex-1 bg-[#E74C3C] hover:bg-[#c0392b] text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md"
@@ -777,12 +761,12 @@ export const DwActiveCallFocus: React.FC = () => {
             </button>
           ) : (
             <button
-              disabled={!leadPhone || leadPhone === '00000 00000'}
+              disabled={!leadPhone || leadPhone === '00000 00000' || agentState !== 'ready'}
               onClick={() => { invalidateQueueCache(); dial(leadPhone, userId, leadName, leadTmid, stateLead.isCampaign ? 'social_media' : 'driver'); }}
               className="w-full bg-[#27AE60] hover:bg-[#219653] disabled:bg-gray-300 disabled:cursor-not-allowed text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md"
             >
               <span className="material-symbols-outlined text-[18px]">phone</span>
-              Dial Lead Call
+              {agentState !== 'ready' ? 'Dialer Connecting...' : 'Dial Lead Call'}
             </button>
           )}
         </div>

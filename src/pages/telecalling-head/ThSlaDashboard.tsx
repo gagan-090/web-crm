@@ -4,6 +4,7 @@ import {
   useGetThTeamMonitorQuery,
   useReassignThLeadsMutation,
 } from '../../services/api/teleheadApi';
+import { PageTableSkeleton } from '../../components/PageSkeleton';
 
 interface SlaItem {
   id: string;
@@ -29,7 +30,10 @@ interface Escalation {
 }
 
 export const ThSlaDashboard: React.FC = () => {
-  const { data: slaData, refetch } = useGetThSlaDashboardQuery();
+  const [page, setPage] = useState(1);
+  const { data: slaData, refetch, isFetching, isLoading } = useGetThSlaDashboardQuery({
+    page: page,
+  });
   const { data: teamData } = useGetThTeamMonitorQuery({ process: 'all' });
   const [reassignThLeads] = useReassignThLeadsMutation();
 
@@ -120,34 +124,107 @@ export const ThSlaDashboard: React.FC = () => {
     item => processFilter === 'ALL' || item.process === processFilter
   );
 
+  interface DashboardPagination {
+    current_page: number;
+    last_page: number;
+    total: number;
+    per_page: number;
+    isFallback: boolean;
+  }
+
+  const rawPagination = 
+    slaData?.pagination ? {
+      current_page: slaData.pagination.current_page || 1,
+      last_page: slaData.pagination.last_page || 1,
+      total: slaData.pagination.total || 0,
+      per_page: slaData.pagination.per_page || 15
+    } : processFilter === 'TR' && slaData?.tr_sla?.last_page ? {
+      current_page: slaData.tr_sla.current_page || 1,
+      last_page: slaData.tr_sla.last_page || 1,
+      total: slaData.tr_sla.total || 0,
+      per_page: slaData.tr_sla.per_page || 15
+    } : processFilter === 'MM' && slaData?.mm_sla?.last_page ? {
+      current_page: slaData.mm_sla.current_page || 1,
+      last_page: slaData.mm_sla.last_page || 1,
+      total: slaData.mm_sla.total || 0,
+      per_page: slaData.mm_sla.per_page || 15
+    } : slaData?.last_page ? {
+      current_page: slaData.current_page || 1,
+      last_page: slaData.last_page || 1,
+      total: slaData.total || 0,
+      per_page: slaData.per_page || 15
+    } : (slaData?.tr_sla?.last_page ? {
+      current_page: slaData.tr_sla.current_page || 1,
+      last_page: slaData.tr_sla.last_page || 1,
+      total: slaData.tr_sla.total || 0,
+      per_page: slaData.tr_sla.per_page || 15
+    } : slaData?.mm_sla?.last_page ? {
+      current_page: slaData.mm_sla.current_page || 1,
+      last_page: slaData.mm_sla.last_page || 1,
+      total: slaData.mm_sla.total || 0,
+      per_page: slaData.mm_sla.per_page || 15
+    } : null);
+
+  const resolvedPagination: DashboardPagination = rawPagination
+    ? {
+        current_page: rawPagination.current_page,
+        last_page: rawPagination.last_page,
+        total: rawPagination.total,
+        per_page: rawPagination.per_page,
+        isFallback: false
+      }
+    : {
+        current_page: page,
+        last_page: filteredItems.length < 10 ? page : page + 1,
+        total: filteredItems.length,
+        per_page: 15,
+        isFallback: true
+      };
+
+  if (isLoading) {
+    return <PageTableSkeleton rows={8} cols={6} title="SLA Dashboard" />;
+  }
+
   return (
     <main className="bg-background p-md space-y-lg text-xs font-sans max-w-[1440px] mx-auto">
       {/* Top Metric Bar */}
       <section className="grid grid-cols-3 gap-md">
         <div className="bg-white border border-outline-variant p-md rounded-sm flipkart-shadow">
           <p className="font-label-caps text-outline text-[10px] uppercase font-bold">Company-Wide SLA Compliance</p>
-          <p className="text-2xl font-extrabold text-green-600 mt-xs">{slaData?.compliance_rate ? `${slaData.compliance_rate}%` : '92.8%'}</p>
+          <p className="text-2xl font-extrabold text-green-600 mt-xs">
+            {slaData?.data?.company_wide_sla_compliance !== undefined ? `${slaData.data.company_wide_sla_compliance}%` : '92.8%'}
+          </p>
         </div>
         <div className="bg-white border border-outline-variant p-md rounded-sm flipkart-shadow">
           <p className="font-label-caps text-outline text-[10px] uppercase font-bold">Active SLA Breaches</p>
-          <p className="text-2xl font-extrabold text-red-600 mt-xs">{(slaData?.tr_sla?.breached || 0) + (slaData?.mm_sla?.breached || 0) || 2}</p>
+          <p className="text-2xl font-extrabold text-red-600 mt-xs">
+            {slaData?.data?.active_sla_breaches ?? ((slaData?.tr_sla?.breached || 0) + (slaData?.mm_sla?.breached || 0) || 2)}
+          </p>
         </div>
         <div className="bg-white border border-outline-variant p-md rounded-sm flipkart-shadow">
           <p className="font-label-caps text-outline text-[10px] uppercase font-bold">At-Risk (Within 24 Hours)</p>
-          <p className="text-2xl font-extrabold text-amber-600 mt-xs">{(slaData?.tr_sla?.critical || 0) + (slaData?.mm_sla?.critical || 0) || 4}</p>
+          <p className="text-2xl font-extrabold text-amber-600 mt-xs">
+            {slaData?.data?.at_risk_within_24_hours ?? ((slaData?.tr_sla?.critical || 0) + (slaData?.mm_sla?.critical || 0) || 4)}
+          </p>
         </div>
       </section>
 
       {/* Unified SLA Table */}
       <section className="bg-white border border-outline-variant rounded-sm flipkart-shadow overflow-hidden">
         <div className="px-md py-sm bg-surface-container-low border-b border-outline-variant flex justify-between items-center">
-          <h3 className="font-label-caps text-outline uppercase font-bold">Unified SLA Command Center</h3>
+          <h3 className="font-label-caps text-outline uppercase font-bold flex items-center gap-xs">
+            Unified SLA Command Center
+            {isFetching && <span className="ml-2 text-primary text-[10px] animate-pulse">↻ Refreshing…</span>}
+          </h3>
 
           <div className="flex border border-outline-variant rounded-sm overflow-hidden select-none">
             {(['ALL', 'TR', 'MM'] as const).map(p => (
               <button
                 key={p}
-                onClick={() => setProcessFilter(p)}
+                onClick={() => {
+                  setProcessFilter(p);
+                  setPage(1);
+                }}
                 className={`px-sm py-1 font-bold text-[10px] transition-colors ${processFilter === p ? 'bg-primary text-white' : 'bg-surface hover:bg-surface-container'
                   }`}
               >
@@ -223,6 +300,39 @@ export const ThSlaDashboard: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {/* Pagination Section */}
+        {resolvedPagination && (
+          <div className="px-md py-sm border-t border-outline-variant flex items-center justify-between bg-surface-container-low">
+            <span className="text-[10px] text-outline font-semibold">
+              {resolvedPagination.isFallback ? (
+                `Page ${page}`
+              ) : (
+                `Showing ${((page - 1) * resolvedPagination.per_page) + 1}–${Math.min(page * resolvedPagination.per_page, resolvedPagination.total)} of ${resolvedPagination.total.toLocaleString()} records`
+              )}
+            </span>
+            <div className="flex items-center gap-xs">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage(p => p - 1)}
+                className="px-sm py-1 border border-outline-variant rounded-sm text-[10px] font-bold disabled:opacity-40 hover:bg-surface-container disabled:cursor-not-allowed"
+              >
+                ← Prev
+              </button>
+              <span className="text-[10px] font-bold px-sm">
+                Page {page} {resolvedPagination.isFallback ? '' : `/ ${resolvedPagination.last_page}`}
+              </span>
+              <button
+                type="button"
+                disabled={!resolvedPagination.isFallback ? page >= resolvedPagination.last_page : filteredItems.length < 10}
+                onClick={() => setPage(p => p + 1)}
+                className="px-sm py-1 border border-outline-variant rounded-sm text-[10px] font-bold disabled:opacity-40 hover:bg-surface-container disabled:cursor-not-allowed"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Escalation Inbox */}

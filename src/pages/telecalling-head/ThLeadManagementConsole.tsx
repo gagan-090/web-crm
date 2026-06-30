@@ -1,4 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useGetThLeadManagementQuery, useGetThTelecallersQuery, useTransferThLeadsMutation, useReassignThColdLeadsMutation } from '../../services/api/teleheadApi';
+import { PageTableSkeleton } from '../../components/PageSkeleton';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type LeadStatus = 'HOT' | 'WARM' | 'COLD';
@@ -22,7 +24,9 @@ interface Lead {
   process: Process;
   regDate: string;
   lastCalled: string;
+  notes?: string[];
 }
+
 
 interface ColdLead {
   id: string;
@@ -64,19 +68,41 @@ const COLD_LEADS_SEED: ColdLead[] = [
 ];
 
 const STATUS_FILTERS = ['All', 'HOT', 'WARM', 'COLD'] as const;
-const DATE_FILTERS = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days', 'All Time'] as const;
+const DATE_FILTERS = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days', 'All Time', 'Custom'] as const;
 const CALLERS = ['All Callers', 'Animesh Roy', 'Sunita Sharma', 'Preeti Jain', 'Unassigned'];
 const ROWS_OPTIONS = [5, 10, 25, 50] as const;
 
 type StatusFilter = typeof STATUS_FILTERS[number];
 type DateFilter = typeof DATE_FILTERS[number];
 
+const getTodayDateString = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const getDateNDaysAgo = (days: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // ── Component ───────────────────────────────────────────────────────────────
 export const ThLeadManagementConsole: React.FC = () => {
-  // Filters
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
-  const [dateFilter, setDateFilter] = useState<DateFilter>('Last 7 Days');
-  const [callerFilter, setCallerFilter] = useState('All Callers');
+  // Draft Filters (bound to UI inputs)
+  const [draftStatus, setDraftStatus] = useState<StatusFilter>('All');
+  const [draftDateFilter, setDraftDateFilter] = useState<DateFilter>('Last 7 Days');
+  const [draftCustomFromDate, setDraftCustomFromDate] = useState('');
+  const [draftCustomToDate, setDraftCustomToDate] = useState('');
+  const [draftCaller, setDraftCaller] = useState<number | 'unassigned' | 'ALL'>('ALL');
+  const [draftSearch, setDraftSearch] = useState('');
+
+  // Applied Filters (used for API query)
+  const [appliedStatus, setAppliedStatus] = useState<StatusFilter>('All');
+  const [appliedDateFilter, setAppliedDateFilter] = useState<DateFilter>('Last 7 Days');
+  const [appliedCustomFromDate, setAppliedCustomFromDate] = useState('');
+  const [appliedCustomToDate, setAppliedCustomToDate] = useState('');
+  const [appliedCaller, setAppliedCaller] = useState<number | 'unassigned' | 'ALL'>('ALL');
+  const [appliedSearch, setAppliedSearch] = useState('');
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -87,7 +113,7 @@ export const ThLeadManagementConsole: React.FC = () => {
 
   // Cold-lead drawer
   const [drawerOpen, setDrawerOpen] = useState(true);
-  const [coldLeads, setColdLeads] = useState<ColdLead[]>(COLD_LEADS_SEED);
+  const [coldLeads, setColdLeads] = useState<ColdLead[]>([]);
   const [visibleColdCount, setVisibleColdCount] = useState(6);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
@@ -99,22 +125,180 @@ export const ThLeadManagementConsole: React.FC = () => {
   const [newCaller, setNewCaller] = useState('Animesh Roy');
   const [newProcess, setNewProcess] = useState<Process>('Driver Registration');
 
+  const dateParams = useMemo(() => {
+    const today = getTodayDateString();
+    if (appliedDateFilter === 'Last 7 Days') {
+      return { from: getDateNDaysAgo(7), to: today };
+    }
+    if (appliedDateFilter === 'Last 14 Days') {
+      return { from: getDateNDaysAgo(14), to: today };
+    }
+    if (appliedDateFilter === 'Last 30 Days') {
+      return { from: getDateNDaysAgo(30), to: today };
+    }
+    if (appliedDateFilter === 'Custom') {
+      return { from: appliedCustomFromDate || undefined, to: appliedCustomToDate || undefined };
+    }
+    return { from: undefined, to: undefined };
+  }, [appliedDateFilter, appliedCustomFromDate, appliedCustomToDate]);
+
+  const { data: apiResponse, isLoading, error, refetch } = useGetThLeadManagementQuery({
+    page: page + 1,
+    per_page: rowsPerPage,
+    search: appliedSearch.trim() || undefined,
+    status: appliedStatus === 'All' ? undefined : appliedStatus.toLowerCase(),
+    caller_id: appliedCaller === 'ALL' ? undefined : appliedCaller,
+    from: dateParams.from,
+    to: dateParams.to,
+  });
+
+  // Query cold leads
+  const { data: coldLeadsApiResponse, refetch: refetchColdLeads } = useGetThLeadManagementQuery({
+    status: 'cold',
+    per_page: 100,
+    search: appliedSearch.trim() || undefined,
+    caller_id: appliedCaller === 'ALL' ? undefined : appliedCaller,
+    from: dateParams.from,
+    to: dateParams.to,
+  });
+
+  useEffect(() => {
+    if (coldLeadsApiResponse?.data) {
+      const mapped = coldLeadsApiResponse.data.map((l: any) => {
+        // extract days number from last_called string (e.g. "24 days ago" -> 24)
+        let days = 30;
+        if (l.last_called) {
+          const match = l.last_called.match(/(\d+)/);
+          if (match) {
+            days = parseInt(match[1], 10);
+          }
+        }
+        return {
+          id: (l.tmid || l.id || '').toString(),
+          name: l.lead_name || '—',
+          tmId: l.tmid || l.id?.toString() || '—',
+          type: (l.type || 'TR') as LeadType,
+          lastCalledDays: days,
+          selected: false,
+        };
+      });
+      setColdLeads(mapped);
+    }
+  }, [coldLeadsApiResponse]);
+
+  const isFilterChanged = useMemo(() => {
+    return (
+      draftStatus !== appliedStatus ||
+      draftDateFilter !== appliedDateFilter ||
+      draftCustomFromDate !== appliedCustomFromDate ||
+      draftCustomToDate !== appliedCustomToDate ||
+      draftCaller !== appliedCaller ||
+      draftSearch !== appliedSearch
+    );
+  }, [
+    draftStatus, appliedStatus,
+    draftDateFilter, appliedDateFilter,
+    draftCustomFromDate, appliedCustomFromDate,
+    draftCustomToDate, appliedCustomToDate,
+    draftCaller, appliedCaller,
+    draftSearch, appliedSearch
+  ]);
+
+  const handleApplyFilters = () => {
+    setAppliedStatus(draftStatus);
+    setAppliedDateFilter(draftDateFilter);
+    setAppliedCustomFromDate(draftCustomFromDate);
+    setAppliedCustomToDate(draftCustomToDate);
+    setAppliedCaller(draftCaller);
+    setAppliedSearch(draftSearch);
+    setPage(0);
+  };
+
+  const isAnyFilterActive = useMemo(() => {
+    return (
+      appliedStatus !== 'All' ||
+      appliedDateFilter !== 'Last 7 Days' ||
+      appliedCaller !== 'ALL' ||
+      appliedSearch !== ''
+    );
+  }, [appliedStatus, appliedDateFilter, appliedCaller, appliedSearch]);
+
+  const handleClearFilters = () => {
+    setDraftStatus('All');
+    setDraftDateFilter('Last 7 Days');
+    setDraftCustomFromDate('');
+    setDraftCustomToDate('');
+    setDraftCaller('ALL');
+    setDraftSearch('');
+
+    setAppliedStatus('All');
+    setAppliedDateFilter('Last 7 Days');
+    setAppliedCustomFromDate('');
+    setAppliedCustomToDate('');
+    setAppliedCaller('ALL');
+    setAppliedSearch('');
+    setPage(0);
+  };
+
+  const { data: telecallersData } = useGetThTelecallersQuery();
+  const [transferThLeads, { isLoading: isTransferring }] = useTransferThLeadsMutation();
+  const [reassignThColdLeads, { isLoading: isReassigningCold }] = useReassignThColdLeadsMutation();
+
+  const telecallers = useMemo(() => {
+    return Array.isArray(telecallersData) ? telecallersData : (telecallersData?.data || []);
+  }, [telecallersData]);
+
   // Leads list
-  const [leads, setLeads] = useState<Lead[]>(ALL_LEADS);
+  const [leads, setLeads] = useState<Lead[]>([]);
+
+  useEffect(() => {
+    if (apiResponse?.data) {
+      const mapped = apiResponse.data.map((l: any) => ({
+        id: l.tmid || l.id?.toString() || '—',
+        name: l.lead_name || l.name || '—',
+        mobile: l.mobile || '—',
+        type: (l.type || 'DR') as LeadType,
+        status: (l.status || 'WARM').toUpperCase() as LeadStatus,
+        assignedCaller: l.assigned_caller || 'Unassigned',
+        process: l.process || 'Unassigned',
+        regDate: l.registration_date || l.reg_date || '—',
+        lastCalled: l.last_called || '—',
+        notes: [] as string[]
+      }));
+      setLeads(mapped);
+    }
+  }, [apiResponse]);
+
+  // Reassign Modal State
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const [reassignTargetIds, setReassignTargetIds] = useState<string[]>([]);
+  const [reassignTargetCallerId, setReassignTargetCallerId] = useState<number | ''>('');
+
+  // Lead Details Modal State
+  const [selectedLeadForView, setSelectedLeadForView] = useState<Lead | null>(null);
+  const [newNote, setNewNote] = useState('');
 
   // ── Derived data ─────────────────────────────────────────────────────────
   const filteredLeads = useMemo(() =>
     leads.filter(l => {
-      if (statusFilter !== 'All' && l.status !== statusFilter) return false;
-      if (callerFilter !== 'All Callers' && l.assignedCaller !== callerFilter) return false;
+      if (apiResponse?.pagination) return true; // Handled backend-side if API loaded
+      if (appliedStatus !== 'All' && l.status !== appliedStatus) return false;
+      if (appliedCaller !== 'ALL') {
+        const callerName = appliedCaller === 'unassigned' ? 'Unassigned' : telecallers.find((c: any) => c.id === appliedCaller)?.name;
+        if (l.assignedCaller !== callerName) return false;
+      }
+      if (appliedSearch.trim()) {
+        const q = appliedSearch.toLowerCase();
+        return l.name.toLowerCase().includes(q) || l.id.toLowerCase().includes(q) || l.mobile.includes(q);
+      }
       return true;
     }),
-    [leads, statusFilter, callerFilter]
+    [leads, appliedStatus, appliedCaller, appliedSearch, apiResponse, telecallers]
   );
 
-  const totalLeads = filteredLeads.length;
-  const totalPages = Math.ceil(totalLeads / rowsPerPage);
-  const pagedLeads = filteredLeads.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+  const totalLeads = apiResponse?.pagination ? apiResponse.pagination.total : filteredLeads.length;
+  const totalPages = apiResponse?.pagination ? apiResponse.pagination.last_page : Math.ceil(totalLeads / rowsPerPage);
+  const pagedLeads = apiResponse?.pagination ? filteredLeads : filteredLeads.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
 
   // ── Selection helpers ────────────────────────────────────────────────────
   const allPageSelected = pagedLeads.length > 0 && pagedLeads.every(l => selectedIds.has(l.id));
@@ -139,11 +323,46 @@ export const ThLeadManagementConsole: React.FC = () => {
     setSelectedIds(new Set());
   };
 
+  const openReassignModal = (ids: string[]) => {
+    setReassignTargetIds(ids);
+    setReassignTargetCallerId(telecallers[0]?.id || '');
+    setReassignModalOpen(true);
+  };
+
+  const handleConfirmReassign = async () => {
+    if (!reassignTargetCallerId) {
+      alert('Please select a caller agent.');
+      return;
+    }
+    
+    // Check if the reassigned leads belong to the cold leads array
+    const isColdLeadTransfer = reassignTargetIds.some(id => coldLeads.some(cl => cl.tmId === id));
+    
+    try {
+      if (isColdLeadTransfer) {
+        await reassignThColdLeads({
+          to_admin_id: Number(reassignTargetCallerId),
+          user_ids: reassignTargetIds,
+        }).unwrap();
+      } else {
+        await transferThLeads({
+          to_admin_id: Number(reassignTargetCallerId),
+          user_ids: reassignTargetIds,
+        }).unwrap();
+      }
+      
+      setSelectedIds(new Set());
+      setReassignModalOpen(false);
+      refetch();
+      refetchColdLeads();
+    } catch (err: any) {
+      alert(err?.data?.message || err?.message || 'Failed to transfer leads.');
+    }
+  };
+
   const handleReassign = () => {
-    const caller = prompt('Enter caller name to reassign to:');
-    if (!caller) return;
-    setLeads(prev => prev.map(l => selectedIds.has(l.id) ? { ...l, assignedCaller: caller } : l));
-    setSelectedIds(new Set());
+    if (selectedIds.size === 0) return;
+    openReassignModal(Array.from(selectedIds));
   };
 
   const handleExportCsv = () => {
@@ -181,17 +400,31 @@ export const ThLeadManagementConsole: React.FC = () => {
   const handleAddToReactivation = () => {
     const sel = coldLeads.filter(cl => cl.selected);
     if (!sel.length) { alert('Select at least one cold lead first.'); return; }
-    setLeads(prev => [
-      ...sel.map(cl => ({
-        id: cl.tmId, name: cl.name, mobile: '+91 99000-00000',
-        type: cl.type, status: 'WARM' as LeadStatus,
-        assignedCaller: 'Animesh Roy', process: 'KYC Verification' as Process,
-        regDate: '01 Oct, 2023', lastCalled: 'Just now',
-      })),
-      ...prev,
-    ]);
-    setColdLeads(prev => prev.filter(cl => !cl.selected));
-    alert(`${sel.length} lead(s) added to Reactivation Campaign!`);
+    
+    // Open reassign modal with the selected cold leads' TMIDs!
+    openReassignModal(sel.map(cl => cl.tmId));
+  };
+
+  const handleUpdateLeadField = (leadId: string, field: keyof Lead, value: any) => {
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, [field]: value } : l));
+    if (selectedLeadForView && selectedLeadForView.id === leadId) {
+      setSelectedLeadForView(prev => prev ? { ...prev, [field]: value } : null);
+    }
+  };
+
+  const handleAddNote = (leadId: string) => {
+    if (!newNote.trim()) return;
+    setLeads(prev => prev.map(l => {
+      if (l.id === leadId) {
+        const currentNotes = l.notes || [];
+        return { ...l, notes: [newNote, ...currentNotes] };
+      }
+      return l;
+    }));
+    if (selectedLeadForView && selectedLeadForView.id === leadId) {
+      setSelectedLeadForView(prev => prev ? { ...prev, notes: [newNote, ...(prev.notes || [])] } : null);
+    }
+    setNewNote('');
   };
 
   // ── Create lead ───────────────────────────────────────────────────────────
@@ -230,6 +463,10 @@ export const ThLeadManagementConsole: React.FC = () => {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
+  if (isLoading) {
+    return <PageTableSkeleton rows={10} cols={7} title="Lead Management Console" />;
+  }
+
   return (
     <main className="flex flex-col h-full bg-background relative">
 
@@ -238,20 +475,37 @@ export const ThLeadManagementConsole: React.FC = () => {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Filters:</span>
 
+          {/* Search Bar */}
+          <div className="relative flex items-center">
+            <span className="material-symbols-outlined absolute left-2.5 text-gray-400 text-[16px]">search</span>
+            <input
+              type="text"
+              placeholder="Search Name/ID/Mobile..."
+              value={draftSearch}
+              onChange={e => { setDraftSearch(e.target.value); }}
+              className="pl-8 pr-3 py-1 bg-gray-100 border border-gray-300 rounded-full text-[11px] outline-none focus:border-blue-500 focus:bg-white w-48 transition-all"
+            />
+            {draftSearch && (
+              <button onClick={() => setDraftSearch('')} className="absolute right-2.5 text-gray-400 hover:text-gray-600">
+                <span className="material-symbols-outlined text-[14px]">close</span>
+              </button>
+            )}
+          </div>
+
           {/* Status */}
           <label className={`relative inline-flex items-center gap-1 px-3 py-1 rounded-full border text-[11px] font-semibold cursor-pointer select-none transition-colors
-            ${statusFilter !== 'All' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-600 hover:border-blue-400'}`}>
-            Status: {statusFilter === 'All' ? 'All' : statusFilter}
-            {statusFilter !== 'All' && (
+            ${draftStatus !== 'All' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-600 hover:border-blue-400'}`}>
+            Status: {draftStatus === 'All' ? 'All' : draftStatus}
+            {draftStatus !== 'All' && (
               <span
                 className="ml-0.5 text-[12px] font-bold text-blue-500 hover:text-red-500 leading-none"
-                onClick={e => { e.preventDefault(); setStatusFilter('All'); setPage(0); }}
+                onClick={e => { e.preventDefault(); setDraftStatus('All'); }}
               >✕</span>
             )}
             <svg className="w-3 h-3 ml-0.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             <select
-              value={statusFilter}
-              onChange={e => { setStatusFilter(e.target.value as StatusFilter); setPage(0); }}
+              value={draftStatus}
+              onChange={e => { setDraftStatus(e.target.value as StatusFilter); }}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             >
               {STATUS_FILTERS.map(s => <option key={s} value={s}>{s === 'All' ? 'All Statuses' : s}</option>)}
@@ -260,35 +514,82 @@ export const ThLeadManagementConsole: React.FC = () => {
 
           {/* Date range */}
           <label className="relative inline-flex items-center gap-1 px-3 py-1 rounded-full border border-gray-300 bg-gray-100 text-gray-600 text-[11px] font-semibold cursor-pointer hover:border-blue-400 transition-colors">
-            📅 {dateFilter}
+            📅 {draftDateFilter}
             <svg className="w-3 h-3 ml-0.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             <select
-              value={dateFilter}
-              onChange={e => { setDateFilter(e.target.value as DateFilter); setPage(0); }}
+              value={draftDateFilter}
+              onChange={e => { setDraftDateFilter(e.target.value as DateFilter); }}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             >
               {DATE_FILTERS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </label>
 
+          {draftDateFilter === 'Custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={draftCustomFromDate}
+                onChange={e => { setDraftCustomFromDate(e.target.value); }}
+                className="px-2.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-[11px] font-semibold outline-none focus:border-blue-500"
+              />
+              <span className="text-[10px] text-gray-400 font-bold">TO</span>
+              <input
+                type="date"
+                value={draftCustomToDate}
+                onChange={e => { setDraftCustomToDate(e.target.value); }}
+                className="px-2.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-[11px] font-semibold outline-none focus:border-blue-500"
+              />
+            </div>
+          )}
+
           {/* Caller */}
           <label className={`relative inline-flex items-center gap-1 px-3 py-1 rounded-full border text-[11px] font-semibold cursor-pointer select-none transition-colors
-            ${callerFilter !== 'All Callers' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-600 hover:border-blue-400'}`}>
-            {callerFilter}
+            ${draftCaller !== 'ALL' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-600 hover:border-blue-400'}`}>
+            {draftCaller === 'ALL' ? 'All Callers' : draftCaller === 'unassigned' ? 'Unassigned' : telecallers.find((c: any) => c.id === Number(draftCaller))?.name || 'All Callers'}
             <svg className="w-3 h-3 ml-0.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             <select
-              value={callerFilter}
-              onChange={e => { setCallerFilter(e.target.value); setPage(0); }}
+              value={draftCaller}
+              onChange={e => {
+                const val = e.target.value;
+                setDraftCaller(val === 'ALL' ? 'ALL' : val === 'unassigned' ? 'unassigned' : Number(val));
+              }}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             >
-              {CALLERS.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="ALL">All Callers</option>
+              <option value="unassigned">Unassigned</option>
+              {telecallers.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
             </select>
           </label>
+
+          {/* Apply Filters Button */}
+          {isFilterChanged && (
+            <button
+              onClick={handleApplyFilters}
+              className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded-full text-[11px] font-bold shadow-md transition-all animate-bounce"
+            >
+              <span className="material-symbols-outlined text-[14px]">done</span>
+              Apply Filters
+            </button>
+          )}
+
+          {/* Clear Filters Button */}
+          {isAnyFilterActive && (
+            <button
+              onClick={handleClearFilters}
+              className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded-full text-[11px] font-bold shadow-md transition-all"
+            >
+              <span className="material-symbols-outlined text-[14px]">close</span>
+              Clear Filters
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => { setLeads([...ALL_LEADS]); setSelectedIds(new Set()); setPage(0); }}
+            onClick={() => { refetch(); setSelectedIds(new Set()); setPage(0); }}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded text-[11px] font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
           >
             <span className="material-symbols-outlined text-[16px]">refresh</span>
@@ -315,13 +616,35 @@ export const ThLeadManagementConsole: React.FC = () => {
                     <input type="checkbox" checked={allPageSelected} onChange={toggleAll}
                       className="rounded border-gray-300 text-blue-600 w-4 h-4 cursor-pointer" />
                   </th>
-                  {['TMID', 'Lead Name', 'Mobile', 'Type', 'Status', 'Assigned Caller', 'Process', 'Reg Date', 'Last Called', ''].map(h => (
-                    <th key={h} className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  {['TMID', 'Lead Name', 'Mobile', 'Type', 'Status', 'Assigned Caller', 'Process', 'Reg Date', 'Last Called', 'REASSIGN'].map(h => (
+                    <th key={h} className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h === 'REASSIGN' ? 'REASSIGN' : h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {pagedLeads.length === 0 ? (
+                {isLoading ? (
+                  Array.from({ length: rowsPerPage }).map((_, idx) => (
+                    <tr key={idx} className="animate-pulse">
+                      <td className="px-3 py-3.5"><div className="h-3.5 w-4 bg-gray-200 rounded"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-16"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-28"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-24"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-8"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-14"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-24"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-28"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-20"></div></td>
+                      <td className="px-3 py-3.5"><div className="h-3.5 bg-gray-200 rounded w-16"></div></td>
+                      <td className="px-3 py-3.5"></td>
+                    </tr>
+                  ))
+                ) : error ? (
+                  <tr>
+                    <td colSpan={11} className="text-center py-20 text-red-600 font-bold">
+                      ⚠️ Error loading leads from the database. Please try again.
+                    </td>
+                  </tr>
+                ) : pagedLeads.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="text-center py-20 text-gray-400 text-sm">
                       No leads match the current filters.
@@ -330,12 +653,11 @@ export const ThLeadManagementConsole: React.FC = () => {
                 ) : pagedLeads.map(lead => (
                   <tr
                     key={lead.id}
-                    onClick={() => toggleOne(lead.id)}
-                    className={`group cursor-pointer transition-colors hover:bg-blue-50/40 ${selectedIds.has(lead.id) ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''}`}
+                    className={`group transition-colors hover:bg-slate-50/60 ${selectedIds.has(lead.id) ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''}`}
                   >
-                    <td className="px-3 py-2">
-                      <input type="checkbox" checked={selectedIds.has(lead.id)} readOnly
-                        className="rounded border-gray-300 text-blue-600 w-4 h-4 pointer-events-none" />
+                    <td className="px-3 py-2" onClick={e => { e.stopPropagation(); toggleOne(lead.id); }}>
+                      <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => {}}
+                        className="rounded border-gray-300 text-blue-600 w-4 h-4 cursor-pointer" />
                     </td>
                     <td className="px-3 py-2 text-[11px] font-mono text-blue-600 font-semibold">{lead.id}</td>
                     <td className="px-3 py-2 text-[12px] font-semibold text-gray-800">{lead.name}</td>
@@ -346,13 +668,16 @@ export const ThLeadManagementConsole: React.FC = () => {
                     <td className="px-3 py-2 text-[11px] text-gray-500">{lead.process}</td>
                     <td className="px-3 py-2 text-[11px] text-gray-500">{lead.regDate}</td>
                     <td className="px-3 py-2 text-[11px] text-gray-500">{lead.lastCalled}</td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={e => { e.stopPropagation(); alert(`Actions for ${lead.name}`); }}
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-600 transition-all"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">more_vert</span>
-                      </button>
+                    <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => openReassignModal([lead.id])}
+                          className="text-gray-400 hover:text-blue-600"
+                          title="Reassign / Transfer"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">move_up</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -587,6 +912,196 @@ export const ThLeadManagementConsole: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reassign / Transfer Modal ────────────────────────────────────── */}
+      {reassignModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden border border-gray-200">
+            <div className="bg-blue-600 px-6 py-4 text-white flex justify-between items-center">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px]">move_up</span>
+                Transfer / Reassign Leads
+              </h3>
+              <button onClick={() => setReassignModalOpen(false)} className="hover:bg-white/20 p-1 rounded transition-colors">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+            <div className="p-6 space-y-4 text-[12px]">
+              <p className="text-gray-600">
+                You are transferring <strong className="text-blue-600">{reassignTargetIds.length}</strong> lead(s) to a new caller agent.
+              </p>
+              <div>
+                <label className="block font-semibold text-gray-500 mb-1 uppercase text-[10px] tracking-wider">Select Caller</label>
+                <select 
+                  value={reassignTargetCallerId} 
+                  onChange={e => setReassignTargetCallerId(Number(e.target.value))}
+                  className="w-full h-9 border border-gray-300 px-2 rounded bg-white focus:border-blue-500 outline-none"
+                  disabled={isTransferring}
+                >
+                  <option value="" disabled>Select Caller...</option>
+                  {telecallers.map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="pt-3 border-t border-gray-200 flex justify-end gap-2">
+                <button type="button" onClick={() => setReassignModalOpen(false)} disabled={isTransferring}
+                  className="px-5 py-2 border border-gray-300 hover:bg-gray-100 text-gray-700 font-semibold rounded transition-colors text-[11px] disabled:opacity-50">
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleConfirmReassign}
+                  disabled={isTransferring || !reassignTargetCallerId}
+                  className="px-5 py-2 bg-blue-600 text-white hover:bg-blue-700 font-bold rounded shadow-sm transition-colors text-[11px] disabled:opacity-50"
+                >
+                  {isTransferring ? 'Transferring...' : 'Confirm Transfer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lead Detail Modal / Panel ─────────────────────────────────────── */}
+      {selectedLeadForView && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-end z-50">
+          <div className="bg-white h-full w-full max-w-md shadow-2xl flex flex-col border-l border-gray-200">
+            {/* Header */}
+            <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0">
+              <div>
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">{selectedLeadForView.type} Lead Details</span>
+                <h3 className="font-bold text-sm truncate max-w-[280px]">{selectedLeadForView.name}</h3>
+              </div>
+              <button onClick={() => setSelectedLeadForView(null)} className="hover:bg-white/10 p-1.5 rounded-full transition-colors">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 text-[12px]">
+              {/* Quick Info Card */}
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 font-semibold uppercase text-[10px]">Lead ID</span>
+                  <span className="font-mono font-bold text-gray-800">{selectedLeadForView.id}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 font-semibold uppercase text-[10px]">Mobile</span>
+                  <span className="font-mono text-gray-800">{selectedLeadForView.mobile}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 font-semibold uppercase text-[10px]">Registered On</span>
+                  <span className="text-gray-800">{selectedLeadForView.regDate}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 font-semibold uppercase text-[10px]">Last Contacted</span>
+                  <span className="text-gray-800">{selectedLeadForView.lastCalled}</span>
+                </div>
+              </div>
+
+              {/* Editable Fields */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-gray-700 uppercase tracking-wider text-[10px]">Lead Lifecycle Control</h4>
+                
+                <div>
+                  <label className="block text-gray-500 font-semibold mb-1">Lifecycle Status</label>
+                  <div className="flex gap-2">
+                    {(['HOT', 'WARM', 'COLD'] as LeadStatus[]).map(st => {
+                      const isActive = selectedLeadForView.status === st;
+                      const activeCls = st === 'HOT' ? 'bg-red-600 text-white border-red-600' : st === 'WARM' ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-600 text-white border-gray-600';
+                      return (
+                        <button
+                          key={st}
+                          onClick={() => handleUpdateLeadField(selectedLeadForView.id, 'status', st)}
+                          className={`flex-1 py-1 px-3 border rounded text-[11px] font-bold transition-all ${isActive ? activeCls : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                        >
+                          {st}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <label className="block text-gray-500 font-semibold mb-1">Assigned Caller</label>
+                    <select
+                      value={selectedLeadForView.assignedCaller}
+                      onChange={e => handleUpdateLeadField(selectedLeadForView.id, 'assignedCaller', e.target.value)}
+                      className="w-full h-8 border border-gray-300 px-2 rounded bg-white outline-none focus:border-blue-500 text-[11px]"
+                    >
+                      {CALLERS.filter(c => c !== 'All Callers').map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-gray-500 font-semibold mb-1">Current Process Phase</label>
+                    <select
+                      value={selectedLeadForView.process}
+                      onChange={e => handleUpdateLeadField(selectedLeadForView.id, 'process', e.target.value as Process)}
+                      className="w-full h-8 border border-gray-300 px-2 rounded bg-white outline-none focus:border-blue-500 text-[11px]"
+                    >
+                      <option>Vendor Onboarding</option>
+                      <option>KYC Verification</option>
+                      <option>RTO Check</option>
+                      <option>Direct Load Booking</option>
+                      <option>Account Setup</option>
+                      <option>Driver Registration</option>
+                      <option>Transporter Onboarding</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes Section */}
+              <div className="space-y-3 pt-2">
+                <h4 className="font-bold text-gray-700 uppercase tracking-wider text-[10px]">Caller Logs / Call Notes</h4>
+                
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Add dynamic call updates or status notes..."
+                    value={newNote}
+                    onChange={e => setNewNote(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddNote(selectedLeadForView.id)}
+                    className="flex-1 h-9 border border-gray-300 px-3 rounded text-[11px] outline-none focus:border-blue-500"
+                  />
+                  <button
+                    onClick={() => handleAddNote(selectedLeadForView.id)}
+                    className="px-4 bg-gray-900 text-white font-bold rounded text-[11px] hover:bg-gray-800 transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {!selectedLeadForView.notes || selectedLeadForView.notes.length === 0 ? (
+                    <p className="text-gray-400 text-center py-4 italic">No call updates log added yet.</p>
+                  ) : (
+                    selectedLeadForView.notes.map((note, nIdx) => (
+                      <div key={nIdx} className="p-2.5 bg-gray-50 border border-gray-200 rounded text-gray-700 space-y-1">
+                        <p className="leading-relaxed">{note}</p>
+                        <p className="text-[9px] text-gray-400 font-semibold">Logged Just now</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end shrink-0">
+              <button
+                onClick={() => setSelectedLeadForView(null)}
+                className="px-6 py-2 bg-gray-900 text-white font-bold rounded hover:bg-gray-800 transition-colors"
+              >
+                Close View
+              </button>
+            </div>
           </div>
         </div>
       )}

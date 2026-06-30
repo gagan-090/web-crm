@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useGetThNotificationsQuery } from '../../services/api/teleheadApi';
+import { PageTableSkeleton } from '../../components/PageSkeleton';
 
 export const ThNotificationsAlertsCenter: React.FC = () => {
+  const navigate = useNavigate();
   const { data: notificationsData, isLoading } = useGetThNotificationsQuery();
   const notificationsList = notificationsData?.data ?? [];
 
   const [activeTab, setActiveTab] = useState<'All' | 'SLA Alerts' | 'Conversion' | 'QC Logs' | 'HR/Admin' | 'System'>('All');
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | string | null>(null);
 
   // Helper to format time relative to today
   const formatTimeAgo = (dateStr: string) => {
@@ -79,8 +82,75 @@ export const ThNotificationsAlertsCenter: React.FC = () => {
     }
   };
 
+  // All homepage alerts mapped as notifications
+  const homepageAlertIds = ['campaign-sla', 'untagged', 'sla', 'backlog', 'hiring'];
+
+  const homepageNotifications = homepageAlertIds.map((id: string) => {
+    switch (id) {
+      case 'campaign-sla':
+        return {
+          id: 'campaign-sla',
+          title: 'SLA Alert',
+          message: '🔥 SLA Alert: Hot Campaign Leads uncalled for > 1 hour!',
+          type: 'critical',
+          category: 'SLA',
+          created_at: new Date().toISOString(),
+          actionText: 'Assign & Nudge →',
+          actionUrl: '/th/global-campaign-console'
+        };
+      case 'untagged':
+        return {
+          id: 'untagged',
+          title: 'Untagged Calls Alert',
+          message: '⚠ Calls untagged across all teams.',
+          type: 'critical',
+          category: 'SLA',
+          created_at: new Date().toISOString(),
+          actionText: 'View by Team →',
+          actionUrl: '/th/team-monitor'
+        };
+      case 'sla':
+        return {
+          id: 'sla',
+          title: 'Active SLA Breaches',
+          message: '⚠ Active SLA breaches — Transporter first-call and Job SLA.',
+          type: 'critical',
+          category: 'SLA',
+          created_at: new Date().toISOString(),
+          actionText: 'View →',
+          actionUrl: '/th/sla-dashboard'
+        };
+      case 'backlog':
+        return {
+          id: 'backlog',
+          title: 'Backlog Alert',
+          message: 'Uncalled leads in backlog.',
+          type: 'admin',
+          category: 'System',
+          created_at: new Date().toISOString(),
+          actionText: 'Launch Sprint →',
+          actionUrl: '/th/backlog-campaign-manager'
+        };
+      case 'hiring':
+        return {
+          id: 'hiring',
+          title: 'Critical Hiring Alert',
+          message: '⚠ CRITICAL open roles unfilled beyond target hire week.',
+          type: 'admin',
+          category: 'HR',
+          created_at: new Date().toISOString(),
+          actionText: 'View Hiring →',
+          actionUrl: '/hr/hiring-dashboard-live'
+        };
+      default:
+        return null;
+    }
+  }).filter(Boolean);
+
+  const combinedNotifications = [...homepageNotifications, ...notificationsList];
+
   // Filter based on active tab
-  const filteredNotifications = notificationsList.filter((n: any) => {
+  const filteredNotifications = combinedNotifications.filter((n: any) => {
     if (activeTab === 'All') return true;
     if (activeTab === 'SLA Alerts') return n.category === 'SLA';
     if (activeTab === 'Conversion') return n.category === 'Conversion';
@@ -91,6 +161,10 @@ export const ThNotificationsAlertsCenter: React.FC = () => {
   });
 
   const activeNotification = filteredNotifications.find((n: any) => n.id === selectedId) || filteredNotifications[0];
+
+  if (isLoading) {
+    return <PageTableSkeleton rows={6} cols={4} title="Notifications & Alerts" />;
+  }
 
   return (
     <main className="flex flex-col">
@@ -225,12 +299,23 @@ export const ThNotificationsAlertsCenter: React.FC = () => {
                       )}
                     </div>
                     <div className="flex gap-md">
-                      <button className="flex-grow bg-[#2874F0] text-white py-2 font-bold rounded-sm active:scale-[0.98] transition-transform">
-                        Acknowledge Alert
-                      </button>
-                      <button className="flex-grow bg-[#FB641B] text-white py-2 font-bold rounded-sm active:scale-[0.98] transition-transform">
-                        Escalate
-                      </button>
+                      {activeNotification.actionUrl ? (
+                        <button
+                          onClick={() => navigate(activeNotification.actionUrl)}
+                          className="flex-grow bg-[#2874F0] hover:bg-[#1b5cb8] text-white py-2 font-bold rounded-sm active:scale-[0.98] transition-all text-center"
+                        >
+                          {activeNotification.actionText || 'Go to Action'}
+                        </button>
+                      ) : (
+                        <>
+                          <button className="flex-grow bg-[#2874F0] text-white py-2 font-bold rounded-sm active:scale-[0.98] transition-transform">
+                            Acknowledge Alert
+                          </button>
+                          <button className="flex-grow bg-[#FB641B] text-white py-2 font-bold rounded-sm active:scale-[0.98] transition-transform">
+                            Escalate
+                          </button>
+                        </>
+                      )}
                     </div>
                   </>
                 );

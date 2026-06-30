@@ -97,6 +97,17 @@ export const teleheadApi = baseApi.injectEndpoints({
       }),
       providesTags: ['Calls'],
     }),
+    getThCallerActivity: builder.query<any, void>({
+      query: () => '/webcrm/telehead/caller-activity',
+      providesTags: ['Calls'],
+    }),
+    getThLeadManagement: builder.query<any, { page?: number; per_page?: number; search?: string; status?: string; assigned_caller?: string; caller_id?: string | number; from?: string; to?: string }>({
+      query: (params) => ({
+        url: '/webcrm/telehead/lead-management',
+        params,
+      }),
+      providesTags: ['Leads'],
+    }),
     getThAgentCallSnapshot: builder.query<any[], { date?: string }>({
       query: (params) => ({
         url: '/webcrm/telehead/agent-call-snapshot-v2',
@@ -119,12 +130,24 @@ export const teleheadApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Leads', 'Calls'],
     }),
-    getThCallLog: builder.query<any, { per_page?: number; page?: number; process?: string; caller?: string; outcome?: string; search?: string }>({
+    transferThLeads: builder.mutation<any, { from_telecaller_id: number; to_telecaller_id: number; lead_count: number }>({
+      query: (body) => ({
+        url: '/webcrm/telehead/transfer-leads',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Leads', 'Calls'],
+    }),
+    getThCallLog: builder.query<any, { per_page?: number; page?: number; process?: string; caller?: string; caller_id?: number | string; outcome?: string; search?: string; from?: string; to?: string }>({
       query: (params) => ({
         url: '/webcrm/telehead/call-log',
         params,
       }),
       providesTags: ['Calls'],
+    }),
+
+    getThTelecallers: builder.query<any, void>({
+      query: () => '/webcrm/telehead/telecallers',
     }),
 
     getThSocialChatLog: builder.query<any, { assigned_to?: number }>({
@@ -152,8 +175,11 @@ export const teleheadApi = baseApi.injectEndpoints({
     getThMoveLeadsLogs: builder.query<any, void>({
       query: () => '/webcrm/telehead/move-leads-logs',
     }),
-    getThSlaDashboard: builder.query<any, void>({
-      query: () => '/webcrm/telehead/sla',
+    getThSlaDashboard: builder.query<any, { tr_page?: number; mm_page?: number; page?: number } | void>({
+      query: (params) => ({
+        url: '/webcrm/telehead/sla-dashboard',
+        params: params || undefined,
+      }),
     }),
     getThNotifications: builder.query<any, void>({
       query: () => '/webcrm/telehead/notifications',
@@ -205,16 +231,28 @@ export const teleheadApi = baseApi.injectEndpoints({
         params,
       }),
     }),
+    getThReportRevenueAnalysis: builder.query<any, void>({
+      query: () => '/webcrm/telehead/reports/revenue-analysis',
+    }),
+    getThReportTransactions: builder.query<any, { page?: number; process?: string; lead_type?: string }>({
+      query: (params) => ({
+        url: '/webcrm/telehead/reports/transactions',
+        params,
+      }),
+    }),
+    getThReportFunnel: builder.query<any, void>({
+      query: () => '/webcrm/telehead/reports/funnel-report',
+    }),
     getThReportCrossProcess: builder.query<any, { month?: string }>({
       query: (params) => ({
         url: '/webcrm/telehead/reports/cross-process',
         params,
       }),
     }),
-    getThReportBenchmarking: builder.query<any, { from?: string; to?: string }>({
+    getThReportBenchmarking: builder.query<any, { from?: string; to?: string } | void>({
       query: (params) => ({
-        url: '/webcrm/telehead/reports/benchmarking',
-        params,
+        url: '/webcrm/telehead/reports/caller-benchmarks',
+        params: params || undefined,
       }),
     }),
     getThSettings: builder.query<any, void>({
@@ -235,6 +273,13 @@ export const teleheadApi = baseApi.injectEndpoints({
     launchThSprint: builder.mutation<any, { caller_ids: number[]; start_date: string; end_date: string; daily_cap: number; process_filter: string }>({
       query: (body) => ({
         url: '/webcrm/telehead/backlog/launch-sprint',
+        method: 'POST',
+        body,
+      }),
+    }),
+    updateThSprintProgress: builder.mutation<any, { caller_ids: number[]; daily_cap: number }>({
+      query: (body) => ({
+        url: '/webcrm/telehead/backlog/sprint-progress',
         method: 'POST',
         body,
       }),
@@ -284,6 +329,86 @@ export const teleheadApi = baseApi.injectEndpoints({
     getThPayments: builder.query<any, void>({
       query: () => '/webcrm/telehead/payments',
     }),
+    transferThLeadsToAdmin: builder.mutation<any, { to_admin_id: number; user_ids: string[] }>({
+      query: (body) => ({
+        url: '/webcrm/telehead/leads/transfer',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Leads'],
+    }),
+    reassignThColdLeads: builder.mutation<any, { to_admin_id: number; user_ids: string[] }>({
+      query: (body) => ({
+        url: '/webcrm/telehead/cold-leads/reassign',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Leads'],
+    }),
+    getThSettingsIntegrations: builder.query<any, void>({
+      query: () => '/webcrm/telehead/settings/integrations',
+      providesTags: ['Settings'],
+    }),
+    getThSettingsPlans: builder.query<any, void>({
+      query: () => '/webcrm/telehead/settings/plans',
+      providesTags: ['Settings'],
+    }),
+    updateThSettingsPlan: builder.mutation<any, { key: string; value: any }>({
+      query: ({ key, value }) => ({
+        url: `/webcrm/telehead/settings/plans/${key}`,
+        method: 'PUT',
+        body: value,
+      }),
+      invalidatesTags: ['Settings'],
+    }),
+    getThSettingsCallers: builder.query<any, void>({
+      query: () => '/webcrm/telehead/settings/callers',
+      providesTags: ['Settings'],
+    }),
+    toggleThSettingsCallerStatus: builder.mutation<any, { id: string | number }>({
+      query: ({ id }) => ({
+        url: `/webcrm/telehead/settings/callers/${id}/toggle-status`,
+        method: 'PUT',
+      }),
+      invalidatesTags: ['Settings'],
+    }),
+    getThSettingsTargets: builder.query<any, void>({
+      query: () => '/webcrm/telehead/settings/targets',
+      providesTags: ['Settings'],
+    }),
+    saveThSettingsTargets: builder.mutation<any, any>({
+      query: (body) => ({
+        url: '/webcrm/telehead/settings/targets',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Settings'],
+    }),
+    getThSettingsScripts: builder.query<any, void>({
+      query: () => '/webcrm/telehead/settings/scripts',
+      providesTags: ['Settings'],
+    }),
+    getThOverviewRevenue: builder.query<any, void>({
+      query: () => '/webcrm/telehead/overview/collection-by',
+    }),
+    getThOverviewCampaignLeads: builder.query<any, void>({
+      query: () => '/webcrm/telehead/overview/campaign-leads',
+    }),
+    getThOverviewTeamPerformance: builder.query<any, void>({
+      query: () => '/webcrm/telehead/overview/team-performance',
+    }),
+    getThOverviewRevenueTrend: builder.query<any, void>({
+      query: () => '/webcrm/telehead/overview/revenue-trend',
+    }),
+    getThOverviewSlaRisks: builder.query<any, void>({
+      query: () => '/webcrm/telehead/overview/sla-risks',
+    }),
+    getThOverviewActivityFeed: builder.query<any, void>({
+      query: () => '/webcrm/telehead/overview/activity-feed',
+    }),
+    getThOverviewTeamPulse: builder.query<any, void>({
+      query: () => '/webcrm/telehead/overview/team-pulse',
+    }),
   }),
 });
 
@@ -311,6 +436,9 @@ export const {
   useGetThPersonProfileQuery,
   useMandateThRetrainingMutation,
   useGetThReportRevenueQuery,
+  useGetThReportRevenueAnalysisQuery,
+  useGetThReportTransactionsQuery,
+  useGetThReportFunnelQuery,
   useGetThReportCrossProcessQuery,
   useGetThReportBenchmarkingQuery,
   useGetThSettingsQuery,
@@ -328,4 +456,26 @@ export const {
   useGetThTotalCountsQuery,
   useGetThBreakLogShowQuery,
   useGetThPaymentsQuery,
+  useTransferThLeadsMutation,
+  useTransferThLeadsToAdminMutation,
+  useReassignThColdLeadsMutation,
+  useGetThCallerActivityQuery,
+  useGetThLeadManagementQuery,
+  useGetThTelecallersQuery,
+  useUpdateThSprintProgressMutation,
+  useGetThSettingsIntegrationsQuery,
+  useGetThSettingsPlansQuery,
+  useUpdateThSettingsPlanMutation,
+  useGetThSettingsCallersQuery,
+  useToggleThSettingsCallerStatusMutation,
+  useGetThSettingsTargetsQuery,
+  useSaveThSettingsTargetsMutation,
+  useGetThSettingsScriptsQuery,
+  useGetThOverviewRevenueQuery,
+  useGetThOverviewCampaignLeadsQuery,
+  useGetThOverviewTeamPerformanceQuery,
+  useGetThOverviewRevenueTrendQuery,
+  useGetThOverviewSlaRisksQuery,
+  useGetThOverviewActivityFeedQuery,
+  useGetThOverviewTeamPulseQuery,
 } = teleheadApi;

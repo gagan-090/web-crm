@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useGetThReportRevenueAnalysisQuery, useGetThReportTransactionsQuery, useGetThReportFunnelQuery, useGetThReportBenchmarkingQuery } from '../../services/api/teleheadApi';
 
 type TabType = 'revenue' | 'funnel' | 'benchmarking' | 'qc' | 'incentive' | 'attendance';
 
@@ -9,6 +10,17 @@ export const ThReportsHub: React.FC = () => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [processFilter, setProcessFilter] = useState<string>('All');
   const [leadTypeFilter, setLeadTypeFilter] = useState<string>('All');
+  const [txPage, setTxPage] = useState<number>(1);
+
+  const formatProcessLabel = (proc: string) => {
+    switch (proc) {
+      case 'Fulfillment': return 'Driver';
+      case 'Inbound Sales': return 'Transporter';
+      case 'Urgent Lead': return 'Special Category';
+      case 'Recovery': return 'Matchmaking';
+      default: return proc;
+    }
+  };
 
   const navItems: { id: TabType; label: string; icon: string }[] = [
     { id: 'revenue', label: 'Revenue Report', icon: 'payments' },
@@ -83,30 +95,172 @@ export const ThReportsHub: React.FC = () => {
     }
   };
 
+  const formatRevenue = (val: number) => {
+    if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)}Cr`;
+    if (val >= 100000) return `₹${(val / 100000).toFixed(2)}L`;
+    if (val >= 1000) return `₹${(val / 1000).toFixed(1)}K`;
+    return `₹${val}`;
+  };
+
+  // Full exact number with Indian formatting for tooltips (e.g. ₹45,200)
+  const formatRevenueExact = (val: number) =>
+    `₹${val.toLocaleString('en-IN')}`;
+
+  const { data: apiData, isLoading: isRevLoading, isFetching: isRevFetching } = useGetThReportRevenueAnalysisQuery();
+  const apiRevenue = apiData?.data || apiData;
+
+  const { data: apiFunnelData, isLoading: isFunnelLoading, isFetching: isFunnelFetching } = useGetThReportFunnelQuery();
+  const apiFunnel = apiFunnelData?.data || apiFunnelData;
+
+  const { data: apiBenchmarksData, isLoading: isBenchmarksLoading, isFetching: isBenchmarksFetching } = useGetThReportBenchmarkingQuery();
+  const apiBenchmarks = apiBenchmarksData?.data || apiBenchmarksData;
+
   const metrics = getMetrics();
 
-  const transactionsData = [
-    { date: '12/10/2023', caller: 'Amit Sharma', process: 'Fulfillment', units: 24, type: 'Hot', revenue: 45200, month: 'oct' },
-    { date: '12/10/2023', caller: 'Priya Verma', process: 'Inbound Sales', units: 18, type: 'Warm', revenue: 32150, month: 'oct' },
-    { date: '11/10/2023', caller: 'Suresh Raina', process: 'Urgent Lead', units: 42, type: 'Hot', revenue: 88900, month: 'oct' },
-    { date: '08/10/2023', caller: 'Amit Sharma', process: 'Recovery', units: 12, type: 'Cold', revenue: 15400, month: 'oct' },
-    { date: '05/10/2023', caller: 'Priya Verma', process: 'Fulfillment', units: 30, type: 'Warm', revenue: 52000, month: 'oct' },
-    { date: '02/10/2023', caller: 'Suresh Raina', process: 'Recovery', units: 15, type: 'Cold', revenue: 19800, month: 'oct' },
-    { date: '28/09/2023', caller: 'Amit Sharma', process: 'Inbound Sales', units: 20, type: 'Hot', revenue: 38000, month: 'sep' },
-    { date: '25/09/2023', caller: 'Priya Verma', process: 'Urgent Lead', units: 35, type: 'Hot', revenue: 74500, month: 'sep' },
+  // Parse funnel values (live or static fallbacks)
+  const funnelStages = apiFunnel?.funnel_stages || {};
+  const convRates = apiFunnel?.conversion_rates || {};
+
+  const funnelData = {
+    ingestedAssigned: funnelStages.leads_ingested?.count ?? 125000,
+    ingestedAssignedPct: funnelStages.leads_ingested?.percentage ?? 100,
+    contacted: funnelStages.contacted?.count ?? 82400,
+    contactedPct: funnelStages.contacted?.percentage ?? 65.9,
+    interested: funnelStages.interested?.count ?? 24700,
+    interestedPct: funnelStages.interested?.percentage ?? 19.8,
+    subscribed: funnelStages.subscribed?.count ?? 8650,
+    subscribedPct: funnelStages.subscribed?.percentage ?? 6.9,
+    contactabilityRate: convRates.contactability_rate ?? 76.1,
+    callToInterestRate: convRates.call_to_interest_rate ?? 30.0,
+    overallLeadToSale: convRates.overall_lead_to_sale ?? 6.9,
+  };
+
+  // Static fallback raw revenue values (used when API is unavailable)
+  const fallbackRaw = { driver: 45200, transporter: 32150, special_category: 88900, matchmaking: 35200 };
+
+  console.log('API Revenue Response:', apiRevenue);
+
+  // Overlay API data if available
+  let dynamicMetrics = { ...metrics } as any;
+  let callersList = [
+    { name: 'Amit Sharma', target: 250000, achieved: 240000 },
+    { name: 'Priya Verma', target: 270000, achieved: 190000 },
+    { name: 'Suresh Raina', target: 280000, achieved: 170000 }
   ];
 
-  // Filtering transactions list based on all filters
-  const filteredTransactions = transactionsData.filter((t) => {
-    // 1. Date filter check
-    if (dateFilter !== 'all' && t.month !== dateFilter) return false;
+  if (apiRevenue) {
+    const rByProcess = apiRevenue.revenue_by_process || {};
+    const maxVal = Math.max(
+      rByProcess.driver || 1,
+      rByProcess.transporter || 1,
+      rByProcess.special_category || 1,
+      rByProcess.matchmaking || 1
+    );
 
-    // 2. Process check
-    if (processFilter !== 'All' && t.process !== processFilter) return false;
+    dynamicMetrics.fulfillment = rByProcess.driver ? `${((rByProcess.driver / maxVal) * 90).toFixed(0)}%` : '0%';
+    dynamicMetrics.inboundSales = rByProcess.transporter ? `${((rByProcess.transporter / maxVal) * 90).toFixed(0)}%` : '0%';
+    dynamicMetrics.urgentLead = rByProcess.special_category ? `${((rByProcess.special_category / maxVal) * 90).toFixed(0)}%` : '0%';
+    dynamicMetrics.recovery = rByProcess.matchmaking ? `${((rByProcess.matchmaking / maxVal) * 90).toFixed(0)}%` : '0%';
 
-    // 3. Lead Type check
-    if (leadTypeFilter !== 'All' && t.type.toLowerCase() !== leadTypeFilter.toLowerCase()) return false;
+    // Use absolute values formatted as labels (shown above bars) - if 0, show nothing
+    dynamicMetrics.fulfillmentLabel = rByProcess.driver ? formatRevenue(rByProcess.driver) : '';
+    dynamicMetrics.inboundSalesLabel = rByProcess.transporter ? formatRevenue(rByProcess.transporter) : '';
+    dynamicMetrics.urgentLeadLabel = rByProcess.special_category ? formatRevenue(rByProcess.special_category) : '';
+    dynamicMetrics.recoveryLabel = rByProcess.matchmaking ? formatRevenue(rByProcess.matchmaking) : '';
 
+    // Raw numbers for tooltip — show exact amount e.g. ₹45,000
+    dynamicMetrics.fulfillmentRaw = rByProcess.driver ?? 0;
+    dynamicMetrics.inboundSalesRaw = rByProcess.transporter ?? 0;
+    dynamicMetrics.urgentLeadRaw = rByProcess.special_category ?? 0;
+    dynamicMetrics.recoveryRaw = rByProcess.matchmaking ?? 0;
+
+    if (apiRevenue.source_attribution) {
+      const src = apiRevenue.source_attribution;
+      dynamicMetrics.totalRev = typeof src.total_revenue === 'number' ? formatRevenue(src.total_revenue) : metrics.totalRev;
+      dynamicMetrics.digitalAds = typeof src.digital_ads_pct === 'number' ? `${src.digital_ads_pct}%` : metrics.digitalAds;
+      dynamicMetrics.referral = typeof src.referral_pct === 'number' ? `${src.referral_pct}%` : metrics.referral;
+      dynamicMetrics.offline = typeof src.offline_pct === 'number' ? `${src.offline_pct}%` : metrics.offline;
+
+      const dAds = src.digital_ads_pct || 0;
+      const ref = src.referral_pct || 0;
+      dynamicMetrics.gradient = `conic-gradient(#0056c3 0% ${dAds}%, #fd661d ${dAds}% ${dAds + ref}%, #a73a00 ${dAds + ref}% 100%)`;
+    } else {
+      dynamicMetrics.totalRev = formatRevenue(114000);
+      dynamicMetrics.digitalAds = '45%';
+      dynamicMetrics.referral = '30%';
+      dynamicMetrics.offline = '25%';
+      dynamicMetrics.gradient = 'conic-gradient(#0056c3 0% 45%, #fd661d 45% 75%, #a73a00 75% 100%)';
+    }
+
+    if (Array.isArray(apiRevenue.top_callers) && apiRevenue.top_callers.length > 0) {
+      callersList = apiRevenue.top_callers;
+    }
+  } else {
+    dynamicMetrics.fulfillmentLabel = metrics.fulfillment;
+    dynamicMetrics.inboundSalesLabel = metrics.inboundSales;
+    dynamicMetrics.urgentLeadLabel = metrics.urgentLead;
+    dynamicMetrics.recoveryLabel = metrics.recovery;
+    // Always use exact raw numbers for tooltip even in fallback
+    dynamicMetrics.fulfillmentRaw = fallbackRaw.driver;
+    dynamicMetrics.inboundSalesRaw = fallbackRaw.transporter;
+    dynamicMetrics.urgentLeadRaw = fallbackRaw.special_category;
+    dynamicMetrics.recoveryRaw = fallbackRaw.matchmaking;
+
+    // Use default values matching API format as mockup values
+    dynamicMetrics.totalRev = formatRevenue(114000);
+    dynamicMetrics.digitalAds = '45%';
+    dynamicMetrics.referral = '30%';
+    dynamicMetrics.offline = '25%';
+    dynamicMetrics.gradient = 'conic-gradient(#0056c3 0% 45%, #fd661d 45% 75%, #a73a00 75% 100%)';
+  }
+
+  console.log('API Benchmarks Response:', apiBenchmarksData);
+
+  // Setup caller benchmarks data
+  const staticBenchmarks = [
+    { name: 'Amit Sharma', role: 'Lvl 4 Senior', initials: 'AS', callsPerDay: 142, convRate: 12.4, avgDuration: '04:12', revenue: 241000, qcScore: 9.2, trend: 'up' },
+    { name: 'Priya Verma', role: 'Lvl 3 Associate', initials: 'PV', callsPerDay: 118, convRate: 8.1, avgDuration: '03:45', revenue: 188000, qcScore: 7.8, trend: 'stable' },
+    { name: 'Suresh Raina', role: 'Lvl 4 Senior', initials: 'SR', callsPerDay: 156, convRate: 10.2, avgDuration: '05:30', revenue: 172000, qcScore: 6.4, trend: 'down' }
+  ];
+
+  const benchmarksList = apiBenchmarks && Array.isArray(apiBenchmarks) ? apiBenchmarks : (apiBenchmarksData === undefined ? staticBenchmarks : []);
+
+  // Fetch transactions from API with pagination parameter
+  const { data: apiTxData, isLoading: isTxLoading, isFetching: isTxFetching } = useGetThReportTransactionsQuery({
+    page: txPage,
+    process: processFilter !== 'All' ? processFilter : undefined,
+    lead_type: leadTypeFilter !== 'All' ? leadTypeFilter.toUpperCase() : undefined
+  });
+
+  const apiTransactions = apiTxData?.data?.data || apiTxData?.data || apiTxData;
+
+  const staticTransactions = [
+    { date: '12/10/2023', caller_name: 'Amit Sharma', process: 'Driver', units: 24, lead_type: 'HOT', revenue: 45200 },
+    { date: '12/10/2023', caller_name: 'Priya Verma', process: 'Transporter', units: 18, lead_type: 'WARM', revenue: 32150 },
+    { date: '11/10/2023', caller_name: 'Suresh Raina', process: 'Special Category', units: 42, lead_type: 'HOT', revenue: 88900 },
+    { date: '08/10/2023', caller_name: 'Amit Sharma', process: 'Matchmaking', units: 12, lead_type: 'COLD', revenue: 15400 },
+    { date: '05/10/2023', caller_name: 'Priya Verma', process: 'Driver', units: 30, lead_type: 'WARM', revenue: 52000 },
+    { date: '02/10/2023', caller_name: 'Suresh Raina', process: 'Matchmaking', units: 15, lead_type: 'COLD', revenue: 19800 },
+    { date: '28/09/2023', caller_name: 'Amit Sharma', process: 'Transporter', units: 20, lead_type: 'HOT', revenue: 38000 },
+    { date: '25/09/2023', caller_name: 'Priya Verma', process: 'Special Category', units: 35, lead_type: 'HOT', revenue: 74500 },
+  ];
+
+  console.log('API Transactions Response:', apiTxData);
+
+  // Map API response to transaction objects, falling back to staticTransactions only when apiTxData is loading or failed
+  const rawTransactionsList = apiTransactions && Array.isArray(apiTransactions) ? apiTransactions : (apiTxData === undefined ? staticTransactions : []);
+
+  // Since filtering is done on the server if query params are sent, we only do client-side filtering if API data isn't active
+  const filteredTransactions = rawTransactionsList.filter((t: any) => {
+    if (!apiTransactions) {
+      // client-side filters for static fallback data
+      if (processFilter !== 'All') {
+        // match either mapped name or raw process filter
+        const mappedName = formatProcessLabel(t.process);
+        if (t.process !== processFilter && mappedName !== processFilter) return false;
+      }
+      if (leadTypeFilter !== 'All' && t.lead_type.toLowerCase() !== leadTypeFilter.toLowerCase()) return false;
+    }
     return true;
   });
 
@@ -220,7 +374,38 @@ export const ThReportsHub: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-12 gap-md">
+            {isRevLoading || isRevFetching ? (
+              <div className="space-y-md animate-pulse">
+                <div className="grid grid-cols-12 gap-md">
+                  <div className="col-span-7 bg-white p-md rounded border border-outline-variant shadow-sm h-56 flex flex-col justify-between">
+                    <div className="h-4 bg-surface-container-high rounded w-1/3"></div>
+                    <div className="flex gap-md h-32 items-end">
+                      <div className="flex-1 bg-surface-container-high rounded h-[85%]"></div>
+                      <div className="flex-1 bg-surface-container-high rounded h-[60%]"></div>
+                      <div className="flex-1 bg-surface-container-high rounded h-[95%]"></div>
+                      <div className="flex-1 bg-surface-container-high rounded h-[40%]"></div>
+                    </div>
+                  </div>
+                  <div className="col-span-5 bg-white p-md rounded border border-outline-variant shadow-sm h-56 flex flex-col justify-between">
+                    <div className="h-4 bg-surface-container-high rounded w-1/3"></div>
+                    <div className="w-24 h-24 rounded-full bg-surface-container-high mx-auto"></div>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-surface-container-high rounded w-full"></div>
+                      <div className="h-3 bg-surface-container-high rounded w-5/6"></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white p-md rounded border border-outline-variant shadow-sm h-48 space-y-md flex flex-col justify-around">
+                  <div className="h-4 bg-surface-container-high rounded w-1/4"></div>
+                  <div className="h-3 bg-surface-container-high rounded w-full"></div>
+                  <div className="h-3 bg-surface-container-high rounded w-full"></div>
+                  <div className="h-3 bg-surface-container-high rounded w-full"></div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-12 gap-md">
+              {/* ── Bar Chart ── */}
               <div className="col-span-7 bg-white p-md rounded border border-outline-variant shadow-sm flex flex-col">
                 <div className="flex justify-between items-center mb-md">
                   <h3 className="font-label-caps text-label-caps font-bold">Revenue by Process</h3>
@@ -229,143 +414,112 @@ export const ThReportsHub: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex-grow flex items-stretch gap-md h-48 pb-lg px-md">
-                  <div className="flex-1 h-full flex flex-col justify-end items-center gap-xs">
-                    <div className="w-full bg-primary-container rounded-t animate-pulse-custom animate-duration-1000 transition-all duration-300" style={{ height: metrics.fulfillment }}></div>
-                    <span className="text-[10px] font-label-caps uppercase truncate w-full text-center">Fulfillment</span>
-                  </div>
-                  <div className="flex-1 h-full flex flex-col justify-end items-center gap-xs">
-                    <div className="w-full bg-primary-container rounded-t transition-all duration-300" style={{ height: metrics.inboundSales }}></div>
-                    <span className="text-[10px] font-label-caps uppercase truncate w-full text-center">Inbound Sales</span>
-                  </div>
-                  <div className="flex-1 h-full flex flex-col justify-end items-center gap-xs">
-                    <div className="w-full bg-secondary-container rounded-t animate-pulse-custom animate-duration-1000 transition-all duration-300" style={{ height: metrics.urgentLead }}></div>
-                    <span className="text-[10px] font-label-caps uppercase truncate w-full text-center">Urgent Lead</span>
-                  </div>
-                  <div className="flex-1 h-full flex flex-col justify-end items-center gap-xs">
-                    <div className="w-full bg-primary-container rounded-t transition-all duration-300" style={{ height: metrics.recovery }}></div>
-                    <span className="text-[10px] font-label-caps uppercase truncate w-full text-center">Recovery</span>
-                  </div>
+                  {[
+                    { label: 'Driver', height: dynamicMetrics.fulfillment, val: dynamicMetrics.fulfillmentLabel, tooltipVal: formatRevenueExact(dynamicMetrics.fulfillmentRaw), color: 'bg-primary-container' },
+                    { label: 'Transporter', height: dynamicMetrics.inboundSales, val: dynamicMetrics.inboundSalesLabel, tooltipVal: formatRevenueExact(dynamicMetrics.inboundSalesRaw), color: 'bg-primary-container' },
+                    { label: 'Special Category', height: dynamicMetrics.urgentLead, val: dynamicMetrics.urgentLeadLabel, tooltipVal: formatRevenueExact(dynamicMetrics.urgentLeadRaw), color: 'bg-secondary-container' },
+                    { label: 'Matchmaking', height: dynamicMetrics.recovery, val: dynamicMetrics.recoveryLabel, tooltipVal: formatRevenueExact(dynamicMetrics.recoveryRaw), color: 'bg-primary-container' },
+                  ].map((bar) => (
+                    <div key={bar.label} className="flex-1 h-full flex flex-col justify-end items-center gap-xs group relative">
+                      {/* Tooltip — shows actual ₹ amount */}
+                      <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none
+                        opacity-0 group-hover:opacity-100 transition-opacity duration-200
+                        bg-gray-900 text-white text-[11px] font-bold rounded px-2 py-1 whitespace-nowrap shadow-lg">
+                        {bar.label}: {bar.tooltipVal}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                      </div>
+                      <span className="text-[11px] font-bold text-on-surface">{bar.val}</span>
+                      <div
+                        className={`w-full ${bar.color} rounded-t transition-all duration-300 cursor-pointer group-hover:brightness-90`}
+                        style={{ height: bar.height }}
+                      ></div>
+                      <span className="text-[10px] font-label-caps uppercase truncate w-full text-center">{bar.label}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
+              {/* ── Source Attribution Donut ── */}
               <div className="col-span-5 bg-white p-md rounded border border-outline-variant shadow-sm">
                 <h3 className="font-label-caps text-label-caps font-bold mb-md">Source Attribution</h3>
-                <div className="relative w-40 h-40 mx-auto mb-md">
-                  <div className="w-full h-full rounded-full transition-all duration-300" style={{ background: metrics.gradient }}></div>
+                <div className="relative w-40 h-40 mx-auto mb-md group">
+                  <div className="w-full h-full rounded-full transition-all duration-300" style={{ background: dynamicMetrics.gradient }}></div>
                   <div className="absolute inset-4 bg-white rounded-full flex items-center justify-center flex-col shadow-inner">
-                    <span className="text-headline-md font-bold transition-all duration-300">{metrics.totalRev}</span>
+                    <span className="text-headline-md font-bold transition-all duration-300">{dynamicMetrics.totalRev}</span>
                     <span className="text-[9px] uppercase font-bold text-on-surface-variant">Total Rev</span>
+                  </div>
+                  {/* Donut hover tooltip */}
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-20 pointer-events-none
+                    opacity-0 group-hover:opacity-100 transition-opacity duration-200
+                    bg-gray-900 text-white text-[11px] font-bold rounded px-2 py-1 whitespace-nowrap shadow-lg">
+                    Ads {dynamicMetrics.digitalAds} · Ref {dynamicMetrics.referral} · Off {dynamicMetrics.offline}
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
                   </div>
                 </div>
                 <div className="space-y-xs">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-xs"><div className="w-2.5 h-2.5 rounded-full bg-primary"></div> Digital Ads</span>
-                    <span className="font-bold font-data-mono">{metrics.digitalAds}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-xs"><div className="w-2.5 h-2.5 rounded-full bg-secondary-container"></div> Referral</span>
-                    <span className="font-bold font-data-mono">{metrics.referral}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-xs"><div className="w-2.5 h-2.5 rounded-full bg-secondary"></div> Offline</span>
-                    <span className="font-bold font-data-mono">{metrics.offline}</span>
-                  </div>
+                  {[
+                    { label: 'Digital Ads', val: dynamicMetrics.digitalAds, dot: 'bg-primary' },
+                    { label: 'Referral', val: dynamicMetrics.referral, dot: 'bg-secondary-container' },
+                    { label: 'Offline', val: dynamicMetrics.offline, dot: 'bg-secondary' },
+                  ].map((src) => (
+                    <div key={src.label} className="flex items-center justify-between text-[11px] group relative rounded px-1 py-0.5 hover:bg-surface-container-low cursor-default transition-colors">
+                      {/* Row hover tooltip */}
+                      <div className="absolute right-0 -top-8 z-20 pointer-events-none
+                        opacity-0 group-hover:opacity-100 transition-opacity duration-200
+                        bg-gray-900 text-white text-[11px] font-bold rounded px-2 py-1 whitespace-nowrap shadow-lg">
+                        {src.label}: {src.val} of total revenue
+                        <div className="absolute top-full right-4 border-4 border-transparent border-t-gray-900"></div>
+                      </div>
+                      <span className="flex items-center gap-xs"><div className={`w-2.5 h-2.5 rounded-full ${src.dot}`}></div> {src.label}</span>
+                      <span className="font-bold font-data-mono">{src.val}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
+              {/* ── Top Callers ── */}
               <div className="col-span-12 bg-white p-md rounded border border-outline-variant shadow-sm">
                 <div className="flex justify-between items-center mb-lg">
                   <h3 className="font-label-caps text-label-caps font-bold">Top Callers Performance (Revenue Focus)</h3>
                   <div className="flex gap-sm">
                     <span className="flex items-center gap-xs text-[10px] font-bold uppercase"><div className="w-2 h-2 bg-primary"></div> Target</span>
-                    <span className="flex items-center gap-xs text-[10px] font-bold uppercase"><div className="w-2 h-2 bg-secondary-container"></div> Achieved</span>
+                    <span className="flex items-center gap-xs text-[10px] font-bold uppercase"><div className="w-2 h-2 bg-[#FB641B]"></div> Achieved</span>
                   </div>
                 </div>
                 <div className="space-y-md">
-                  <div className="flex items-center gap-md">
-                    <div className="w-32 text-label-caps font-medium truncate">Amit Sharma</div>
-                    <div className="flex-grow h-4 bg-surface-container-low rounded-full overflow-hidden flex">
-                      <div className="bg-primary h-full transition-all duration-300" style={{ width: metrics.amitWidth }}></div>
-                      <div className="bg-secondary-container h-full" style={{ width: '10%', marginLeft: '-5%' }}></div>
-                    </div>
-                    <div className="w-16 text-right font-data-mono text-data-mono">{metrics.amitRev}</div>
-                  </div>
-
-                  <div className="flex items-center gap-md">
-                    <div className="w-32 text-label-caps font-medium truncate">Priya Verma</div>
-                    <div className="flex-grow h-4 bg-surface-container-low rounded-full overflow-hidden flex">
-                      <div className="bg-primary h-full transition-all duration-300" style={{ width: metrics.priyaWidth }}></div>
-                      <div className="bg-secondary-container h-full" style={{ width: '25%', marginLeft: '-5%' }}></div>
-                    </div>
-                    <div className="w-16 text-right font-data-mono text-data-mono">{metrics.priyaRev}</div>
-                  </div>
-
-                  <div className="flex items-center gap-md">
-                    <div className="w-32 text-label-caps font-medium truncate">Suresh Raina</div>
-                    <div className="flex-grow h-4 bg-surface-container-low rounded-full overflow-hidden flex">
-                      <div className="bg-primary h-full transition-all duration-300" style={{ width: metrics.sureshWidth }}></div>
-                      <div className="bg-secondary-container h-full" style={{ width: '30%', marginLeft: '-5%' }}></div>
-                    </div>
-                    <div className="w-16 text-right font-data-mono text-data-mono">{metrics.sureshRev}</div>
-                  </div>
+                  {callersList.map((caller, idx) => {
+                    const maxVal = Math.max(caller.target, caller.achieved, 1);
+                    const targetPct = `${((caller.target / maxVal) * 100).toFixed(0)}%`;
+                    const achievedPct = `${((caller.achieved / maxVal) * 100).toFixed(0)}%`;
+                    const pct = caller.target > 0 ? ((caller.achieved / caller.target) * 100).toFixed(1) : '0';
+                    return (
+                      <div key={idx} className="flex items-center gap-md group">
+                        <div className="w-32 text-label-caps font-medium truncate">{caller.name}</div>
+                        <div className="flex-grow relative">
+                          {/* Bar hover tooltip */}
+                          <div className="absolute -top-9 left-1/2 -translate-x-1/2 z-20 pointer-events-none
+                            opacity-0 group-hover:opacity-100 transition-opacity duration-200
+                            bg-gray-900 text-white text-[11px] font-bold rounded px-2 py-1 whitespace-nowrap shadow-lg">
+                            Target: {formatRevenue(caller.target)} · Achieved: {formatRevenue(caller.achieved)} · {pct}%
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                          </div>
+                          <div className="h-4 bg-surface-container-low rounded-full overflow-hidden flex relative cursor-pointer">
+                            <div className="bg-primary h-full transition-all duration-300 group-hover:brightness-90" style={{ width: targetPct }}></div>
+                            <div className="bg-[#FB641B] h-full absolute top-0 group-hover:brightness-90 transition-all duration-300" style={{ width: achievedPct }}></div>
+                          </div>
+                        </div>
+                        <div className="w-20 text-right font-data-mono text-data-mono">{formatRevenue(caller.achieved)}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
             <div className="bg-white rounded border border-outline-variant shadow-sm overflow-hidden">
-              <div className="px-md py-sm bg-surface-container-lowest border-b border-outline-variant flex justify-between items-center">
+               <div className="px-md py-sm bg-surface-container-lowest border-b border-outline-variant flex justify-between items-center">
                 <h3 className="font-label-caps text-label-caps font-bold">Transaction Breakdown</h3>
-                <button 
-                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                  className={`font-label-caps text-label-caps flex items-center gap-xs border px-sm py-1.5 rounded transition-all ${
-                    showAdvancedFilters ? 'bg-primary text-white border-primary' : 'text-primary border-outline-variant hover:bg-surface-container-low'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px]" data-icon="tune">tune</span> Advanced Filters
-                </button>
               </div>
-
-              {showAdvancedFilters && (
-                <div className="bg-surface-container-low px-md py-sm border-b border-outline-variant flex flex-wrap gap-md items-center text-xs font-semibold">
-                  <div className="flex items-center gap-xs">
-                    <span className="text-on-surface-variant font-label-caps text-[10px]">Process:</span>
-                    <select 
-                      value={processFilter} 
-                      onChange={(e) => setProcessFilter(e.target.value)}
-                      className="bg-white border border-outline-variant rounded p-xs outline-none focus:ring-1 focus:ring-primary font-medium"
-                    >
-                      <option value="All">All Processes</option>
-                      <option value="Fulfillment">Fulfillment</option>
-                      <option value="Inbound Sales">Inbound Sales</option>
-                      <option value="Urgent Lead">Urgent Lead</option>
-                      <option value="Recovery">Recovery</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center gap-xs">
-                    <span className="text-on-surface-variant font-label-caps text-[10px]">Lead Type:</span>
-                    <select 
-                      value={leadTypeFilter} 
-                      onChange={(e) => setLeadTypeFilter(e.target.value)}
-                      className="bg-white border border-outline-variant rounded p-xs outline-none focus:ring-1 focus:ring-primary font-medium"
-                    >
-                      <option value="All">All Types</option>
-                      <option value="Hot">Hot</option>
-                      <option value="Warm">Warm</option>
-                      <option value="Cold">Cold</option>
-                    </select>
-                  </div>
-
-                  {(processFilter !== 'All' || leadTypeFilter !== 'All') && (
-                    <button 
-                      onClick={() => { setProcessFilter('All'); setLeadTypeFilter('All'); }}
-                      className="text-error hover:underline text-[11px] font-bold uppercase ml-auto"
-                    >
-                      Clear Filters
-                    </button>
-                  )}
-                </div>
-              )}
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
@@ -380,23 +534,29 @@ export const ThReportsHub: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant">
-                    {filteredTransactions.map((t, idx) => (
-                      <tr key={idx} className="hover:bg-surface-container-low transition-colors group">
-                        <td className="px-md py-sm font-data-mono text-data-mono">{t.date}</td>
-                        <td className="px-md py-sm text-label-caps font-medium">{t.caller}</td>
-                        <td className="px-md py-sm text-label-caps">{t.process}</td>
-                        <td className="px-md py-sm text-label-caps">{t.units}</td>
-                        <td className="px-md py-sm">
-                          <span className={`px-sm py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            t.type === 'Hot' ? 'bg-error-container text-error' :
-                            t.type === 'Warm' ? 'bg-primary-container text-white' : 'bg-surface-container-highest text-on-surface-variant'
-                          }`}>
-                            {t.type}
-                          </span>
-                        </td>
-                        <td className="px-md py-sm font-data-mono text-data-mono text-right">₹{t.revenue.toLocaleString('en-IN')}</td>
-                      </tr>
-                    ))}
+                    {filteredTransactions.map((t: any, idx) => {
+                      const callerName = t.caller_name || t.caller || '';
+                      const leadType = t.lead_type || t.type || '';
+                      const isHot = leadType.toLowerCase() === 'hot';
+                      const isWarm = leadType.toLowerCase() === 'warm';
+                      return (
+                        <tr key={idx} className="hover:bg-surface-container-low transition-colors group">
+                          <td className="px-md py-sm font-data-mono text-data-mono">{t.date}</td>
+                          <td className="px-md py-sm text-label-caps font-medium">{callerName}</td>
+                          <td className="px-md py-sm text-label-caps">{formatProcessLabel(t.process)}</td>
+                          <td className="px-md py-sm text-label-caps">{t.units}</td>
+                          <td className="px-md py-sm">
+                            <span className={`px-sm py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              isHot ? 'bg-error-container text-error' :
+                              isWarm ? 'bg-primary-container text-white' : 'bg-surface-container-highest text-on-surface-variant'
+                            }`}>
+                              {leadType}
+                            </span>
+                          </td>
+                          <td className="px-md py-sm font-data-mono text-data-mono text-right">₹{t.revenue.toLocaleString('en-IN')}</td>
+                        </tr>
+                      );
+                    })}
                     {filteredTransactions.length === 0 && (
                       <tr>
                         <td colSpan={6} className="px-md py-lg text-center text-on-surface-variant font-bold">
@@ -407,9 +567,46 @@ export const ThReportsHub: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Controls */}
+              {((apiTxData?.pagination) || (apiTxData?.data?.pagination)) && (() => {
+                const pagination = apiTxData?.pagination || apiTxData?.data?.pagination || {};
+                const currentPage = pagination.current_page ?? 1;
+                const totalPages = pagination.total_pages ?? 1;
+                return (
+                  <div className="px-md py-sm bg-surface-container-lowest border-t border-outline-variant flex justify-between items-center text-xs font-semibold select-none">
+                    <span className="text-on-surface-variant">
+                      Page <span className="font-bold text-on-surface">{currentPage}</span> of{' '}
+                      <span className="font-bold text-on-surface">{totalPages}</span>
+                    </span>
+                    <div className="flex gap-sm">
+                      <button
+                        onClick={() => setTxPage((prev) => Math.max(prev - 1, 1))}
+                        disabled={currentPage <= 1}
+                        className={`px-sm py-1.5 border border-outline-variant rounded hover:bg-surface-container-low transition-colors flex items-center gap-xs font-label-caps text-label-caps ${
+                          currentPage <= 1 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">chevron_left</span> Previous
+                      </button>
+                      <button
+                        onClick={() => setTxPage((prev) => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage >= totalPages}
+                        className={`px-sm py-1.5 border border-outline-variant rounded hover:bg-surface-container-low transition-colors flex items-center gap-xs font-label-caps text-label-caps ${
+                          currentPage >= totalPages ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
+                      >
+                        Next <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
-          </div>
+          </>
         )}
+      </div>
+    )}
 
         {/* 2. FUNNEL REPORT VIEW */}
         {activeTab === 'funnel' && (
@@ -426,35 +623,60 @@ export const ThReportsHub: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-12 gap-md">
+            {isFunnelLoading || isFunnelFetching ? (
+              <div className="grid grid-cols-12 gap-md animate-pulse">
+                <div className="col-span-8 bg-white p-md rounded border border-outline-variant shadow-sm h-96 flex flex-col justify-around items-center">
+                  <div className="h-4 bg-surface-container-high rounded w-1/4 self-start"></div>
+                  <div className="w-full max-w-[320px] space-y-md">
+                    <div className="h-12 bg-surface-container-high rounded-lg w-full"></div>
+                    <div className="h-10 bg-surface-container-high rounded-lg w-5/6 mx-auto"></div>
+                    <div className="h-8 bg-surface-container-high rounded-lg w-2/3 mx-auto"></div>
+                    <div className="h-6 bg-surface-container-high rounded-lg w-1/2 mx-auto"></div>
+                  </div>
+                </div>
+                <div className="col-span-4 bg-white p-md rounded border border-outline-variant shadow-sm h-96 flex flex-col justify-around">
+                  <div className="h-4 bg-surface-container-high rounded w-1/3"></div>
+                  <div className="space-y-md">
+                    <div className="h-16 bg-surface-container-high rounded"></div>
+                    <div className="h-16 bg-surface-container-high rounded"></div>
+                    <div className="h-16 bg-surface-container-high rounded"></div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-12 gap-md">
               <div className="col-span-8 bg-white p-md rounded border border-outline-variant shadow-sm flex flex-col items-center">
                 <h3 className="font-label-caps text-label-caps font-bold mb-md w-full text-left">Funnel Stages</h3>
                 <div className="w-full max-w-[500px] py-md">
                   <svg viewBox="0 0 500 320" className="w-full h-auto overflow-visible select-none">
-                    {/* Layer 1 (Top) */}
-                    <polygon points="20,10 480,10 440,65 60,65" fill="#0056c3" className="hover:opacity-90 transition-opacity cursor-pointer" />
-                    <text x="250" y="32" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="bold" fontFamily="Inter">Leads Ingested</text>
-                    <text x="250" y="48" textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="Inter" opacity="0.9">125,000 (100%)</text>
+                    {/* Layer 1 (Top - Ingested & Assigned)
+                       Width at y=10: 20 to 480 (diff = 460)
+                       Width at y=75: 68.3 to 431.7 (diff = 363.4) */}
+                    <polygon points="20,10 480,10 431,75 69,75" fill="#0056c3" className="hover:opacity-90 transition-opacity cursor-pointer" />
+                    <text x="250" y="36" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="bold" fontFamily="Inter">Leads Ingested & Assigned</text>
+                    <text x="250" y="52" textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="Inter" opacity="0.9">{funnelData.ingestedAssigned.toLocaleString('en-IN')} ({funnelData.ingestedAssignedPct}%)</text>
 
-                    {/* Layer 2 */}
-                    <polygon points="63,70 437,70 397,125 103,125" fill="#1f6feb" className="hover:opacity-90 transition-opacity cursor-pointer" />
-                    <text x="250" y="92" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="bold" fontFamily="Inter">Leads Assigned</text>
-                    <text x="250" y="108" textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="Inter" opacity="0.9">108,300 (86.6%)</text>
+                    {/* Layer 2 (Contacted)
+                       Width at y=80: 72 to 428 (diff = 356)
+                       Width at y=145: 121.7 to 378.3 (diff = 256.6) */}
+                    <polygon points="73,80 427,80 377,145 123,145" fill="#fd661d" className="hover:opacity-90 transition-opacity cursor-pointer" />
+                    <text x="250" y="106" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="bold" fontFamily="Inter">Contacted</text>
+                    <text x="250" y="122" textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="Inter" opacity="0.9">{funnelData.contacted.toLocaleString('en-IN')} ({funnelData.contactedPct}%)</text>
 
-                    {/* Layer 3 */}
-                    <polygon points="106,130 394,130 354,185 146,185" fill="#fd661d" className="hover:opacity-90 transition-opacity cursor-pointer" />
-                    <text x="250" y="152" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="bold" fontFamily="Inter">Contacted</text>
-                    <text x="250" y="168" textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="Inter" opacity="0.9">82,400 (65.9%)</text>
+                    {/* Layer 3 (Interested)
+                       Width at y=150: 125.5 to 374.5 (diff = 249)
+                       Width at y=215: 175.2 to 324.8 (diff = 149.6) */}
+                    <polygon points="126,150 374,150 324,215 176,215" fill="#a73a00" className="hover:opacity-90 transition-opacity cursor-pointer" />
+                    <text x="250" y="176" textAnchor="middle" fill="#ffffff" fontSize="11" fontWeight="bold" fontFamily="Inter">Interested</text>
+                    <text x="250" y="192" textAnchor="middle" fill="#ffffff" fontSize="9" fontFamily="Inter" opacity="0.9">{funnelData.interested.toLocaleString('en-IN')} ({funnelData.interestedPct}%)</text>
 
-                    {/* Layer 4 */}
-                    <polygon points="149,190 351,190 311,245 189,245" fill="#a73a00" className="hover:opacity-90 transition-opacity cursor-pointer" />
-                    <text x="250" y="212" textAnchor="middle" fill="#ffffff" fontSize="11" fontWeight="bold" fontFamily="Inter">Interested</text>
-                    <text x="250" y="228" textAnchor="middle" fill="#ffffff" fontSize="9" fontFamily="Inter" opacity="0.9">24,700 (19.8%)</text>
-
-                    {/* Layer 5 (Bottom) */}
-                    <polygon points="192,250 308,250 278,305 222,305" fill="#27AE60" className="hover:opacity-90 transition-opacity cursor-pointer" />
-                    <text x="250" y="272" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="bold" fontFamily="Inter">Converted</text>
-                    <text x="250" y="288" textAnchor="middle" fill="#ffffff" fontSize="9" fontFamily="Inter" opacity="0.9">8,650 (6.9%)</text>
+                    {/* Layer 4 (Bottom - Subscribed)
+                       Width at y=220: 179 to 321 (diff = 142)
+                       Width at y=295: 236 to 264 (sharp corner close to tip at 250,310) */}
+                    <polygon points="180,220 320,220 270,285 230,285" fill="#27AE60" className="hover:opacity-90 transition-opacity cursor-pointer" />
+                    <text x="250" y="246" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="bold" fontFamily="Inter">Subscribed</text>
+                    <text x="250" y="262" textAnchor="middle" fill="#ffffff" fontSize="9" fontFamily="Inter" opacity="0.9">{funnelData.subscribed.toLocaleString('en-IN')} ({funnelData.subscribedPct}%)</text>
                   </svg>
                 </div>
               </div>
@@ -464,21 +686,23 @@ export const ThReportsHub: React.FC = () => {
                 <div className="space-y-sm flex-grow flex flex-col justify-center">
                   <div className="p-sm bg-surface-container-low rounded border border-outline-variant/30 text-center">
                     <p className="text-[10px] text-on-surface-variant uppercase font-bold">Contactability Rate</p>
-                    <p className="text-xl font-bold text-primary font-data-mono">76.1%</p>
+                    <p className="text-xl font-bold text-primary font-data-mono">{funnelData.contactabilityRate}%</p>
                   </div>
                   <div className="p-sm bg-surface-container-low rounded border border-outline-variant/30 text-center">
                     <p className="text-[10px] text-on-surface-variant uppercase font-bold">Call-to-Interest Rate</p>
-                    <p className="text-xl font-bold text-secondary font-data-mono">30.0%</p>
+                    <p className="text-xl font-bold text-secondary font-data-mono">{funnelData.callToInterestRate}%</p>
                   </div>
                   <div className="p-sm bg-surface-container-low rounded border border-outline-variant/30 text-center">
                     <p className="text-[10px] text-on-surface-variant uppercase font-bold">Overall Lead-to-Sale</p>
-                    <p className="text-xl font-bold text-green-600 font-data-mono">6.9%</p>
+                    <p className="text-xl font-bold text-green-600 font-data-mono">{funnelData.overallLeadToSale}%</p>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </>
         )}
+      </div>
+    )}
 
         {/* 3. CALLER BENCHMARKING VIEW */}
         {activeTab === 'benchmarking' && (
@@ -500,7 +724,29 @@ export const ThReportsHub: React.FC = () => {
               </div>
             </div>
 
-            <div className="bg-white rounded border border-outline-variant shadow-sm overflow-hidden">
+            {isBenchmarksLoading || isBenchmarksFetching ? (
+              <div className="bg-white rounded border border-outline-variant shadow-sm overflow-hidden p-md space-y-md animate-pulse">
+                <div className="h-4 bg-surface-container-high rounded w-1/4"></div>
+                <div className="space-y-sm">
+                  {[1, 2, 3, 4, 5].map((item) => (
+                    <div key={item} className="flex justify-between items-center py-sm border-b border-outline-variant/30">
+                      <div className="flex items-center gap-sm">
+                        <div className="w-8 h-8 rounded bg-surface-container-high"></div>
+                        <div className="space-y-1">
+                          <div className="h-3 bg-surface-container-high rounded w-24"></div>
+                          <div className="h-2.5 bg-surface-container-high rounded w-16"></div>
+                        </div>
+                      </div>
+                      <div className="h-3 bg-surface-container-high rounded w-12"></div>
+                      <div className="h-3 bg-surface-container-high rounded w-16"></div>
+                      <div className="h-3 bg-surface-container-high rounded w-12"></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="bg-white rounded border border-outline-variant shadow-sm overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-[#F0F2F5]">
                   <tr>
@@ -526,107 +772,77 @@ export const ThReportsHub: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant">
-                  <tr className="hover:bg-surface-container-low transition-colors">
-                    <td className="px-md py-md sticky left-0 bg-white">
-                      <div className="flex items-center gap-sm">
-                        <div className="w-8 h-8 rounded bg-surface-container-high flex items-center justify-center font-bold text-xs">
-                          AS
-                        </div>
-                        <div>
-                          <p className="font-label-caps text-label-caps font-bold">Amit Sharma</p>
-                          <p className="text-[10px] text-on-surface-variant">Lvl 4 Senior</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-md py-md text-center font-data-mono text-data-mono">142</td>
-                    <td className="px-md py-md text-center">
-                      <p className="font-data-mono text-data-mono text-green-600">12.4%</p>
-                      <div className="w-full bg-surface-container-high h-1 rounded-full mt-1">
-                        <div className="bg-green-500 h-full w-[80%]"></div>
-                      </div>
-                    </td>
-                    <td className="px-md py-md text-center font-data-mono text-data-mono">04:12</td>
-                    <td className="px-md py-md text-center font-data-mono text-data-mono">₹2.41L</td>
-                    <td className="px-md py-md text-center">
-                      <span className="px-sm py-1 bg-green-100 text-green-800 text-[11px] font-bold rounded">
-                        9.2/10
-                      </span>
-                    </td>
-                    <td className="px-md py-md">
-                      <span className="material-symbols-outlined text-green-500" data-icon="trending_up">
-                        trending_up
-                      </span>
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-surface-container-low transition-colors">
-                    <td className="px-md py-md sticky left-0 bg-white">
-                      <div className="flex items-center gap-sm">
-                        <div className="w-8 h-8 rounded bg-surface-container-high flex items-center justify-center font-bold text-xs">
-                          PV
-                        </div>
-                        <div>
-                          <p className="font-label-caps text-label-caps font-bold">Priya Verma</p>
-                          <p className="text-[10px] text-on-surface-variant">Lvl 3 Associate</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-md py-md text-center font-data-mono text-data-mono">118</td>
-                    <td className="px-md py-md text-center">
-                      <p className="font-data-mono text-data-mono text-amber-600">8.1%</p>
-                      <div className="w-full bg-surface-container-high h-1 rounded-full mt-1">
-                        <div className="bg-amber-500 h-full w-[55%]"></div>
-                      </div>
-                    </td>
-                    <td className="px-md py-md text-center font-data-mono text-data-mono">03:45</td>
-                    <td className="px-md py-md text-center font-data-mono text-data-mono">₹1.88L</td>
-                    <td className="px-md py-md text-center">
-                      <span className="px-sm py-1 bg-amber-100 text-amber-800 text-[11px] font-bold rounded">
-                        7.8/10
-                      </span>
-                    </td>
-                    <td className="px-md py-md">
-                      <span className="material-symbols-outlined text-amber-500" data-icon="trending_flat">
-                        trending_flat
-                      </span>
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-surface-container-low transition-colors">
-                    <td className="px-md py-md sticky left-0 bg-white">
-                      <div className="flex items-center gap-sm">
-                        <div className="w-8 h-8 rounded bg-surface-container-high flex items-center justify-center font-bold text-xs">
-                          SR
-                        </div>
-                        <div>
-                          <p className="font-label-caps text-label-caps font-bold">Suresh Raina</p>
-                          <p className="text-[10px] text-on-surface-variant">Lvl 4 Senior</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-md py-md text-center font-data-mono text-data-mono">156</td>
-                    <td className="px-md py-md text-center">
-                      <p className="font-data-mono text-data-mono text-green-600">10.2%</p>
-                      <div className="w-full bg-surface-container-high h-1 rounded-full mt-1">
-                        <div className="bg-green-500 h-full w-[72%]"></div>
-                      </div>
-                    </td>
-                    <td className="px-md py-md text-center font-data-mono text-data-mono">05:30</td>
-                    <td className="px-md py-md text-center font-data-mono text-data-mono">₹1.72L</td>
-                    <td className="px-md py-md text-center">
-                      <span className="px-sm py-1 bg-red-100 text-red-800 text-[11px] font-bold rounded">
-                        6.4/10
-                      </span>
-                    </td>
-                    <td className="px-md py-md">
-                      <span className="material-symbols-outlined text-red-500" data-icon="trending_down">
-                        trending_down
-                      </span>
-                    </td>
-                  </tr>
+                  {benchmarksList.map((agent: any, idx) => {
+                    const identity = agent.agent_identity || {};
+                    const name = identity.name || agent.name || '';
+                    const initials = identity.initials || agent.initials || name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+                    const role = identity.level || agent.role || 'Telecaller';
+                    const callsPerDay = agent.calls_per_day ?? agent.callsPerDay ?? 0;
+                    const convRate = agent.conversion_rate ?? agent.conv_rate ?? agent.convRate ?? 0;
+                    const avgDuration = agent.avg_duration ?? agent.avgDuration ?? '--';
+                    const revenue = agent.revenue ?? 0;
+                    const qcScore = agent.qc_score ?? agent.qcScore ?? 0;
+                    const trend = agent.trend ?? 'stable';
+
+                    const rateColor = convRate >= 10 ? 'text-green-600' : convRate >= 7 ? 'text-amber-600' : 'text-red-600';
+                    const barColor = convRate >= 10 ? 'bg-green-500' : convRate >= 7 ? 'bg-amber-500' : 'bg-red-500';
+                    const qcBg = qcScore >= 8.5 ? 'bg-green-100 text-green-800' : qcScore >= 7.0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800';
+                    
+                    let trendIcon = 'trending_flat';
+                    let trendColor = 'text-amber-500';
+                    if (trend === 'up') {
+                      trendIcon = 'trending_up';
+                      trendColor = 'text-green-500';
+                    } else if (trend === 'down') {
+                      trendIcon = 'trending_down';
+                      trendColor = 'text-red-500';
+                    } else if (trend === 'straight') {
+                      trendIcon = 'trending_flat';
+                      trendColor = 'text-amber-500';
+                    }
+
+                    return (
+                      <tr key={idx} className="hover:bg-surface-container-low transition-colors">
+                        <td className="px-md py-md sticky left-0 bg-white">
+                          <div className="flex items-center gap-sm">
+                            <div className="w-8 h-8 rounded bg-surface-container-high flex items-center justify-center font-bold text-xs">
+                              {initials}
+                            </div>
+                            <div>
+                              <p className="font-label-caps text-label-caps font-bold">{name}</p>
+                              <p className="text-[10px] text-on-surface-variant">{role}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-md py-md text-center font-data-mono text-data-mono">{callsPerDay}</td>
+                        <td className="px-md py-md text-center">
+                          <p className={`font-data-mono text-data-mono ${rateColor}`}>{convRate}%</p>
+                          <div className="w-full bg-surface-container-high h-1 rounded-full mt-1">
+                            <div className={`${barColor} h-full`} style={{ width: `${(convRate / 15) * 100}%` }}></div>
+                          </div>
+                        </td>
+                        <td className="px-md py-md text-center font-data-mono text-data-mono">{avgDuration}</td>
+                        <td className="px-md py-md text-center font-data-mono text-data-mono">{formatRevenue(revenue)}</td>
+                        <td className="px-md py-md text-center">
+                          <span className={`px-sm py-1 ${qcBg} text-[11px] font-bold rounded`}>
+                            {qcScore}/10
+                          </span>
+                        </td>
+                        <td className="px-md py-md">
+                          <span className={`material-symbols-outlined ${trendColor}`} data-icon={trendIcon}>
+                            {trendIcon}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          </div>
+          </>
         )}
+      </div>
+    )}
 
         {/* 4. QC TREND VIEW */}
         {activeTab === 'qc' && (

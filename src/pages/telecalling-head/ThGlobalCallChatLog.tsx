@@ -1,5 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { useGetThCallLogQuery, useGetThSocialChatLogQuery } from '../../services/api/teleheadApi';
+import { useGetThCallLogQuery, useGetThSocialChatLogQuery, useGetThTelecallersQuery } from '../../services/api/teleheadApi';
+import { API_BASE_URL } from '../../shared/constants/config';
+import { PageTableSkeleton } from '../../components/PageSkeleton';
+
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface LiveCallRecord {
@@ -43,7 +46,7 @@ const processBadgeClass = (code: string) => {
     case 'DW': return 'bg-green-500';
     case 'TR': return 'bg-orange-500';
     case 'MM': return 'bg-purple-500';
-    default:   return 'bg-teal-500';
+    default: return 'bg-teal-500';
   }
 };
 
@@ -52,34 +55,67 @@ const outcomeBadgeClass = (label: string) => {
   switch (label) {
     case 'Converted': return 'bg-green-100 text-green-800';
     case 'Connected': return 'bg-blue-100 text-blue-800';
-    case 'Callback':  return 'bg-yellow-100 text-yellow-800';
-    default:          return 'bg-gray-100 text-gray-800';
+    case 'Callback': return 'bg-yellow-100 text-yellow-800';
+    default: return 'bg-gray-100 text-gray-800';
   }
 };
 
 
 
 
+const getTodayDateString = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 export const ThGlobalCallChatLog: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'CALL' | 'CHAT'>('CALL');
 
-  // ── Filter state ─────────────────────────────────────────────────────────
+  const todayStr = getTodayDateString();
+
+  // ── Draft states (bound to UI inputs) ────────────────────────────────────
+  const [draftProcess, setDraftProcess] = useState('ALL');
+  const [draftCaller,  setDraftCaller]  = useState('ALL');
+  const [draftOutcome, setDraftOutcome] = useState('ALL');
+  const [draftFromDate, setDraftFromDate] = useState(todayStr);
+  const [draftToDate,   setDraftToDate]   = useState(todayStr);
+  const [draftSearch,   setDraftSearch]   = useState('');
+
+  // ── Applied states (used for API query) ──────────────────────────────────
   const [processFilter, setProcessFilter] = useState('ALL');
   const [callerFilter,  setCallerFilter]  = useState('ALL');
   const [outcomeFilter, setOutcomeFilter] = useState('ALL');
+  const [fromDate,      setFromDate]      = useState(todayStr);
+  const [toDate,        setToDate]        = useState(todayStr);
   const [searchQuery,   setSearchQuery]   = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [page,          setPage]          = useState(1);
 
-  // Debounce search — update after user stops typing 400ms
-  const handleSearchChange = (val: string) => {
-    setSearchQuery(val);
-    clearTimeout((window as any).__searchTimer);
-    (window as any).__searchTimer = setTimeout(() => {
-      setDebouncedSearch(val);
-      setPage(1);
-    }, 400);
+  const handleSearch = () => {
+    setProcessFilter(draftProcess);
+    setCallerFilter(draftCaller);
+    setOutcomeFilter(draftOutcome);
+    setFromDate(draftFromDate);
+    setToDate(draftToDate);
+    setSearchQuery(draftSearch);
+    setPage(1);
+  };
+
+  const handleReset = () => {
+    setDraftProcess('ALL');
+    setDraftCaller('ALL');
+    setDraftOutcome('ALL');
+    setDraftFromDate(todayStr);
+    setDraftToDate(todayStr);
+    setDraftSearch('');
+
+    setProcessFilter('ALL');
+    setCallerFilter('ALL');
+    setOutcomeFilter('ALL');
+    setFromDate(todayStr);
+    setToDate(todayStr);
+    setSearchQuery('');
+    setPage(1);
   };
 
   // ── Playing / slideout state ──────────────────────────────────────────────
@@ -87,14 +123,29 @@ export const ThGlobalCallChatLog: React.FC = () => {
   const [selectedCall, setSelectedCall] = useState<LiveCallRecord | null>(null);
 
   // ── Live API fetch ────────────────────────────────────────────────────────
-  const callParams = useMemo(() => ({
-    per_page: 25,
-    page,
-    process:  processFilter !== 'ALL' ? processFilter : undefined,
-    caller:   callerFilter  !== 'ALL' ? callerFilter  : undefined,
-    outcome:  outcomeFilter !== 'ALL' ? outcomeFilter : undefined,
-    search:   debouncedSearch || undefined,
-  }), [processFilter, callerFilter, outcomeFilter, debouncedSearch, page]);
+  const callParams = useMemo(() => {
+    let apiProcess: string | undefined = undefined;
+    if (processFilter === 'DW') {
+      apiProcess = 'Driver Onboarding';
+    } else if (processFilter === 'TR') {
+      apiProcess = 'Transporter Onboarding';
+    } else if (processFilter === 'MM') {
+      apiProcess = 'Job Matching';
+    } else if (processFilter === 'SC') {
+      apiProcess = 'Special Categories';
+    }
+
+    return {
+      per_page: 20,
+      page,
+      from: fromDate || undefined,
+      to: toDate || undefined,
+      process: apiProcess,
+      caller_id: callerFilter !== 'ALL' ? callerFilter : undefined,
+      outcome: outcomeFilter !== 'ALL' ? outcomeFilter : undefined,
+      search: searchQuery || undefined,
+    };
+  }, [processFilter, callerFilter, outcomeFilter, searchQuery, page, fromDate, toDate]);
 
   const { data: callLogData, isLoading, isFetching, isError, refetch } =
     useGetThCallLogQuery(callParams, { pollingInterval: 60000 });
@@ -102,13 +153,87 @@ export const ThGlobalCallChatLog: React.FC = () => {
   const { data: chatData, isLoading: chatLoading } =
     useGetThSocialChatLogQuery({}, { skip: activeTab !== 'CHAT' });
 
-  const calls: LiveCallRecord[] = callLogData?.data ?? [];
+  const { data: telecallersData } = useGetThTelecallersQuery();
+  const telecallers = useMemo(() => {
+    return Array.isArray(telecallersData) ? telecallersData : (telecallersData?.data || []);
+  }, [telecallersData]);
+
+  const calls: LiveCallRecord[] = useMemo(() => {
+    const rawCalls = callLogData?.data ?? [];
+    return rawCalls.map((item: any) => {
+      let dateDisplay = item.called_at || item.created_at || '';
+      try {
+        const targetDate = item.called_at || item.created_at;
+        if (targetDate) {
+          const dateObj = new Date(targetDate);
+          dateDisplay = dateObj.toLocaleString('en-IN', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }).replace(',', '');
+        }
+      } catch (e) { }
+
+      // Construction of call recording url
+      let recordingUrl = item.call_recording || null;
+      if (recordingUrl && !recordingUrl.startsWith('http')) {
+        const baseUrl = API_BASE_URL.replace(/\/api$/, '');
+        const hasExtension = /\.[a-zA-Z0-9]+$/.test(recordingUrl);
+        recordingUrl = `${baseUrl}/storage/recordings/${recordingUrl}${hasExtension ? '' : '.mp3'}`;
+      }
+
+      // Map process name to expected process code
+      let processCode: 'DW' | 'TR' | 'MM' | 'SC' = 'DW';
+      const proc = (item.process || '').toLowerCase();
+      if (proc.includes('driver') || proc.includes('welcome') || proc.includes('dw')) {
+        processCode = 'DW';
+      } else if (proc.includes('transporter') || proc.includes('tr')) {
+        processCode = 'TR';
+      } else if (proc.includes('matching') || proc.includes('match') || proc.includes('mm')) {
+        processCode = 'MM';
+      } else {
+        processCode = 'SC';
+      }
+
+      // Convert backend status to expected label formats
+      let statusLabel = 'NR / Not Connected';
+      if (item.call_status === 'connected') statusLabel = 'Connected';
+      if (item.call_status === 'not_connected') statusLabel = 'Not Connected';
+      if (item.call_status === 'callback_later') statusLabel = 'Callback';
+
+      return {
+        id: item.id,
+        user_tm_id: item.lead_tmid || '',
+        user_name: item.lead_name || '',
+        user_mobile: item.lead_mobile || '',
+        assigned_name: item.caller_name || '',
+        process: item.process || '',
+        process_code: processCode,
+        call_status: item.call_status || null,
+        outcome_label: statusLabel,
+        call_feedback: item.call_feedback || '',
+        call_remarks: item.call_remarks || '',
+        call_recording: recordingUrl,
+        call_type: item.type || 'outbound',
+        match_status: '',
+        job_id: null,
+        created_at: item.called_at || item.created_at || '',
+        date_display: dateDisplay
+      };
+    });
+  }, [callLogData]);
   const pagination = callLogData?.pagination ?? null;
-  const callers: string[] = callLogData?.callers ?? [];
   const chats: ChatRecord[] = Array.isArray(chatData) ? chatData : [];
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const totalPages = pagination?.last_page ?? 1;
+
+  if (isLoading) {
+    return <PageTableSkeleton rows={8} cols={6} title="Chat & Call Log" />;
+  }
 
   return (
     <main className="bg-background p-md space-y-lg text-xs font-sans max-w-[1440px] mx-auto relative min-h-[600px]">
@@ -126,18 +251,16 @@ export const ThGlobalCallChatLog: React.FC = () => {
         <div className="flex border border-outline-variant rounded-sm overflow-hidden select-none">
           <button
             onClick={() => setActiveTab('CALL')}
-            className={`px-md py-1.5 font-bold text-[11px] flex items-center gap-xs ${
-              activeTab === 'CALL' ? 'bg-primary text-white' : 'bg-surface hover:bg-surface-container'
-            }`}
+            className={`px-md py-1.5 font-bold text-[11px] flex items-center gap-xs ${activeTab === 'CALL' ? 'bg-primary text-white' : 'bg-surface hover:bg-surface-container'
+              }`}
           >
             <span className="material-symbols-outlined text-[16px]">call</span>
             Call Recording Logs
           </button>
           <button
             onClick={() => setActiveTab('CHAT')}
-            className={`px-md py-1.5 font-bold text-[11px] flex items-center gap-xs ${
-              activeTab === 'CHAT' ? 'bg-primary text-white' : 'bg-surface hover:bg-surface-container'
-            }`}
+            className={`px-md py-1.5 font-bold text-[11px] flex items-center gap-xs ${activeTab === 'CHAT' ? 'bg-primary text-white' : 'bg-surface hover:bg-surface-container'
+              }`}
           >
             <span className="material-symbols-outlined text-[16px]">chat</span>
             WhatsApp Threads
@@ -145,14 +268,34 @@ export const ThGlobalCallChatLog: React.FC = () => {
         </div>
       </section>
 
+      {/* ── Center Upper Search Bar ────────────────────────────────────────── */}
+      <section className="flex justify-center w-full">
+        <div className="w-full max-w-xl relative flex items-center shadow-sm border border-outline-variant rounded-sm">
+          <span className="material-symbols-outlined absolute left-3 text-outline text-[18px]">search</span>
+          <input
+            type="text"
+            placeholder="Search by TMID, Lead Name, or Phone…"
+            value={draftSearch}
+            onChange={(e) => {
+              const val = e.target.value;
+              setDraftSearch(val);
+              setSearchQuery(val);
+              setPage(1);
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+            className="w-full bg-white p-2.5 pl-10 pr-4 rounded-sm focus:ring-1 focus:ring-primary outline-none text-xs font-semibold"
+          />
+        </div>
+      </section>
+
       {/* ── Filter Bar ────────────────────────────────────────────────────── */}
-      <section className="bg-white p-sm border border-outline-variant rounded-sm flipkart-shadow grid grid-cols-1 sm:grid-cols-5 gap-sm items-end">
+      <section className="bg-white p-sm border border-outline-variant rounded-sm flipkart-shadow grid grid-cols-1 sm:grid-cols-6 gap-sm items-end">
         {/* Process */}
         <div>
           <label className="text-[9px] text-outline font-bold uppercase block mb-1">Process</label>
           <select
-            value={processFilter}
-            onChange={(e) => { setProcessFilter(e.target.value); setPage(1); }}
+            value={draftProcess}
+            onChange={(e) => setDraftProcess(e.target.value)}
             className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none"
           >
             <option value="ALL">All Processes</option>
@@ -166,16 +309,16 @@ export const ThGlobalCallChatLog: React.FC = () => {
         {/* Caller Agent — populated from API */}
         <div>
           <label className="text-[9px] text-outline font-bold uppercase block mb-1">
-            Caller Agent {callers.length > 0 && `(${callers.length})`}
+            Caller Agent {telecallers.length > 0 && `(${telecallers.length})`}
           </label>
           <select
-            value={callerFilter}
-            onChange={(e) => { setCallerFilter(e.target.value); setPage(1); }}
+            value={draftCaller}
+            onChange={(e) => setDraftCaller(e.target.value)}
             className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none"
           >
             <option value="ALL">All Callers</option>
-            {callers.map((c) => (
-              <option key={c} value={c}>{c}</option>
+            {telecallers.map((c: any) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>
@@ -184,8 +327,8 @@ export const ThGlobalCallChatLog: React.FC = () => {
         <div>
           <label className="text-[9px] text-outline font-bold uppercase block mb-1">Outcome</label>
           <select
-            value={outcomeFilter}
-            onChange={(e) => { setOutcomeFilter(e.target.value); setPage(1); }}
+            value={draftOutcome}
+            onChange={(e) => setDraftOutcome(e.target.value)}
             className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none"
           >
             <option value="ALL">All Outcomes</option>
@@ -195,16 +338,47 @@ export const ThGlobalCallChatLog: React.FC = () => {
           </select>
         </div>
 
-        {/* Global Search */}
-        <div className="sm:col-span-2">
-          <label className="text-[9px] text-outline font-bold uppercase block mb-1">Global Search</label>
+        {/* From Date */}
+        <div>
+          <label className="text-[9px] text-outline font-bold uppercase block mb-1">From Date</label>
           <input
-            type="text"
-            placeholder="Search by TMID, Lead Name, or Phone…"
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none"
+            type="date"
+            value={draftFromDate}
+            onChange={(e) => setDraftFromDate(e.target.value)}
+            className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none font-sans text-xs"
           />
+        </div>
+
+        {/* To Date */}
+        <div>
+          <label className="text-[9px] text-outline font-bold uppercase block mb-1">To Date</label>
+          <input
+            type="date"
+            value={draftToDate}
+            onChange={(e) => setDraftToDate(e.target.value)}
+            className="w-full bg-white border border-outline-variant p-1.5 rounded-sm focus:ring-1 focus:ring-primary outline-none font-sans text-xs"
+          />
+        </div>
+
+        {/* Search & Reset Buttons */}
+        <div>
+          <div className="flex gap-xs w-full">
+            <button
+              onClick={handleSearch}
+              className="flex-1 bg-primary hover:opacity-90 text-white font-bold p-1.5 rounded-sm active:scale-95 transition-all flex items-center justify-center gap-xs text-[10px] h-[29px] px-1"
+            >
+              <span className="material-symbols-outlined text-[14px]">search</span>
+              Search
+            </button>
+            <button
+              onClick={handleReset}
+              className="flex-1 bg-white hover:bg-surface-container border border-outline-variant text-on-surface font-bold p-1.5 rounded-sm active:scale-95 transition-all flex items-center justify-center gap-xs text-[10px] h-[29px] px-1"
+              title="Reset all filters"
+            >
+              <span className="material-symbols-outlined text-[14px]">restart_alt</span>
+              Reset
+            </button>
+          </div>
         </div>
       </section>
 
@@ -236,7 +410,6 @@ export const ThGlobalCallChatLog: React.FC = () => {
             <table className="w-full text-left border-collapse">
               <thead className="bg-surface-container text-outline text-[10px] uppercase font-extrabold border-b border-outline-variant">
                 <tr>
-                  <th className="px-md py-3 w-10"></th>
                   <th className="px-md py-3">Date / Time</th>
                   <th className="px-md py-3">Caller Agent</th>
                   <th className="px-md py-3">Process</th>
@@ -253,7 +426,7 @@ export const ThGlobalCallChatLog: React.FC = () => {
                 {(isLoading || isFetching) && calls.length === 0 && (
                   Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 9 }).map((_, j) => (
+                      {Array.from({ length: 8 }).map((_, j) => (
                         <td key={j} className="px-md py-3">
                           <div className="h-3 bg-surface-container rounded w-full" />
                         </td>
@@ -262,15 +435,7 @@ export const ThGlobalCallChatLog: React.FC = () => {
                   ))
                 )}
 
-                {/* Error state */}
-                {isError && (
-                  <tr>
-                    <td colSpan={9} className="text-center py-xl">
-                      <div className="text-red-600 font-bold">Failed to load call log. Check backend connection.</div>
-                      <button onClick={() => refetch()} className="mt-sm text-primary underline font-bold">Retry</button>
-                    </td>
-                  </tr>
-                )}
+
 
                 {/* Data rows */}
                 {!isLoading && calls.map((call) => (
@@ -279,26 +444,6 @@ export const ThGlobalCallChatLog: React.FC = () => {
                       onClick={() => setSelectedCall(call)}
                       className="hover:bg-surface-container transition-colors cursor-pointer"
                     >
-                      {/* Play button */}
-                      <td className="px-md py-3" onClick={(e) => e.stopPropagation()}>
-                        {call.call_recording ? (
-                          <button
-                            title="Play recording"
-                            onClick={() => setPlayingId(playingId === call.id ? null : call.id)}
-                            className="material-symbols-outlined text-primary text-[20px] hover:scale-110 active:scale-95 transition-transform"
-                          >
-                            {playingId === call.id ? 'pause_circle' : 'play_circle'}
-                          </button>
-                        ) : (
-                          <span
-                            title="No recording"
-                            className="material-symbols-outlined text-outline opacity-30 text-[18px]"
-                          >
-                            mic_off
-                          </span>
-                        )}
-                      </td>
-
                       {/* Date/Time — shifted to current */}
                       <td className="px-md py-3 font-data-mono whitespace-nowrap">
                         <span className="font-bold text-on-surface">{call.date_display}</span>
@@ -321,9 +466,6 @@ export const ThGlobalCallChatLog: React.FC = () => {
                       <td className="px-md py-3">
                         <div className="font-bold text-on-surface">{call.user_name}</div>
                         <div className="font-data-mono text-[10px] text-primary">{call.user_tm_id}</div>
-                        {call.user_mobile && (
-                          <div className="text-[9px] text-outline">{call.user_mobile}</div>
-                        )}
                       </td>
 
                       {/* Outcome */}
@@ -350,16 +492,14 @@ export const ThGlobalCallChatLog: React.FC = () => {
                       {/* Recording link/icon */}
                       <td className="px-md py-3 text-center" onClick={(e) => e.stopPropagation()}>
                         {call.call_recording ? (
-                          <a
-                            href={call.call_recording}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-primary hover:underline font-bold text-[10px] flex items-center justify-center gap-0.5"
-                            title="Open recording"
+                          <button
+                            title="Play recording"
+                            onClick={() => setPlayingId(playingId === call.id ? null : call.id)}
+                            className="text-primary hover:underline font-bold text-[10px] flex items-center justify-center gap-xs mx-auto active:scale-95 transition-transform"
                           >
-                            <span className="material-symbols-outlined text-[14px]">headphones</span>
-                            Listen
-                          </a>
+                            <span className="material-symbols-outlined text-[16px]">{playingId === call.id ? 'pause_circle' : 'play_circle'}</span>
+                            Play
+                          </button>
                         ) : (
                           <span className="text-outline italic text-[10px]">No file</span>
                         )}
@@ -369,7 +509,7 @@ export const ThGlobalCallChatLog: React.FC = () => {
                     {/* Inline audio player */}
                     {playingId === call.id && call.call_recording && (
                       <tr>
-                        <td colSpan={9} className="bg-primary/5 px-md py-sm border-b border-outline-variant">
+                        <td colSpan={8} className="bg-primary/5 px-md py-sm border-b border-outline-variant">
                           <div className="flex items-center gap-md">
                             <span className="font-bold text-primary font-data-mono text-[10px] whitespace-nowrap">
                               🎙 PLAYBACK — {call.user_name} ({call.user_tm_id})
@@ -394,9 +534,9 @@ export const ThGlobalCallChatLog: React.FC = () => {
                 ))}
 
                 {/* Empty state */}
-                {!isLoading && !isFetching && !isError && calls.length === 0 && (
+                {!isLoading && !isFetching && calls.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="text-center text-outline py-xl font-bold">
+                    <td colSpan={8} className="text-center text-outline py-xl font-bold">
                       No call records match your filters.
                     </td>
                   </tr>
@@ -540,15 +680,15 @@ export const ThGlobalCallChatLog: React.FC = () => {
             {/* Meta grid */}
             <div className="grid grid-cols-2 gap-xs text-xs">
               {[
-                ['Date / Time',   selectedCall.date_display],
-                ['Caller Agent',  selectedCall.assigned_name],
-                ['Process Code',  selectedCall.process_code],
-                ['Process',       selectedCall.process],
-                ['Call Status',   selectedCall.call_status ?? '—'],
-                ['Outcome',       selectedCall.outcome_label],
-                ['Call Type',     selectedCall.call_type || '—'],
-                ['Match Status',  selectedCall.match_status || '—'],
-                ['Job ID',        selectedCall.job_id || '—'],
+                ['Date / Time', selectedCall.date_display],
+                ['Caller Agent', selectedCall.assigned_name],
+                ['Process Code', selectedCall.process_code],
+                ['Process', selectedCall.process],
+                ['Call Status', selectedCall.call_status ?? '—'],
+                ['Outcome', selectedCall.outcome_label],
+                ['Call Type', selectedCall.call_type || '—'],
+                ['Match Status', selectedCall.match_status || '—'],
+                ['Job ID', selectedCall.job_id || '—'],
               ].map(([label, value]) => (
                 <React.Fragment key={label}>
                   <span className="text-outline font-semibold py-1 border-b border-outline-variant/30">{label}</span>

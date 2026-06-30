@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useGetThTeamMonitorQuery, useMoveThLeadsMutation } from '../../services/api/teleheadApi';
+import { useGetThCallerActivityQuery, useMoveThLeadsMutation, useGetThCallLogQuery, useGetThTelecallersQuery, useTransferThLeadsMutation } from '../../services/api/teleheadApi';
+import { PageCardSkeleton } from '../../components/PageSkeleton';
+
+
 
 interface Caller {
   id: string;
@@ -23,6 +26,43 @@ export const ThTeamMonitor: React.FC = () => {
   const [rebalanceTo, setRebalanceTo] = useState('');
   const [rebalanceAmount, setRebalanceAmount] = useState('10');
 
+  // API queries for live queue depth (using call-log endpoint)
+  const { data: dwCallData } = useGetThCallLogQuery({
+    from: '2026-06-01',
+    to: '2026-06-17',
+    process: 'Driver Onboarding',
+    per_page: 1,
+    page: 1
+  });
+  const { data: trCallData } = useGetThCallLogQuery({
+    from: '2026-06-01',
+    to: '2026-06-17',
+    process: 'Transporter Onboarding',
+    per_page: 1,
+    page: 1
+  });
+  const { data: mmCallData } = useGetThCallLogQuery({
+    from: '2026-06-01',
+    to: '2026-06-17',
+    process: 'Job Matching',
+    per_page: 1,
+    page: 1
+  });
+  const { data: scCallData } = useGetThCallLogQuery({
+    from: '2026-06-01',
+    to: '2026-06-17',
+    process: 'Special Categories',
+    per_page: 1,
+    page: 1
+  });
+
+  const dwCount = dwCallData?.pagination?.total ?? 0;
+  const trCount = trCallData?.pagination?.total ?? 0;
+  const mmCount = mmCallData?.pagination?.total ?? 0;
+  const scCount = scCallData?.pagination?.total ?? 0;
+
+  const maxCount = Math.max(dwCount, trCount, mmCount, scCount) || 1;
+
   // Interactive backups state
   const [backups, setBackups] = useState([
     { id: 'B01', name: 'Ankit', target: 'Driver Welcome Backup', active: false },
@@ -31,30 +71,59 @@ export const ThTeamMonitor: React.FC = () => {
     { id: 'B04', name: 'Sana', target: 'Special Categories Backup', active: false },
   ]);
 
-  const { data: teamData, refetch } = useGetThTeamMonitorQuery({ process: 'all' });
+  const { data: activityData, isLoading, isFetching, error, refetch } = useGetThCallerActivityQuery(undefined, {
+    pollingInterval: 5000,
+  });
   const [moveLeads] = useMoveThLeadsMutation();
+  const [transferLeads, { isLoading: isTransferring }] = useTransferThLeadsMutation();
+
+  const { data: telecallersData } = useGetThTelecallersQuery();
+  const telecallers = React.useMemo(() => {
+    return Array.isArray(telecallersData) ? telecallersData : (telecallersData?.data || []);
+  }, [telecallersData]);
 
   const [callers, setCallers] = useState<Caller[]>([]);
 
   useEffect(() => {
-    if (teamData?.data) {
-      const mapped = teamData.data.map(caller => ({
-        id: caller.id.toString(),
-        name: caller.name,
-        process: (caller.process === 'welcome-call' ? 'DW' : caller.process === 'transporter' ? 'TR' : caller.process === 'match-making' ? 'MM' : caller.process === 'special' ? 'SC' : caller.process === 'qc' ? 'QC' : 'TL') as any,
-        role: caller.process === 'welcome-call' ? 'Welcome Caller' : caller.process === 'transporter' ? 'Welcome Caller' : caller.process === 'match-making' ? 'Matchmaker' : caller.process === 'special' ? 'Special Categories' : caller.process === 'qc' ? 'QC Analyst' : 'Team Leader',
-        status: (caller.live_status === 'Idle' ? 'Idle' : caller.live_status === 'On Call' ? 'In Call' : caller.live_status === 'Offline' ? 'Offline' : 'Active') as any,
-        statusTime: undefined,
-        currentLead: caller.last_call_status || '-',
-        queueDepth: caller.queue_depth,
-        callsToday: caller.calls_today,
-        revenueToday: caller.revenue_today,
-        lastActive: caller.last_call_at ? caller.last_call_at.split(' ')[1] : 'Just now',
-        reportingTl: caller.process === 'welcome-call' ? 'Rahul' : 'Rajendra'
-      }));
+    if (activityData?.data) {
+      const mapped = activityData.data.map((caller: any) => {
+        let status: 'In Call' | 'Idle' | 'Wrapping Up' | 'Active' | 'Offline' = 'Offline';
+        if (caller.last_active) {
+          if (caller.last_call_status === 'connected') {
+            status = 'In Call';
+          } else if (caller.last_call_status === 'not_connected' || caller.last_call_status === 'callback_later') {
+            status = 'Wrapping Up';
+          } else {
+            status = 'Idle';
+          }
+        }
+
+        let mappedProcess: 'DW' | 'TR' | 'SC' | 'MM' | 'QC' | 'TL' = 'DW';
+        if (caller.process === 'welcome-call') mappedProcess = 'DW';
+        else if (caller.process === 'transporter') mappedProcess = 'TR';
+        else if (caller.process === 'match-making') mappedProcess = 'MM';
+        else if (caller.process === 'special') mappedProcess = 'SC';
+        else if (caller.process === 'qc') mappedProcess = 'QC';
+        else if (caller.process === 'tl') mappedProcess = 'TL';
+
+        return {
+          id: caller.id.toString(),
+          name: caller.name,
+          process: mappedProcess,
+          role: caller.role || (mappedProcess === 'DW' || mappedProcess === 'TR' ? 'Welcome Caller' : mappedProcess === 'MM' ? 'Matchmaker' : mappedProcess === 'SC' ? 'Special Categories' : mappedProcess === 'QC' ? 'QC Analyst' : 'Team Leader'),
+          status,
+          statusTime: undefined,
+          currentLead: caller.last_call_status || '-',
+          queueDepth: caller.pending_calls ?? 0,
+          callsToday: caller.calls_today ?? 0,
+          revenueToday: caller.revenue_today ?? 0,
+          lastActive: caller.last_active ? caller.last_active.split(' ')[1] : '—',
+          reportingTl: caller.reporting_tl || '—'
+        };
+      });
       setCallers(mapped);
     }
-  }, [teamData]);
+  }, [activityData]);
 
   const toggleBackup = (id: string) => {
     setBackups(prev => prev.map(b => b.id === id ? { ...b, active: !b.active } : b));
@@ -69,11 +138,10 @@ export const ThTeamMonitor: React.FC = () => {
     if (!fromCaller || !toCaller) return;
 
     try {
-      await moveLeads({
-        from: parseInt(fromCaller.id),
-        to: parseInt(toCaller.id),
-        limit: parseInt(rebalanceAmount),
-        reason: 'Cross-team rebalance from Telecalling Head'
+      await transferLeads({
+        from_telecaller_id: parseInt(fromCaller.id),
+        to_telecaller_id: parseInt(toCaller.id),
+        lead_count: parseInt(rebalanceAmount)
       }).unwrap();
       refetch();
       setIsRebalanceOpen(false);
@@ -93,13 +161,22 @@ export const ThTeamMonitor: React.FC = () => {
     return true;
   });
 
+  if (isLoading) {
+    return <PageCardSkeleton cards={6} title="Team Monitor" />;
+  }
+
   return (
     <main className="bg-background p-md space-y-lg text-xs font-sans max-w-[1440px] mx-auto">
       {/* Header controls */}
       <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-md bg-white p-sm border border-outline-variant rounded-sm flipkart-shadow">
         <div className="flex items-center gap-sm">
-          <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
-          <span className="font-extrabold uppercase text-outline text-[10px] tracking-wider">Live Global Monitor (Refreshes every 5s)</span>
+          <span className={`w-2.5 h-2.5 rounded-full bg-green-500 ${isFetching ? 'animate-ping' : 'animate-pulse'}`}></span>
+          <span className="font-extrabold uppercase text-outline text-[10px] tracking-wider flex items-center gap-xs">
+            Live Global Monitor (Refreshes every 5s)
+            {isFetching && (
+              <span className="inline-block w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin ml-xs" title="Syncing..."></span>
+            )}
+          </span>
         </div>
 
         {/* Filter Pills */}
@@ -145,10 +222,10 @@ export const ThTeamMonitor: React.FC = () => {
           </div>
           <div className="space-y-sm">
             {[
-              { name: 'Driver Welcome (DW)', pct: 45, count: 22, color: 'bg-green-500' },
-              { name: 'Transport Welcome (TR)', pct: 82, count: 41, color: 'bg-orange-500' },
-              { name: 'Match Making (MM)', pct: 30, count: 15, color: 'bg-purple-500' },
-              { name: 'Special Categories (SC)', pct: 75, count: 37, color: 'bg-teal-500' },
+              { name: 'Driver Welcome (DW)', pct: Math.round((dwCount / maxCount) * 100), count: dwCount, color: 'bg-green-500' },
+              { name: 'Transport Welcome (TR)', pct: Math.round((trCount / maxCount) * 100), count: trCount, color: 'bg-orange-500' },
+              { name: 'Match Making (MM)', pct: Math.round((mmCount / maxCount) * 100), count: mmCount, color: 'bg-purple-500' },
+              { name: 'Special Categories (SC)', pct: Math.round((scCount / maxCount) * 100), count: scCount, color: 'bg-teal-500' },
             ].map(queue => (
               <div key={queue.name} className="flex items-center gap-md">
                 <span className="w-48 font-bold text-on-surface shrink-0">{queue.name}</span>
@@ -205,13 +282,16 @@ export const ThTeamMonitor: React.FC = () => {
           <h3 className="font-label-caps text-outline uppercase font-bold">Caller Activity Database</h3>
           <div className="flex gap-md text-[10px] font-bold text-outline">
             <span className="flex items-center gap-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500 font-bold"></span> 14 Online
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 font-bold"></span> {callers.filter(c => c.status === 'In Call').length} In Call
             </span>
             <span className="flex items-center gap-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 font-bold"></span> 2 Wrapping
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 font-bold"></span> {callers.filter(c => c.status === 'Idle').length} Idle
             </span>
             <span className="flex items-center gap-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-gray-400 font-bold"></span> 3 Offline
+              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 font-bold"></span> {callers.filter(c => c.status === 'Wrapping Up').length} Wrapping
+            </span>
+            <span className="flex items-center gap-xs">
+              <span className="w-2.5 h-2.5 rounded-full bg-gray-400 font-bold"></span> {callers.filter(c => c.status === 'Offline').length} Offline
             </span>
           </div>
         </div>
@@ -232,64 +312,95 @@ export const ThTeamMonitor: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant font-medium text-on-surface">
-              {filteredCallers.map(caller => (
-                <tr
-                  key={caller.id}
-                  className={`hover:bg-surface-container transition-colors ${caller.status === 'Idle' ? 'bg-red-50/20' : ''
-                    }`}
-                >
-                  <td className="px-md py-3 font-bold">{caller.name}</td>
-                  <td className="px-md py-3">
-                    <span
-                      className={`px-2 py-0.5 border text-[9px] font-extrabold rounded-sm ${caller.process === 'DW'
-                        ? 'border-green-300 text-green-700 bg-green-50'
-                        : caller.process === 'TR'
-                          ? 'border-orange-300 text-orange-700 bg-orange-50'
-                          : caller.process === 'SC'
-                            ? 'border-teal-300 text-teal-700 bg-teal-50'
-                            : caller.process === 'MM'
-                              ? 'border-purple-300 text-purple-700 bg-purple-50'
-                              : 'border-slate-300 text-slate-700 bg-slate-50'
-                        }`}
-                    >
-                      {caller.process}
-                    </span>
+              {isLoading ? (
+                Array.from({ length: 6 }).map((_, idx) => (
+                  <tr key={idx} className="animate-pulse">
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-8"></div></td>
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-12"></div></td>
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-16"></div></td>
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-24"></div></td>
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-8"></div></td>
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-16"></div></td>
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-12"></div></td>
+                    <td className="px-md py-3.5"><div className="h-3.5 bg-gray-200 rounded w-20"></div></td>
+                  </tr>
+                ))
+              ) : error ? (
+                <tr>
+                  <td colSpan={10} className="px-md py-8 text-center text-red-600 font-bold">
+                    ⚠️ Error loading caller activity database. Please check your connection.
                   </td>
-                  <td className="px-md py-3 text-outline-variant font-semibold">{caller.role}</td>
-                  <td className="px-md py-3">
-                    <span
-                      className={`font-bold flex items-center gap-xs ${caller.status === 'In Call'
-                        ? 'text-green-600'
-                        : caller.status === 'Wrapping Up'
-                          ? 'text-yellow-600'
-                          : caller.status === 'Idle'
-                            ? 'text-red-500'
-                            : 'text-outline'
-                        }`}
-                    >
-                      {caller.status} {caller.statusTime && `(${caller.statusTime})`}
-                    </span>
-                  </td>
-                  <td className="px-md py-3 font-data-mono">{caller.currentLead}</td>
-                  <td className="px-md py-3">
-                    <div className="flex items-center gap-sm">
-                      <span className="font-data-mono w-4">{caller.queueDepth}</span>
-                      <div className="w-16 bg-surface-container h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${caller.queueDepth > 10 ? 'bg-red-500' : 'bg-primary'}`}
-                          style={{ width: `${Math.min(100, caller.queueDepth * 8)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-md py-3 font-data-mono">{caller.callsToday}</td>
-                  <td className="px-md py-3 font-data-mono">
-                    {caller.revenueToday > 0 ? `₹${caller.revenueToday.toLocaleString()}` : '—'}
-                  </td>
-                  <td className="px-md py-3 text-outline">{caller.lastActive}</td>
-                  <td className="px-md py-3 font-bold text-primary">{caller.reportingTl}</td>
                 </tr>
-              ))}
+              ) : filteredCallers.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="px-md py-8 text-center text-outline font-bold">
+                    {activeFilter === 'ALL'
+                      ? 'No callers found in the database.'
+                      : `No callers found matching the selected filter (${activeFilter}).`}
+                  </td>
+                </tr>
+              ) : (
+                filteredCallers.map(caller => (
+                  <tr
+                    key={caller.id}
+                    className={`hover:bg-surface-container transition-colors ${caller.status === 'Idle' ? 'bg-red-50/20' : ''
+                      }`}
+                  >
+                    <td className="px-md py-3 font-bold">{caller.name}</td>
+                    <td className="px-md py-3">
+                      <span
+                        className={`px-2 py-0.5 border text-[9px] font-extrabold rounded-sm ${caller.process === 'DW'
+                          ? 'border-green-300 text-green-700 bg-green-50'
+                          : caller.process === 'TR'
+                            ? 'border-orange-300 text-orange-700 bg-orange-50'
+                            : caller.process === 'SC'
+                              ? 'border-teal-300 text-teal-700 bg-teal-50'
+                              : caller.process === 'MM'
+                                ? 'border-purple-300 text-purple-700 bg-purple-50'
+                                : 'border-slate-300 text-slate-700 bg-slate-50'
+                          }`}
+                      >
+                        {caller.process}
+                      </span>
+                    </td>
+                    <td className="px-md py-3 text-outline-variant font-semibold">{caller.role}</td>
+                    <td className="px-md py-3">
+                      <span
+                        className={`font-bold flex items-center gap-xs ${caller.status === 'In Call'
+                          ? 'text-green-600'
+                          : caller.status === 'Wrapping Up'
+                            ? 'text-yellow-600'
+                            : caller.status === 'Idle'
+                              ? 'text-red-500'
+                              : 'text-outline'
+                          }`}
+                      >
+                        {caller.status} {caller.statusTime && `(${caller.statusTime})`}
+                      </span>
+                    </td>
+                    <td className="px-md py-3 font-data-mono">{caller.currentLead}</td>
+                    <td className="px-md py-3">
+                      <div className="flex items-center gap-xs">
+                        <span className="font-data-mono min-w-[40px] text-right shrink-0">{caller.queueDepth.toLocaleString()}</span>
+                        <div className="w-16 bg-surface-container h-1.5 rounded-full overflow-hidden shrink-0">
+                          <div
+                            className={`h-full ${caller.queueDepth > 10 ? 'bg-red-500' : 'bg-primary'}`}
+                            style={{ width: `${caller.queueDepth > 0 ? Math.min(100, caller.queueDepth > 10 ? 100 : caller.queueDepth * 8) : 0}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-md py-3 font-data-mono">{caller.callsToday}</td>
+                    <td className="px-md py-3 font-data-mono">
+                      {caller.revenueToday > 0 ? `₹${caller.revenueToday.toLocaleString()}` : '—'}
+                    </td>
+                    <td className="px-md py-3 text-outline">{caller.lastActive}</td>
+                    <td className="px-md py-3 font-bold text-primary">{caller.reportingTl}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -316,7 +427,16 @@ export const ThTeamMonitor: React.FC = () => {
                   className="w-full bg-white border border-outline-variant p-sm rounded-sm focus:ring-1 focus:ring-primary outline-none"
                 >
                   <option value="">Select Caller...</option>
-                  {callers
+                  {telecallers
+                    .map((tc: any) => {
+                      const detail = callers.find(c => c.id.toString() === tc.id.toString() || c.name === tc.name);
+                      return {
+                        id: tc.id.toString(),
+                        name: tc.name,
+                        process: detail?.process || 'DW',
+                        queueDepth: detail?.queueDepth || 0,
+                      };
+                    })
                     .filter(c => c.queueDepth > 0 && c.process !== 'TL')
                     .map(c => (
                       <option key={c.id} value={c.name}>{c.name} ({c.process} - {c.queueDepth} leads)</option>
@@ -333,7 +453,16 @@ export const ThTeamMonitor: React.FC = () => {
                   className="w-full bg-white border border-outline-variant p-sm rounded-sm focus:ring-1 focus:ring-primary outline-none"
                 >
                   <option value="">Select Target Caller...</option>
-                  {callers
+                  {telecallers
+                    .map((tc: any) => {
+                      const detail = callers.find(c => c.id.toString() === tc.id.toString() || c.name === tc.name);
+                      return {
+                        id: tc.id.toString(),
+                        name: tc.name,
+                        process: detail?.process || 'DW',
+                        queueDepth: detail?.queueDepth || 0,
+                      };
+                    })
                     .filter(c => c.name !== rebalanceFrom && c.process !== 'TL')
                     .map(c => (
                       <option key={c.id} value={c.name}>{c.name} ({c.process} - {c.queueDepth} leads)</option>
@@ -364,9 +493,10 @@ export const ThTeamMonitor: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-md py-1 bg-primary text-white rounded-sm font-bold text-[11px] hover:opacity-90"
+                disabled={isTransferring}
+                className="px-md py-1 bg-primary text-white rounded-sm font-bold text-[11px] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Rebalance
+                {isTransferring ? 'Rebalancing...' : 'Rebalance'}
               </button>
             </div>
           </form>

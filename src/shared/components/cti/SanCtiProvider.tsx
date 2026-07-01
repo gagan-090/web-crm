@@ -130,10 +130,9 @@ export default function SanCtiProvider({
   // ── Microphone & Iframe Loading states ──
   const isMicPermissionChecked = true;
   const [isIframeLoaded, setIsIframeLoaded] = useState<boolean>(false);
-  // Widget stays minimized (90px header bar only) by default — the agent
-  // answers/dials from the CRM's own buttons via acceptIncoming()/dial(),
-  // not by clicking inside SAN's iframe, so there's no need to ever expand
-  // it automatically.
+  // iframe panel is fully hidden by default; auto-shown only when an incoming
+  // call is ringing (so the agent can click SAN's native Answer button), then
+  // auto-hidden again once the call moves out of incoming_ringing state.
   const [isCtiMinimized, setIsCtiMinimized] = useState<boolean>(true);
 
   // ── Disposition ──
@@ -177,6 +176,16 @@ export default function SanCtiProvider({
   const currentLeadTypeRef = useRef<string>(pending ? (pending.currentLeadType || 'driver') : 'driver');
   // Ref mirror of agentState — always readable inside auto-login without re-registration
   const agentStateRef = useRef<string>('logged_out');
+  // Set true the instant we observe ANY message back from SAN (even an
+  // unrecognized one) — proves the postMessage channel and SAN's own
+  // listener are alive, which is the only thing the login-retry race
+  // condition below actually needs to know. SAN's own confirmation events
+  // (Init/Ready) have been observed to not reliably fire even after a
+  // genuinely successful login, so basing retries on agentState alone makes
+  // us retry a login that already succeeded — which SAN then rejects as
+  // "already logged in on another machine", corrupting the session before
+  // the agent ever gets to dial.
+  const hasSanResponseRef = useRef<boolean>(false);
   // Guard: set to true when agent clicks "Accept". Blocks all state-resetting
   // SAN events (Ready, SavePage) for up to 8 s while the SIP handshake completes.
   // Cleared immediately when SANAppIncomingEvent(Answer) fires.
@@ -289,6 +298,8 @@ export default function SanCtiProvider({
       user_name: sanUsername,
       password: sanPassword,
       uniqueId: '',
+      verifiedFlag: '2',
+      forceLogin: true
     });
   }, [sanUsername, sanPassword, postToSan]);
 
@@ -309,6 +320,10 @@ export default function SanCtiProvider({
    * @param {string} [leadType] - Type of lead e.g. 'driver' or 'social_media'
    */
   const dial = useCallback(async (phoneNumber: string, leadUserId: number | string, name?: string, tmid?: string, leadType: string = 'driver') => {
+    if (agentState !== 'ready') {
+      console.warn('[SAN CTI] Cannot dial, agent is not ready. Current state:', agentState);
+      return;
+    }
     if (callState !== 'idle') {
       console.warn('[SAN CTI] Cannot dial — already in a call state:', callState);
       if (callState === 'disposition_pending') {
@@ -680,6 +695,7 @@ export default function SanCtiProvider({
     function handleSanEvent(event: MessageEvent) {
       const { type, payload } = event.data || {};
       if (!type) return;
+      hasSanResponseRef.current = true;
       console.log('[SAN RECV]', type, payload);
 
       switch (type) {
@@ -1040,11 +1056,17 @@ export default function SanCtiProvider({
       return;
     }
     console.log('[SAN CTI] Iframe loaded and user profile resolved. Performing initial login...');
+    hasSanResponseRef.current = false;
     login();
 
     let attempts = 1;
     const retryTimer = setInterval(() => {
-      if (agentStateRef.current !== 'logged_out' || attempts >= 5) {
+      // hasSanResponseRef proves the message round-trip works at all — SAN's
+      // own confirmation events (Init/Ready) aren't reliable enough to trust
+      // as the sole "did it fail" signal (verified: a login can fully
+      // succeed on SAN's side, send back nothing we recognize, and still
+      // get retried here — which SAN then rejects as a duplicate session).
+      if (agentStateRef.current !== 'logged_out' || hasSanResponseRef.current || attempts >= 5) {
         clearInterval(retryTimer);
         return;
       }
@@ -1070,6 +1092,17 @@ export default function SanCtiProvider({
       try {
         window.focus();
       } catch (_) { }
+    }
+  }, [callState]);
+
+  // ── Auto-show iframe only during incoming_ringing; auto-hide when it ends ──
+  // The iframe must be visible so the agent can click SAN's native Answer button.
+  // Once the call leaves incoming_ringing (answered or missed), collapse it again.
+  useEffect(() => {
+    if (callState === 'incoming_ringing') {
+      setIsCtiMinimized(false);
+    } else {
+      setIsCtiMinimized(true);
     }
   }, [callState]);
 
@@ -1142,27 +1175,18 @@ export default function SanCtiProvider({
       {children}
 
       {/* ── SAN Softphone Iframe ──
-          Mounts only after the mic permission check finishes so that the iframe's
-          SIP engine doesn't attempt registration before mic access is determined.
-
-          Fully invisible (parked off-screen) at all times except while an
-          incoming call is ringing — it then slides on-screen so the agent
-          can click SAN's own native Answer button directly: a real, trusted
-          click inside SAN's own document, not a postMessage from outside it.
-          The iframe's own rendered SIZE never changes (always 320x440) —
-          only its on-screen POSITION toggles. Resizing it (even just
-          shrinking the visible area) has repeatedly broken SAN's internal
-          call handling in earlier testing; moving it off-screen leaves its
-          actual layout/rendering completely undisturbed, which is what
-          keeps its SIP session alive in the background while hidden. The
-          agent can also bring it on-screen manually via the +/− button.
+          Hidden at all times except when an incoming call is ringing.
+          The iframe auto-shows on incoming_ringing so the agent can click
+          SAN's native Answer button (a trusted in-document click required
+          for audio autoplay). It auto-hides the moment the call leaves
+          that state (answered, missed, or hung up).
+          iframe SIZE is always 320×440 — only POSITION toggles (off-screen
+          vs on-screen). Resizing breaks SAN's call handling; moving it
+          off-screen keeps the SIP session alive undisturbed.
       ──────────────────────────────────────────────────────────────── */}
       {isMicPermissionChecked && (() => {
-        // Visible only while an incoming call is ringing (plus whenever the
-        // agent manually shows it via +/−) — invisible the rest of the
-        // time, including during connected calls, since Hold/Mute now both
-        // go through postToSan's MuteCall/UnmuteCall from our own buttons
-        // and don't need SAN's real UI to be on-screen.
+        // Visible only during incoming_ringing (auto-shown/hidden by the
+        // useEffect above). isCtiMinimized stays true at all other times.
         const isVisible = callState === 'incoming_ringing' || !isCtiMinimized;
         return (
         <div style={{

@@ -10,9 +10,10 @@ export default function MyIncentivePage() {
   const { user } = useAuth();
   const roleName = user?.role || '';
   const [lang, setLang] = useState<'EN' | 'HI'>('EN');
+  const [period, setPeriod] = useState<'this_month' | 'all_time'>('this_month');
 
   const { data: progress } = useGetGateProgressQuery(roleName, { skip: !roleName });
-  const { data: incentive, isLoading } = useGetMonthIncentiveQuery(roleName, { skip: !roleName });
+  const { data: incentive, isLoading } = useGetMonthIncentiveQuery({ role: roleName, period }, { skip: !roleName });
   const { data: history } = useGetIncentiveHistoryQuery();
 
   if (isLoading || !incentive) {
@@ -129,6 +130,25 @@ export default function MyIncentivePage() {
           <p className="text-xs text-gray-500 mt-1">{roleTitle} · {t.subtitle}</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Period Toggle */}
+          <div className="flex bg-gray-200/40 p-1 rounded-md border border-gray-300">
+            <button
+              onClick={() => setPeriod('this_month')}
+              className={`px-2.5 py-0.5 text-[11px] font-bold rounded transition-all ${
+                period === 'this_month' ? 'bg-white text-gray-900 shadow-sm border border-gray-300' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => setPeriod('all_time')}
+              className={`px-2.5 py-0.5 text-[11px] font-bold rounded transition-all ${
+                period === 'all_time' ? 'bg-white text-gray-900 shadow-sm border border-gray-300' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              All Time
+            </button>
+          </div>
           {/* Language Toggle */}
           <div className="flex bg-gray-200/40 p-1 rounded-md border border-gray-300">
             <button

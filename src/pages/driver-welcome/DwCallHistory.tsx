@@ -1,6 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGetDwCallHistoryQuery } from '../../services/api/webCrmApi';
+
+type DirectionFilter = 'all' | 'incoming' | 'outgoing';
+type StatusFilter = 'all' | 'connected' | 'not_connected' | 'callback_later';
+type DateFilter = 'all' | 'today' | 'yesterday' | 'this_week' | 'this_month';
+
+const getDateBounds = (filter: DateFilter): { start: Date; end: Date } | null => {
+  if (filter === 'all') return null;
+  const now = new Date();
+  const start = new Date(now);
+  const end = new Date(now);
+
+  if (filter === 'today') {
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+  } else if (filter === 'yesterday') {
+    start.setDate(start.getDate() - 1);
+    start.setHours(0, 0, 0, 0);
+    end.setDate(end.getDate() - 1);
+    end.setHours(23, 59, 59, 999);
+  } else if (filter === 'this_week') {
+    const day = start.getDay();
+    start.setDate(start.getDate() - day);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+  } else if (filter === 'this_month') {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+  }
+  return { start, end };
+};
 
 export const DwCallHistory: React.FC = () => {
   const navigate = useNavigate();
@@ -8,9 +39,10 @@ export const DwCallHistory: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [playingId, setPlayingId] = useState<number | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
-  const [directionFilter, setDirectionFilter] = useState<'all' | 'incoming' | 'outgoing'>('all');
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
 
-  // Fetch call history from backend
   const { data: response, isLoading, isFetching } = useGetDwCallHistoryQuery({
     page: currentPage,
     search: searchQuery || undefined,
@@ -20,12 +52,36 @@ export const DwCallHistory: React.FC = () => {
   const records = response?.data || [];
   const pagination = response?.pagination || { total: 0, per_page: 15, current_page: 1, last_page: 1 };
 
-  const filteredRecords = records.filter((r: any) => {
-    const isIncoming = r.process?.toLowerCase() === 'incoming';
-    if (directionFilter === 'incoming') return isIncoming;
-    if (directionFilter === 'outgoing') return !isIncoming;
-    return true;
-  });
+  const filteredRecords = useMemo(() => {
+    const dateBounds = getDateBounds(dateFilter);
+    return records.filter((r: any) => {
+      // Direction
+      const isIncoming = r.process?.toLowerCase() === 'incoming';
+      if (directionFilter === 'incoming' && !isIncoming) return false;
+      if (directionFilter === 'outgoing' && isIncoming) return false;
+
+      // Status
+      if (statusFilter !== 'all' && r.call_status?.toLowerCase() !== statusFilter) return false;
+
+      // Date
+      if (dateBounds) {
+        const created = new Date(r.created_at);
+        if (created < dateBounds.start || created > dateBounds.end) return false;
+      }
+
+      return true;
+    });
+  }, [records, directionFilter, statusFilter, dateFilter]);
+
+  const hasActiveFilters = directionFilter !== 'all' || statusFilter !== 'all' || dateFilter !== 'all' || searchQuery !== '';
+
+  const resetFilters = () => {
+    setDirectionFilter('all');
+    setStatusFilter('all');
+    setDateFilter('all');
+    setSearchQuery('');
+    setCurrentPage(1);
+  };
 
   const handleCallNow = (record: any) => {
     navigate('/dw/dw-active-call-focus', {
@@ -59,39 +115,127 @@ export const DwCallHistory: React.FC = () => {
 
   return (
     <div className="space-y-6 w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
-      
-      {/* Top Header & Search Bar */}
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 pb-4">
-        <div>
-          <p className="text-[#666666] text-xs font-semibold uppercase tracking-widest">Call History</p>
-          <h2 className="text-2xl font-bold text-gray-800">Completed Call Logs & Feedback</h2>
+
+      {/* Top Header */}
+      <section className="border-b border-gray-200 pb-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+          <div>
+            <p className="text-[#666666] text-xs font-semibold uppercase tracking-widest">Call History</p>
+            <h2 className="text-2xl font-bold text-gray-800">Completed Call Logs & Feedback</h2>
+          </div>
+          {hasActiveFilters && (
+            <button
+              onClick={resetFilters}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors self-start md:self-auto"
+            >
+              <span className="material-symbols-outlined text-[14px]">filter_list_off</span>
+              Clear all filters
+            </button>
+          )}
         </div>
-        
-        {/* Search & Filter controls */}
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <select
-            value={directionFilter}
-            onChange={(e) => setDirectionFilter(e.target.value as any)}
-            className="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all font-semibold text-gray-700"
-          >
-            <option value="all">All Directions</option>
-            <option value="incoming">Incoming</option>
-            <option value="outgoing">Outgoing</option>
-          </select>
-          <div className="relative w-full md:w-80">
+
+        {/* Filter Row 1: Search + Direction + Status */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[220px] max-w-sm">
             <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-lg">search</span>
             <input
               type="text"
-              placeholder="Search by name, TM ID, mobile, status..."
+              placeholder="Search name, TM ID, mobile..."
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                <span className="material-symbols-outlined text-[16px]">close</span>
+              </button>
+            )}
+          </div>
+
+          {/* Direction Filter */}
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-gray-400 text-[16px] pointer-events-none">swap_vert</span>
+            <select
+              value={directionFilter}
+              onChange={(e) => { setDirectionFilter(e.target.value as DirectionFilter); setCurrentPage(1); }}
+              className={`pl-8 pr-3 py-2 text-sm border rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all font-semibold appearance-none ${directionFilter !== 'all' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-300 text-gray-700'}`}
+            >
+              <option value="all">All Directions</option>
+              <option value="incoming">Incoming</option>
+              <option value="outgoing">Outgoing</option>
+            </select>
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-gray-400 text-[16px] pointer-events-none">call_end</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value as StatusFilter); setCurrentPage(1); }}
+              className={`pl-8 pr-3 py-2 text-sm border rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all font-semibold appearance-none ${statusFilter !== 'all' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-gray-300 text-gray-700'}`}
+            >
+              <option value="all">All Statuses</option>
+              <option value="connected">Connected</option>
+              <option value="not_connected">Not Connected</option>
+              <option value="callback_later">Callback Later</option>
+            </select>
+          </div>
+
+          {/* Date Filter */}
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-gray-400 text-[16px] pointer-events-none">calendar_month</span>
+            <select
+              value={dateFilter}
+              onChange={(e) => { setDateFilter(e.target.value as DateFilter); setCurrentPage(1); }}
+              className={`pl-8 pr-3 py-2 text-sm border rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all font-semibold appearance-none ${dateFilter !== 'all' ? 'bg-violet-50 border-violet-300 text-violet-700' : 'bg-white border-gray-300 text-gray-700'}`}
+            >
+              <option value="all">All Dates</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="this_week">This Week</option>
+              <option value="this_month">This Month</option>
+            </select>
           </div>
         </div>
+
+        {/* Active filter pills */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1">Active:</span>
+            {searchQuery && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full border border-gray-200">
+                <span className="material-symbols-outlined text-[11px]">search</span>
+                "{searchQuery}"
+                <button onClick={() => setSearchQuery('')} className="ml-0.5 text-gray-400 hover:text-gray-600"><span className="material-symbols-outlined text-[11px]">close</span></button>
+              </span>
+            )}
+            {directionFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full border border-blue-200">
+                {directionFilter === 'incoming' ? 'Incoming' : 'Outgoing'}
+                <button onClick={() => setDirectionFilter('all')} className="ml-0.5 text-blue-400 hover:text-blue-600"><span className="material-symbols-outlined text-[11px]">close</span></button>
+              </span>
+            )}
+            {statusFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full border border-emerald-200">
+                {statusFilter.replace('_', ' ')}
+                <button onClick={() => setStatusFilter('all')} className="ml-0.5 text-emerald-400 hover:text-emerald-600"><span className="material-symbols-outlined text-[11px]">close</span></button>
+              </span>
+            )}
+            {dateFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-semibold rounded-full border border-violet-200">
+                {dateFilter.replace('_', ' ')}
+                <button onClick={() => setDateFilter('all')} className="ml-0.5 text-violet-400 hover:text-violet-600"><span className="material-symbols-outlined text-[11px]">close</span></button>
+              </span>
+            )}
+            <span className="text-[10px] text-gray-400 font-semibold ml-1">
+              {filteredRecords.length} result{filteredRecords.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
       </section>
 
       {/* Main Content Area */}
@@ -220,6 +364,11 @@ export const DwCallHistory: React.FC = () => {
           <div className="p-16 text-center text-gray-400 italic flex flex-col items-center justify-center gap-2">
             <span className="material-symbols-outlined text-4xl text-gray-300">history_toggle_off</span>
             <p className="text-sm">No call history logs found.</p>
+            {hasActiveFilters && (
+              <button onClick={resetFilters} className="mt-2 text-xs text-[#27AE60] font-bold hover:underline">
+                Clear filters to see all records
+              </button>
+            )}
           </div>
         )}
 
@@ -233,7 +382,7 @@ export const DwCallHistory: React.FC = () => {
             >
               Previous
             </button>
-            
+
             <span className="text-xs font-semibold text-gray-500">
               Page {currentPage} of {pagination.last_page} ({pagination.total} total logs)
             </span>
@@ -252,15 +401,12 @@ export const DwCallHistory: React.FC = () => {
       {/* Slide-out Call Details Drawer */}
       {selectedRecord && (
         <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/45 backdrop-blur-sm transition-opacity" 
+          <div
+            className="absolute inset-0 bg-black/45 backdrop-blur-sm transition-opacity"
             onClick={() => setSelectedRecord(null)}
           />
 
-          {/* Drawer Panel */}
           <div className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 ease-out">
-            {/* Header */}
             <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50 shrink-0">
               <div>
                 <span className="text-[10px] bg-[#27AE60]/10 text-[#27AE60] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
@@ -268,7 +414,7 @@ export const DwCallHistory: React.FC = () => {
                 </span>
                 <h3 className="text-lg font-bold text-gray-800 mt-1">Detailed Telephony Report</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setSelectedRecord(null)}
                 className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors outline-none"
               >
@@ -276,9 +422,7 @@ export const DwCallHistory: React.FC = () => {
               </button>
             </div>
 
-            {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Section 1: Lead Information */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Lead Profile</h4>
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-150 grid grid-cols-2 gap-4">
@@ -301,7 +445,6 @@ export const DwCallHistory: React.FC = () => {
                 </div>
               </div>
 
-              {/* Section 2: Call Disposition & Feedback */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Call Outcome & Feedback</h4>
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-150 space-y-4">
@@ -339,8 +482,6 @@ export const DwCallHistory: React.FC = () => {
                 </div>
               </div>
 
-
-              {/* Section 4: Call Quality & Recording */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Call Quality & Diagnostics</h4>
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-150 grid grid-cols-2 gap-4">
@@ -366,9 +507,8 @@ export const DwCallHistory: React.FC = () => {
               </div>
             </div>
 
-            {/* Footer Actions */}
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 shrink-0">
-              <button 
+              <button
                 onClick={() => setSelectedRecord(null)}
                 className="px-4 py-2 border border-gray-300 text-xs font-bold text-gray-700 bg-white rounded-lg hover:bg-gray-100 transition-colors"
               >

@@ -7,7 +7,7 @@ import { useClickToCall } from '../shared/hooks/useClickToCall';
 import { useGlobalOverlays } from '../shared/context/GlobalOverlaysContext';
 import { useAuth } from '../app/providers/AuthProvider';
 import { Role } from '../shared/constants/roles';
-import { SanCtiProvider, CallControlBar, PostCallDispositionModal, useSanCti } from '../shared/components/cti';
+import { SanCtiProvider, CallControlBar, PostCallDispositionModal, TollFreeNotifier, useSanCti } from '../shared/components/cti';
 import ConversionConfirmationToast from '../shared/components/incentive/ConversionConfirmationToast';
 
 // Navigates to the active call focus screen when an incoming call rings OR connects.
@@ -140,6 +140,7 @@ export const DashboardLayout: React.FC = () => {
         <>
           <CallControlBar />
           <PostCallDispositionModal onDispositionComplete={handleDispositionComplete} />
+          <TollFreeNotifier />
         </>
       )}
 

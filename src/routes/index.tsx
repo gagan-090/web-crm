@@ -78,7 +78,6 @@ import DwCallQueue from '../pages/driver-welcome/DwCallQueue';
 import DwCallHistory from '../pages/driver-welcome/DwCallHistory';
 import DwCallbackCalendar from '../pages/driver-welcome/DwCallbackCalendar';
 import DwActiveCallFocus from '../pages/driver-welcome/DwActiveCallFocus';
-import DwDispositionGate from '../pages/driver-welcome/DwDispositionGate';
 import DwWhatsappPanel from '../pages/driver-welcome/DwWhatsappPanel';
 import DwPerformanceStats from '../pages/driver-welcome/DwPerformanceStats';
 import DwCampaignLeads from '../pages/driver-welcome/DwCampaignLeads';
@@ -149,7 +148,7 @@ const RoleHomeRedirect: React.FC = () => {
 
 export const AppRoutes: React.FC = () => {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/crm">
       <Routes>
         {/* Auth routes */}
         <Route path="/login" element={<LoginPage />} />
@@ -165,7 +164,7 @@ export const AppRoutes: React.FC = () => {
         >
           {/* Default dashboard redirect based on role */}
           <Route index element={<RoleHomeRedirect />} />
-          
+
           {/* Live Core Features (Redux Connected) */}
           <Route path="th/overview-live" element={<RoleGuard permission="leads:view"><ThHomeDashboard /></RoleGuard>} />
           <Route path="th/team-monitor-live" element={<RoleGuard permission="calls:view"><TeamMonitorPage /></RoleGuard>} />
@@ -176,7 +175,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="th/notifications-live" element={<RoleGuard><NotificationsPage /></RoleGuard>} />
           <Route path="qc/qc-console-live" element={<RoleGuard permission="qc:audit"><QcConsolePage /></RoleGuard>} />
           <Route path="hr/hiring-dashboard-live" element={<RoleGuard permission="hr:view"><HiringDashboardPage /></RoleGuard>} />
-          
+
           {/* Dynamic Dashboard Layout Routes */}
           <Route path="admin/user-management-console" element={<RoleGuard permission="admin:view"><UserManagementConsole /></RoleGuard>} />
           <Route path="admin/plan-price-manager" element={<RoleGuard permission="admin:view"><PlanPriceManager /></RoleGuard>} />
@@ -235,7 +234,6 @@ export const AppRoutes: React.FC = () => {
           <Route path="dw/dw-call-queue" element={<RoleGuard permission="calls:dial"><DwCallQueue /></RoleGuard>} />
           <Route path="dw/dw-call-history" element={<RoleGuard permission="calls:dial"><DwCallHistory /></RoleGuard>} />
           <Route path="dw/dw-callback-calendar" element={<RoleGuard permission="calls:dial"><DwCallbackCalendar /></RoleGuard>} />
-          <Route path="dw/dw-disposition-gate" element={<RoleGuard permission="calls:dial"><DwDispositionGate /></RoleGuard>} />
           <Route path="dw/dw-whatsapp-panel" element={<RoleGuard permission="calls:dial"><DwWhatsappPanel /></RoleGuard>} />
           <Route path="dw/dw-performance-stats" element={<RoleGuard permission="calls:dial"><DwPerformanceStats /></RoleGuard>} />
           <Route path="dw/dw-active-call-focus" element={<RoleGuard permission="calls:dial"><DwActiveCallFocus /></RoleGuard>} />

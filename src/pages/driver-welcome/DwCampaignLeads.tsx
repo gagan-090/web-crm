@@ -47,6 +47,7 @@ export const DwCampaignLeads: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'all' | 'hot' | 'warm' | 'cold' | 'callbacks' | 'converted'>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'temperature' | 'newest' | 'oldest' | 'callbacks'>('temperature');
   const [toast, setToast] = useState<string | null>(null);
   const [page, setPage] = useState<number>(1);
@@ -59,13 +60,17 @@ export const DwCampaignLeads: React.FC = () => {
   // RTK Query API calls
   const { data: campaignData, isLoading, refetch } = useGetDwCampaignLeadsQuery({
     source: sourceFilter === 'ALL' ? undefined : sourceFilter,
+    search: searchQuery || undefined,
+    tab: activeTab,
+    sort_by: sortBy,
     page: page,
+    per_page: 10,
   });
 
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [sourceFilter, activeTab, sortBy]);
+  }, [sourceFilter, searchQuery, activeTab, sortBy]);
 
   const [updateNotes] = useUpdateDwCampaignLeadNotesMutation();
 
@@ -151,34 +156,7 @@ export const DwCampaignLeads: React.FC = () => {
 
   // Filter & Sort Logic
   const getFilteredLeads = () => {
-    let result = [...leads];
-
-    // Temperature tab filter
-    if (activeTab === 'hot') result = result.filter(l => l.temperature === 'HOT' && !l.isConverted);
-    else if (activeTab === 'warm') result = result.filter(l => l.temperature === 'WARM' && !l.isConverted);
-    else if (activeTab === 'cold') result = result.filter(l => l.temperature === 'COLD' && !l.isConverted);
-    else if (activeTab === 'callbacks') result = result.filter(l => l.isCallback && !l.isConverted);
-    else if (activeTab === 'converted') result = result.filter(l => l.isConverted);
-    else result = result.filter(l => !l.isConverted); // 'all' default filters out converted from main list
-
-    // Source Filter
-    if (sourceFilter !== 'ALL') {
-      result = result.filter(l => l.source === sourceFilter);
-    }
-
-    // Sort Logic
-    if (sortBy === 'temperature') {
-      const priority = { HOT: 3, WARM: 2, COLD: 1 };
-      result.sort((a, b) => priority[b.temperature] - priority[a.temperature]);
-    } else if (sortBy === 'newest') {
-      result.sort((a, b) => b.capturedTimestamp - a.capturedTimestamp);
-    } else if (sortBy === 'oldest') {
-      result.sort((a, b) => a.capturedTimestamp - b.capturedTimestamp);
-    } else if (sortBy === 'callbacks') {
-      result.sort((a, b) => (b.isCallback ? 1 : 0) - (a.isCallback ? 1 : 0));
-    }
-
-    return result;
+    return leads;
   };
 
   const filteredLeads = getFilteredLeads();
@@ -282,6 +260,18 @@ export const DwCampaignLeads: React.FC = () => {
             </div>
           </div>
 
+          {/* Text Search Filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-gray-500 shrink-0 font-medium">Search:</span>
+            <input
+              type="text"
+              placeholder="Search by name, phone..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 text-[11px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1 outline-none"
+            />
+          </div>
+
           {/* Lead Source Filter Dropdown */}
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-gray-500 shrink-0 font-medium">Source:</span>
@@ -291,13 +281,9 @@ export const DwCampaignLeads: React.FC = () => {
               className="flex-1 text-[11px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1 outline-none"
             >
               <option value="ALL">All Campaign Sources</option>
-              <option value="META ADS">Meta Ads</option>
-              <option value="GOOGLE ADS">Google Ads</option>
-              <option value="INSTAGRAM">Instagram</option>
-              <option value="FACEBOOK">Facebook</option>
-              <option value="FB COMMENT">FB Comments</option>
-              <option value="IG COMMENT">Instagram Comments</option>
-              <option value="MANUAL">Manual</option>
+              {(campaignData?.sources || []).map((src: string) => (
+                <option key={src} value={src}>{src}</option>
+              ))}
             </select>
           </div>
 
@@ -402,7 +388,7 @@ export const DwCampaignLeads: React.FC = () => {
         </div>
 
         {/* Pagination Controls */}
-        {campaignData?.pagination && campaignData.pagination.last_page > 1 && (
+        {campaignData?.pagination && (
           <div className="p-3 bg-white border-t border-gray-100 flex items-center justify-between gap-2 shrink-0">
             <button
               disabled={page <= 1}

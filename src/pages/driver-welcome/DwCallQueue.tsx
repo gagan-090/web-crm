@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   useGetDwLeadDetailQuery,
-  useSubmitDwFeedbackMutation
+  useSubmitDwFeedbackMutation,
+  useLazyGetDwGlobalSearchQuery
 } from '../../services/api/webCrmApi';
 import { useQueueCache, useQueueCountsCache, invalidateQueueCache } from '../../shared/hooks/useQueueCache';
 import type { QueueType } from '../../shared/hooks/useQueueCache';
@@ -36,6 +37,36 @@ export const DwCallQueue: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Global Search State
+  const [globalSearchInput, setGlobalSearchInput] = useState('');
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const globalSearchRef = useRef<HTMLDivElement>(null);
+  
+  const [triggerGlobalSearch, { data: globalSearchData, isFetching: isGlobalSearchFetching }] = useLazyGetDwGlobalSearchQuery();
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (globalSearchRef.current && !globalSearchRef.current.contains(event.target as Node)) {
+        setIsGlobalSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (globalSearchInput.length >= 3) {
+        triggerGlobalSearch(globalSearchInput);
+        setIsGlobalSearchOpen(true);
+      } else {
+        setIsGlobalSearchOpen(false);
+      }
+    }, 500);
+    return () => clearTimeout(delayDebounceFn);
+  }, [globalSearchInput, triggerGlobalSearch]);
+
 
   // Advanced Filter States
   const [filtersEnabled, setFiltersEnabled] = useState(false);
@@ -259,6 +290,64 @@ export const DwCallQueue: React.FC = () => {
       {/* Left Panel - Staging Call Queue */}
       <section className="w-[380px] border-r border-gray-200 flex flex-col bg-gray-50/50 shrink-0">
         
+        {/* Global Search Header */}
+        <div className="p-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between shrink-0 relative" ref={globalSearchRef}>
+          <div className="relative w-full flex items-center">
+            <span className="material-symbols-outlined absolute left-2 text-gray-400 text-[18px]">search</span>
+            <input
+              type="text"
+              placeholder="Global Search (Mobile, TMID, Name)..."
+              value={globalSearchInput}
+              onChange={(e) => setGlobalSearchInput(e.target.value)}
+              onFocus={() => { if (globalSearchInput.length >= 3) setIsGlobalSearchOpen(true); }}
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-[#27AE60] outline-none shadow-inner"
+            />
+            {isGlobalSearchFetching && (
+              <span className="material-symbols-outlined absolute right-2 text-gray-400 text-[16px] animate-spin">sync</span>
+            )}
+          </div>
+          
+          {/* Autocomplete Dropdown */}
+          {isGlobalSearchOpen && globalSearchData?.data && (
+            <div className="absolute top-full left-3 right-3 mt-1 bg-white border border-gray-200 shadow-xl rounded-lg z-50 max-h-[300px] overflow-y-auto divide-y divide-gray-100">
+              {globalSearchData.data.length > 0 ? (
+                globalSearchData.data.map((res: any) => (
+                  <div
+                    key={`${res.source}-${res.id}`}
+                    onClick={() => {
+                      setSelectedId(res.id);
+                      setIsGlobalSearchOpen(false);
+                      setGlobalSearchInput('');
+                    }}
+                    className="p-3 cursor-pointer hover:bg-gray-50 flex justify-between items-center transition-colors"
+                  >
+                    <div>
+                      <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                        {res.name}
+                        {res.source === 'social_media' && (
+                          <span className="bg-purple-100 text-purple-700 text-[9px] px-1.5 py-0.5 rounded border border-purple-200">SML</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5">
+                        {res.city ? `${res.city} | ` : ''}
+                        <span className={res.assigned_name === 'Unassigned' ? 'text-amber-600 font-medium' : 'text-gray-500'}>
+                          {res.assigned_name === 'Unassigned' ? 'Unassigned' : `Assigned: ${res.assigned_name}`}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-mono text-gray-600 bg-gray-100 px-1 rounded">{res.tmid}</div>
+                      <div className="text-[11px] font-medium text-[#27AE60] mt-0.5">{res.mobile}</div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-center text-xs text-gray-500 italic">No matches found.</div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Tab & Sort Header */}
         <div className="p-3 border-b border-gray-200 shrink-0 bg-white">
           <div className="flex justify-between items-center mb-3">
@@ -566,7 +655,21 @@ export const DwCallQueue: React.FC = () => {
                 <div className="text-sm text-gray-500 mt-1">{driverProfile.city}, {driverProfile.state}</div>
               </div>
               
-              <div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    if (callState !== 'idle') {
+                      triggerToast('Finish or hang up the current call before dialing another lead.');
+                      return;
+                    }
+                    dial(driverProfile.mobile, driverProfile.id, driverProfile.name, driverProfile.tmid);
+                  }}
+                  className="bg-[#27AE60] hover:bg-[#219653] text-white text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 shadow-sm transition-colors active:scale-95"
+                  title="Call this lead directly"
+                >
+                  <span className="material-symbols-outlined text-[16px]">call</span> Call Lead
+                </button>
+
                 <span className="bg-[#EAFAF1] text-[#27AE60] text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border border-[#27AE60]/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60]"></span> Language: {driverProfile.language.toUpperCase()}
                 </span>

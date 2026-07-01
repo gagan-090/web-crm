@@ -58,6 +58,61 @@ const mmRejectionReasons = [
   { value: 'other', label: 'Other' },
 ];
 
+export const DWC_CONNECTED_OPTIONS = [
+  'Agree for Subscription',
+  'Agree for Subscription (Today)',
+  'Agree for Subscription (Tomorrow)',
+  'Already Subscribed',
+  'App Issue',
+  "Doesn't Understand App",
+  'Driver - Cab | Bus',
+  'Internet Issue - Low Speed',
+  'Language Barrier',
+  'Misbehave',
+  'Need Load',
+  'Needs Help in Profile',
+  'Needs Job Urgently',
+  'Neither Transporter nor Driver',
+  'No Money',
+  'Not Interested',
+  'Ready for Interview',
+  'Driver but Registered as Transporter',
+  'Transporter but Registered as Driver',
+  'Wants Demo Video',
+  'Wants to Think Before Subscribing',
+  'Will Subscribe Later (No specific time)',
+  'Will Subscribe When Job Needed',
+  'Subscription Done on Call',
+  'Wrong Number',
+  'Third Person Received - Asked to Call Later',
+  'User Registering (Socail-Lead)',
+  'Others',
+];
+
+export const DWC_NOT_CONNECTED_OPTIONS = [
+  'Ringing - No Answer',
+  'Switched Off',
+  'Not Reachable',
+  'Call Disconnected',
+  'Number Busy',
+];
+
+export const DWC_CALLBACK_OPTIONS = [
+  'Busy Right Now',
+  'Call Tomorrow Morning',
+  'Call In Evening',
+  'Call After 2 Days',
+];
+
+export const isSubscriptionAgreeOption = (val: string) => {
+  return [
+    'Agree for Subscription',
+    'Agree for Subscription (Today)',
+    'Agree for Subscription (Tomorrow)',
+    'Subscription Done on Call'
+  ].includes(val);
+};
+
 export default function PostCallDispositionModal({
   driverName,
   driverTmid,
@@ -125,20 +180,26 @@ export default function PostCallDispositionModal({
 
   const getCalculatedCallbackTime = (interval: string): string => {
     const now = new Date();
-    if (interval === 'tomorrow_morning') {
+    if (interval === 'tomorrow_morning' || interval === 'Call Tomorrow Morning') {
       const d = new Date(now);
       d.setDate(d.getDate() + 1);
       return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}T10:00`;
     }
-    if (interval === 'tomorrow_evening') {
+    if (interval === 'tomorrow_evening' || interval === 'Call In Evening') {
       const d = new Date(now);
-      d.setDate(d.getDate() + 1);
+      if (d.getHours() >= 17) {
+        d.setDate(d.getDate() + 1);
+      }
       return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}T17:00`;
     }
-    if (interval === 'two_days_morning') {
+    if (interval === 'two_days_morning' || interval === 'Call After 2 Days') {
       const d = new Date(now);
       d.setDate(d.getDate() + 2);
       return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}T10:00`;
+    }
+    if (interval === 'Busy Right Now') {
+      const d = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours later
+      return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}T${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
     }
     return '';
   };
@@ -148,24 +209,32 @@ export default function PostCallDispositionModal({
     if (!level2Sub) return false;
 
     if (level1 === 'connected') {
-      if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') {
-        if (!planSelected || !paymentId) return false;
-      }
-      if (level2Sub === 'interested_callback') {
-        if (!callbackSub) return false;
-        if (callbackSub === 'custom' && !callbackAt) return false;
-      }
-      if (level2Sub === 'not_interested' || level2Sub === 'rejected') {
-        if (!reason) return false;
-      }
-      if (level2Sub === 'language_barrier') {
-        if (!languageNoted) return false;
-      }
-      if (level2Sub === 'placement_done') {
-        if (!feedbackStage) return false;
+      if (isDriverWelcome) {
+        if (isSubscriptionAgreeOption(level2Sub)) {
+          if (!planSelected || !paymentId) return false;
+        }
+      } else {
+        if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') {
+          if (!planSelected || !paymentId) return false;
+        }
+        if (level2Sub === 'interested_callback') {
+          if (!callbackSub) return false;
+          if (callbackSub === 'custom' && !callbackAt) return false;
+        }
+        if (level2Sub === 'not_interested' || level2Sub === 'rejected') {
+          if (!reason) return false;
+        }
+        if (level2Sub === 'language_barrier') {
+          if (!languageNoted) return false;
+        }
+        if (level2Sub === 'placement_done') {
+          if (!feedbackStage) return false;
+        }
       }
     } else if (level1 === 'callback_later') {
-      if (level2Sub === 'custom' && !callbackAt) return false;
+      if (!isDriverWelcome) {
+        if (level2Sub === 'custom' && !callbackAt) return false;
+      }
     }
     return true;
   };
@@ -179,12 +248,16 @@ export default function PostCallDispositionModal({
 
     if (level1 === 'callback_later') {
       finalCallbackSub = level2Sub;
-      if (level2Sub === 'custom') {
-        finalCallbackAt = callbackAt;
-      } else {
+      if (isDriverWelcome) {
         finalCallbackAt = getCalculatedCallbackTime(level2Sub);
+      } else {
+        if (level2Sub === 'custom') {
+          finalCallbackAt = callbackAt;
+        } else {
+          finalCallbackAt = getCalculatedCallbackTime(level2Sub);
+        }
       }
-    } else if (level1 === 'connected' && level2Sub === 'interested_callback') {
+    } else if (level1 === 'connected' && !isDriverWelcome && level2Sub === 'interested_callback') {
       finalCallbackSub = callbackSub;
       if (callbackSub === 'custom') {
         finalCallbackAt = callbackAt;
@@ -208,7 +281,11 @@ export default function PostCallDispositionModal({
       });
 
       // Fire Incentive Engine mock conversion when appropriate
-      if (level1 === 'connected' && (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') && user?.role) {
+      const triggerMock = level1 === 'connected' && (
+        isDriverWelcome ? isSubscriptionAgreeOption(level2Sub) :
+        (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription')
+      );
+      if (triggerMock && user?.role) {
         triggerMockConversion({
           role: user.role,
           planName: planSelected || 'Basic 199',
@@ -301,31 +378,52 @@ export default function PostCallDispositionModal({
           <div style={{ marginBottom: 20 }}>
             <div style={labelStyle}>Step 2: Reconnection State</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {[
-                { value: 'no_answer', label: 'No Answer / Ringing', label_hi: 'कॉल नहीं उठाया' },
-                { value: 'busy', label: 'Busy / Call Waiting', label_hi: 'व्यस्त है' },
-                { value: 'not_reachable', label: 'Not Reachable / Switched Off', label_hi: 'बंद/नेटवर्क से बाहर' },
-                { value: 'wrong_number', label: 'Wrong Number / Invalid', label_hi: 'गलत नंबर' },
-                { value: 'disconnected', label: 'Call Disconnected', label_hi: 'कॉल कट गया' }
-              ].map(item => (
-                <label
-                  key={item.value}
-                  style={getRadioStyle(level2Sub === item.value, '#EF4444')}
-                >
-                  <input
-                    type="radio"
-                    name="level2Sub"
-                    value={item.value}
-                    checked={level2Sub === item.value}
-                    onChange={() => setLevel2Sub(item.value)}
-                    style={{ accentColor: '#EF4444', marginRight: 8 }}
-                  />
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
-                    <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
-                  </div>
-                </label>
-              ))}
+              {isDriverWelcome ? (
+                DWC_NOT_CONNECTED_OPTIONS.map(opt => (
+                  <label
+                    key={opt}
+                    style={getRadioStyle(level2Sub === opt, '#EF4444')}
+                  >
+                    <input
+                      type="radio"
+                      name="level2Sub"
+                      value={opt}
+                      checked={level2Sub === opt}
+                      onChange={() => setLevel2Sub(opt)}
+                      style={{ accentColor: '#EF4444', marginRight: 8 }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{opt}</div>
+                    </div>
+                  </label>
+                ))
+              ) : (
+                [
+                  { value: 'no_answer', label: 'No Answer / Ringing', label_hi: 'कॉल नहीं उठाया' },
+                  { value: 'busy', label: 'Busy / Call Waiting', label_hi: 'व्यस्त है' },
+                  { value: 'not_reachable', label: 'Not Reachable / Switched Off', label_hi: 'बंद/नेटवर्क से बाहर' },
+                  { value: 'wrong_number', label: 'Wrong Number / Invalid', label_hi: 'गलत नंबर' },
+                  { value: 'disconnected', label: 'Call Disconnected', label_hi: 'कॉल कट गया' }
+                ].map(item => (
+                  <label
+                    key={item.value}
+                    style={getRadioStyle(level2Sub === item.value, '#EF4444')}
+                  >
+                    <input
+                      type="radio"
+                      name="level2Sub"
+                      value={item.value}
+                      checked={level2Sub === item.value}
+                      onChange={() => setLevel2Sub(item.value)}
+                      style={{ accentColor: '#EF4444', marginRight: 8 }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                      <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                    </div>
+                  </label>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -334,32 +432,53 @@ export default function PostCallDispositionModal({
           <div style={{ marginBottom: 20 }}>
             <div style={labelStyle}>Step 2: Callback Interval</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {[
-                { value: 'tomorrow_morning', label: 'Call Tomorrow Morning', label_hi: 'कल सुबह (10 AM)' },
-                { value: 'tomorrow_evening', label: 'Call Tomorrow Evening', label_hi: 'कल शाम (5 PM)' },
-                { value: 'two_days_morning', label: 'Call in 2 Days', label_hi: '2 दिन बाद (10 AM)' },
-                { value: 'custom', label: 'Custom Date & Time', label_hi: 'कस्टम समय चुनें' }
-              ].map(item => (
-                <label
-                  key={item.value}
-                  style={getRadioStyle(level2Sub === item.value, '#3B82F6')}
-                >
-                  <input
-                    type="radio"
-                    name="level2Sub"
-                    value={item.value}
-                    checked={level2Sub === item.value}
-                    onChange={() => setLevel2Sub(item.value)}
-                    style={{ accentColor: '#3B82F6', marginRight: 8 }}
-                  />
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
-                    <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
-                  </div>
-                </label>
-              ))}
+              {isDriverWelcome ? (
+                DWC_CALLBACK_OPTIONS.map(opt => (
+                  <label
+                    key={opt}
+                    style={getRadioStyle(level2Sub === opt, '#3B82F6')}
+                  >
+                    <input
+                      type="radio"
+                      name="level2Sub"
+                      value={opt}
+                      checked={level2Sub === opt}
+                      onChange={() => setLevel2Sub(opt)}
+                      style={{ accentColor: '#3B82F6', marginRight: 8 }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{opt}</div>
+                    </div>
+                  </label>
+                ))
+              ) : (
+                [
+                  { value: 'tomorrow_morning', label: 'Call Tomorrow Morning', label_hi: 'कल सुबह (10 AM)' },
+                  { value: 'tomorrow_evening', label: 'Call Tomorrow Evening', label_hi: 'कल शाम (5 PM)' },
+                  { value: 'two_days_morning', label: 'Call in 2 Days', label_hi: '2 दिन बाद (10 AM)' },
+                  { value: 'custom', label: 'Custom Date & Time', label_hi: 'कस्टम समय चुनें' }
+                ].map(item => (
+                  <label
+                    key={item.value}
+                    style={getRadioStyle(level2Sub === item.value, '#3B82F6')}
+                  >
+                    <input
+                      type="radio"
+                      name="level2Sub"
+                      value={item.value}
+                      checked={level2Sub === item.value}
+                      onChange={() => setLevel2Sub(item.value)}
+                      style={{ accentColor: '#3B82F6', marginRight: 8 }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                      <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                    </div>
+                  </label>
+                ))
+              )}
             </div>
-            {level2Sub === 'custom' && (
+            {!isDriverWelcome && level2Sub === 'custom' && (
               <div style={{ marginTop: 12 }}>
                 <input
                   type="datetime-local"
@@ -375,97 +494,112 @@ export default function PostCallDispositionModal({
         {level1 === 'connected' && (
           <div style={{ marginBottom: 20 }}>
             <div style={labelStyle}>Step 2: Connected Outcome</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {/* Render options for Driver Welcome */}
-              {(isDriverWelcome || (!isTransporterWelcome && !isMatchmaking)) && (
-                <>
-                  {[
-                    { value: 'agree_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
-                    { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
-                    { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
-                    { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' },
-                    { value: 'language_barrier', label: 'Language Barrier', label_hi: 'भाषा की समस्या' }
-                  ].map(item => (
-                    <label
-                      key={item.value}
-                      style={getRadioStyle(level2Sub === item.value, '#10B981')}
-                    >
-                      <input
-                        type="radio"
-                        name="level2Sub"
-                        value={item.value}
-                        checked={level2Sub === item.value}
-                        onChange={() => setLevel2Sub(item.value)}
-                        style={{ accentColor: '#10B981', marginRight: 8 }}
-                      />
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
-                        <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
-                      </div>
-                    </label>
+            {isDriverWelcome ? (
+              <div style={{ width: '100%' }}>
+                <select
+                  value={level2Sub}
+                  onChange={e => setLevel2Sub(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">-- Choose Connected Feedback Option --</option>
+                  {DWC_CONNECTED_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
                   ))}
-                </>
-              )}
+                </select>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {/* Fallback for general Connected welcome-call process */}
+                {(!isTransporterWelcome && !isMatchmaking) && (
+                  <>
+                    {[
+                      { value: 'agree_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
+                      { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
+                      { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
+                      { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' },
+                      { value: 'language_barrier', label: 'Language Barrier', label_hi: 'भाषा की समस्या' }
+                    ].map(item => (
+                      <label
+                        key={item.value}
+                        style={getRadioStyle(level2Sub === item.value, '#10B981')}
+                      >
+                        <input
+                          type="radio"
+                          name="level2Sub"
+                          value={item.value}
+                          checked={level2Sub === item.value}
+                          onChange={() => setLevel2Sub(item.value)}
+                          style={{ accentColor: '#10B981', marginRight: 8 }}
+                        />
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                          <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </>
+                )}
 
-              {/* Render options for Transporter Welcome */}
-              {isTransporterWelcome && (
-                <>
-                  {[
-                    { value: 'agree_tr_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
-                    { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
-                    { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
-                    { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' }
-                  ].map(item => (
-                    <label
-                      key={item.value}
-                      style={getRadioStyle(level2Sub === item.value, '#10B981')}
-                    >
-                      <input
-                        type="radio"
-                        name="level2Sub"
-                        value={item.value}
-                        checked={level2Sub === item.value}
-                        onChange={() => setLevel2Sub(item.value)}
-                        style={{ accentColor: '#10B981', marginRight: 8 }}
-                      />
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
-                        <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
-                      </div>
-                    </label>
-                  ))}
-                </>
-              )}
+                {/* Render options for Transporter Welcome */}
+                {isTransporterWelcome && (
+                  <>
+                    {[
+                      { value: 'agree_tr_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
+                      { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
+                      { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
+                      { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' }
+                    ].map(item => (
+                      <label
+                        key={item.value}
+                        style={getRadioStyle(level2Sub === item.value, '#10B981')}
+                      >
+                        <input
+                          type="radio"
+                          name="level2Sub"
+                          value={item.value}
+                          checked={level2Sub === item.value}
+                          onChange={() => setLevel2Sub(item.value)}
+                          style={{ accentColor: '#10B981', marginRight: 8 }}
+                        />
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                          <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </>
+                )}
 
-              {/* Render options for Matchmaking */}
-              {isMatchmaking && (
-                <>
-                  {[
-                    { value: 'placement_done', label: 'Driver Placement Done', label_hi: 'ड्राइवर प्लेसमेंट हो गया' },
-                    { value: 'callback', label: 'Call Back Later', label_hi: 'बाद में कॉल करें' },
-                    { value: 'rejected', label: 'Rejected by Driver/Transporter', label_hi: 'रिजेक्ट हो गया' }
-                  ].map(item => (
-                    <label
-                      key={item.value}
-                      style={getRadioStyle(level2Sub === item.value, '#10B981')}
-                    >
-                      <input
-                        type="radio"
-                        name="level2Sub"
-                        value={item.value}
-                        checked={level2Sub === item.value}
-                        onChange={() => setLevel2Sub(item.value)}
-                        style={{ accentColor: '#10B981', marginRight: 8 }}
-                      />
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
-                        <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
-                      </div>
-                    </label>
-                  ))}
-                </>
-              )}
-            </div>
+                {/* Render options for Matchmaking */}
+                {isMatchmaking && (
+                  <>
+                    {[
+                      { value: 'placement_done', label: 'Driver Placement Done', label_hi: 'ड्राइवर प्लेसमेंट हो गया' },
+                      { value: 'callback', label: 'Call Back Later', label_hi: 'बाद में कॉल करें' },
+                      { value: 'rejected', label: 'Rejected by Driver/Transporter', label_hi: 'रिजेक्ट हो गया' }
+                    ].map(item => (
+                      <label
+                        key={item.value}
+                        style={getRadioStyle(level2Sub === item.value, '#10B981')}
+                      >
+                        <input
+                          type="radio"
+                          name="level2Sub"
+                          value={item.value}
+                          checked={level2Sub === item.value}
+                          onChange={() => setLevel2Sub(item.value)}
+                          style={{ accentColor: '#10B981', marginRight: 8 }}
+                        />
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                          <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -474,7 +608,7 @@ export default function PostCallDispositionModal({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
             
             {/* Subscription Flow */}
-            {(level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') && (
+            {((isDriverWelcome && isSubscriptionAgreeOption(level2Sub)) || (!isDriverWelcome && (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription'))) && (
               <>
                 <div>
                   <label style={subLabelStyle}>Select Subscription Plan *</label>
@@ -509,7 +643,7 @@ export default function PostCallDispositionModal({
             )}
 
             {/* Callback Requested Flow */}
-            {level2Sub === 'interested_callback' && (
+            {(!isDriverWelcome && level2Sub === 'interested_callback') && (
               <>
                 <div>
                   <label style={subLabelStyle}>Callback Schedule Interval *</label>
@@ -555,7 +689,7 @@ export default function PostCallDispositionModal({
             )}
 
             {/* Rejection / Not Interested Flow */}
-            {(level2Sub === 'not_interested' || level2Sub === 'rejected') && (
+            {(!isDriverWelcome && (level2Sub === 'not_interested' || level2Sub === 'rejected')) && (
               <div>
                 <label style={subLabelStyle}>Reason for rejection *</label>
                 <select
@@ -577,7 +711,7 @@ export default function PostCallDispositionModal({
             )}
 
             {/* Language Barrier Flow */}
-            {level2Sub === 'language_barrier' && (
+            {(!isDriverWelcome && level2Sub === 'language_barrier') && (
               <div>
                 <label style={subLabelStyle}>Select Language Noted *</label>
                 <select

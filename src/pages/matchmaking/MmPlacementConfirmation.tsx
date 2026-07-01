@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { usePlaceMmDriverMutation } from '../../services/api/webCrmApi';
 
 interface ConfirmState {
   jobId: string;
@@ -23,6 +24,7 @@ export const MmPlacementConfirmation: React.FC = () => {
   };
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [placeDriver] = usePlaceMmDriverMutation();
 
   // Required checklist toggles
   const [startDateConfirmed, setStartDateConfirmed] = useState(false);
@@ -41,19 +43,32 @@ export const MmPlacementConfirmation: React.FC = () => {
   const foremanId = 'FM-00231';
   const foremanName = 'Ramesh Foreman Services';
 
-  const handleConfirmPlacement = (e: React.FormEvent) => {
+  const handleConfirmPlacement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!startDateConfirmed || !jobCompletionConfirmed || !transporterConfirmedViaApp) {
       triggerToast('Please check all confirmation toggles to finalize.');
       return;
     }
 
-    // Redirect with success toast
-    navigate('/mm/mm-job-board');
-    // We send triggerToast msg in navigation redirect simulation
-    setTimeout(() => {
-      alert(`Job ${state.jobId} marked Filled successfully! Incentive added.`);
-    }, 50);
+    const cleanJobId = parseInt(state.jobId.replace(/\D/g, ''), 10) || 1;
+    const cleanDriverId = parseInt(state.driverTmid.replace(/\D/g, ''), 10) || 48291;
+    const cleanTransporterId = 1;
+
+    try {
+      await placeDriver({
+        job_id: cleanJobId,
+        driver_id: cleanDriverId,
+        transporter_id: cleanTransporterId
+      }).unwrap();
+
+      triggerToast('Placement successfully recorded ✓');
+      setTimeout(() => {
+        navigate('/mm/mm-job-board');
+      }, 500);
+    } catch (err) {
+      console.error("Failed to record placement:", err);
+      triggerToast('Failed to record placement in database.');
+    }
   };
 
   return (

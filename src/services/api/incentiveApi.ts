@@ -475,12 +475,12 @@ export const incentiveApi = baseApi.injectEndpoints({
       }
     }),
 
-    getMonthIncentive: build.query<MonthlyIncentive, string>({
-      async queryFn(role, _queryApi, _extraOptions, fetchWithBQ) {
+    getMonthIncentive: build.query<MonthlyIncentive, { role: string; period?: string }>({
+      async queryFn({ role, period = 'this_month' }, _queryApi, _extraOptions, fetchWithBQ) {
         const key = getRoleKey(role);
 
         if (key === 'dwc') {
-          const result = await fetchWithBQ('/web-crm/dw/incentive/month');
+          const result = await fetchWithBQ(`/web-crm/dw/incentive/month?period=${period}`);
           if (result.error) return { error: result.error as any };
           return { data: (result.data as any).data as MonthlyIncentive };
         }

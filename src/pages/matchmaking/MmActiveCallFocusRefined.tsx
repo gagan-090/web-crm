@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-
+import { useSubmitMmCallLogMutation } from '../../services/api/webCrmApi';
 interface CallState {
   driverName: string;
   driverTmid: string;
@@ -28,6 +28,7 @@ export const MmActiveCallFocusRefined: React.FC = () => {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const [submitCallLog] = useSubmitMmCallLogMutation();
   // Call duration state
   const [seconds, setSeconds] = useState(0);
   const [callConnected, setCallConnected] = useState(false);
@@ -80,8 +81,35 @@ export const MmActiveCallFocusRefined: React.FC = () => {
     setShowPostCallModal(true);
   };
 
-  const handlePostCallSubmit = (e: React.FormEvent) => {
+  const handlePostCallSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const mappedStatus = outcome === 'Connected' 
+      ? (connectedSubOutcome === 'Callback' ? 'callback_later' : 'connected') 
+      : 'not_connected';
+
+    const mappedFeedback = outcome === 'Connected' 
+      ? connectedSubOutcome 
+      : outcome;
+
+    const mappedMatchStatus = outcome === 'Connected'
+      ? (connectedSubOutcome === 'Interested' ? 'interested' : (connectedSubOutcome === 'NotInterested' ? 'not_interested' : 'callback'))
+      : 'pending';
+
+    const numericDriverId = parseInt(state.driverTmid.replace(/\D/g, ''), 10) || undefined;
+
+    try {
+      await submitCallLog({
+        job_id: state.jobId,
+        driver_id: numericDriverId,
+        call_status: mappedStatus,
+        call_feedback: mappedFeedback,
+        call_remarks: callNotes || undefined,
+        match_status: mappedMatchStatus
+      }).unwrap();
+    } catch (err) {
+      console.error("Failed to log matchmaking call:", err);
+    }
 
     if (outcome === 'Connected' && (connectedSubOutcome === 'Interested' || markedInterested)) {
       if (createWaGroup) {

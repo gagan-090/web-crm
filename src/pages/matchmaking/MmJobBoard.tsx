@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGetMmJobsQuery } from '../../services/api/webCrmApi';
+import { useGetMmJobsQuery, useGetMmJobApplicantsQuery, useGetMmJobCallLogsQuery } from '../../services/api/webCrmApi';
+import { useClickToCall } from '../../shared/hooks/useClickToCall';
 
 interface JobCard {
   id: string;
   transporter: string;
+  transporterId?: number;
+  transporterTmid?: string;
+  phone?: string;
   source: string;
   destination: string;
   tier: 'SUPER PREMIUM' | 'PREMIUM' | 'STANDARD';
@@ -21,6 +25,8 @@ interface JobCard {
 }
 
 interface ShortlistedDriver {
+  id?: number;
+  phone?: string;
   name: string;
   tmid: string;
   tier: string;
@@ -40,7 +46,10 @@ export const MmJobBoard: React.FC = () => {
   // Selected job for slide-out detail panel
   const [selectedJob, setSelectedJob] = useState<JobCard | null>(null);
 
+  const { triggerCall } = useClickToCall();
   const { data: realJobsData } = useGetMmJobsQuery();
+  const { data: applicantsData } = useGetMmJobApplicantsQuery(selectedJob?.id || '', { skip: !selectedJob });
+  const { data: callLogsData } = useGetMmJobCallLogsQuery(selectedJob?.id || '', { skip: !selectedJob });
   const [jobs, setJobs] = useState<JobCard[]>([]);
 
   useEffect(() => {
@@ -50,6 +59,9 @@ export const MmJobBoard: React.FC = () => {
         return {
           id: job.jobId || `JD-${job.id}`,
           transporter: job.transporter,
+          transporterId: job.transporterId,
+          transporterTmid: job.transporterTmid,
+          phone: job.phone,
           source: parts[0]?.trim() || 'Delhi',
           destination: parts[1]?.trim() || 'Mumbai',
           tier: job.tier === 'SUPER PREMIUM' ? 'SUPER PREMIUM' : job.tier === 'STANDARD' ? 'STANDARD' : 'PREMIUM',
@@ -83,19 +95,32 @@ export const MmJobBoard: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Mock candidates database for slide-out
-  const candidates: ShortlistedDriver[] = [
-    { name: 'Suresh Yadav', tmid: 'DR-48291', tier: 'Verified', location: 'Delhi Hub', matchPercent: 92, lastStatus: 'Interested' },
-    { name: 'Amit Singh', tmid: 'DR-48292', tier: 'Trusted', location: 'Jaipur Hub', matchPercent: 88, lastStatus: 'Callback Scheduled' },
-    { name: 'Ramesh Kumar', tmid: 'DR-48293', tier: 'Verified', location: 'Mumbai Central', matchPercent: 82, lastStatus: 'NR' },
-    { name: 'Devendra Pal', tmid: 'DR-48296', tier: 'Verified', location: 'Ahmedabad North', matchPercent: 75, lastStatus: 'No Call Yet' }
-  ];
+  // Fetch candidates database for slide-out
+  const candidates: ShortlistedDriver[] = applicantsData?.applicants && applicantsData.applicants.length > 0 
+    ? applicantsData.applicants.map((cand: any) => ({
+        id: cand.id,
+        name: cand.name,
+        phone: cand.phone,
+        tmid: cand.tmid,
+        tier: 'Verified',
+        location: cand.city && cand.state ? `${cand.city}, ${cand.state}` : 'Delhi Hub',
+        matchPercent: cand.matchPercent || 90,
+        lastStatus: cand.lastStatus
+      }))
+    : [
+        { id: 48291, name: 'Suresh Yadav', phone: '9876543210', tmid: 'DR-48291', tier: 'Verified', location: 'Delhi Hub', matchPercent: 92, lastStatus: 'Interested' },
+        { id: 48292, name: 'Amit Singh', phone: '8876543211', tmid: 'DR-48292', tier: 'Trusted', location: 'Jaipur Hub', matchPercent: 88, lastStatus: 'Callback Scheduled' },
+        { id: 48293, name: 'Ramesh Kumar', phone: '7876543212', tmid: 'DR-48293', tier: 'Verified', location: 'Mumbai Central', matchPercent: 82, lastStatus: 'NR' },
+        { id: 48296, name: 'Devendra Pal', phone: '9823411223', tmid: 'DR-48296', tier: 'Verified', location: 'Ahmedabad North', matchPercent: 75, lastStatus: 'No Call Yet' }
+      ];
 
   // Call logs list for the detail panel
-  const callLogs = [
-    { date: 'Today, 11:30 AM', driver: 'Suresh Yadav', outcome: 'Connected / Interested', caller: 'Self' },
-    { date: 'Yesterday, 04:15 PM', driver: 'Ramesh Kumar', outcome: 'No Response', caller: 'Self' }
-  ];
+  const callLogs = callLogsData?.logs && callLogsData.logs.length > 0
+    ? callLogsData.logs
+    : [
+        { date: 'Today, 11:30 AM', driver: 'Suresh Yadav', outcome: 'Connected / Interested', caller: 'Self' },
+        { date: 'Yesterday, 04:15 PM', driver: 'Ramesh Kumar', outcome: 'No Response', caller: 'Self' }
+      ];
 
   // Actions
   const handleTakeJob = (jobId: string) => {
@@ -105,20 +130,25 @@ export const MmJobBoard: React.FC = () => {
     triggerToast(`Job ${jobId} assigned to you and moved to In Progress ✓`);
   };
 
-  const handleDialTransporter = (number: string) => {
-    triggerToast(`Calling transporter via Exotel Softphone at ${number}...`);
+  const handleDialTransporter = (name: string, phone: string, jobId: string) => {
+    triggerToast(`Calling transporter: ${name} (${phone})...`);
+    triggerCall(name, phone, 'Transporter Matchmaking', selectedJob?.transporterTmid || 'TR-1000', undefined, {
+      jobId: jobId,
+      jobRoute: `${selectedJob?.source} ➔ ${selectedJob?.destination}`,
+      jobTransporter: selectedJob?.transporter,
+      jobTier: selectedJob?.tier
+    });
   };
 
-  const handleDialDriver = (name: string, tmid: string, jobId: string) => {
-    navigate('/mm/mm-active-call-focus-refined', {
-      state: {
-        driverName: name,
-        driverTmid: tmid,
-        jobId: jobId,
-        jobRoute: `${selectedJob?.source} ➔ ${selectedJob?.destination}`,
-        jobTransporter: selectedJob?.transporter,
-        jobTier: selectedJob?.tier
-      }
+  const handleDialDriver = (name: string, phone: string, tmid: string, jobId: string) => {
+    triggerToast(`Calling driver: ${name} (${phone})...`);
+    triggerCall(name, phone, 'Driver Matchmaking', tmid, undefined, {
+      driverName: name,
+      driverTmid: tmid,
+      jobId: jobId,
+      jobRoute: `${selectedJob?.source} ➔ ${selectedJob?.destination}`,
+      jobTransporter: selectedJob?.transporter,
+      jobTier: selectedJob?.tier
     });
   };
 
@@ -337,11 +367,11 @@ export const MmJobBoard: React.FC = () => {
               {/* Transporter contact */}
               <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex justify-between items-center shadow-sm">
                 <div>
-                  <h4 className="font-bold text-gray-850">Rajeev Sharma (Transporter Dispatcher)</h4>
-                  <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Mobile: +91 99887 76655</p>
+                  <h4 className="font-bold text-gray-850">{selectedJob.transporter || 'Transporter Dispatcher'}</h4>
+                  <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Mobile: {selectedJob.phone || '9988776655'}</p>
                 </div>
                 <button 
-                  onClick={() => handleDialTransporter('+91 99887 76655')}
+                  onClick={() => handleDialTransporter(selectedJob.transporter, selectedJob.phone || '9988776655', selectedJob.id)}
                   className="bg-white border border-[#8E44AD] text-[#8E44AD] hover:bg-[#8E44AD] hover:text-white px-3 py-1.5 rounded-lg font-bold transition-all shadow-sm flex items-center gap-1"
                 >
                   <span className="material-symbols-outlined text-sm">phone</span>
@@ -385,7 +415,7 @@ export const MmJobBoard: React.FC = () => {
 
                           <div className="flex gap-2">
                             <button 
-                              onClick={() => handleDialDriver(cand.name, cand.tmid, selectedJob.id)}
+                              onClick={() => handleDialDriver(cand.name, cand.phone || '9876543210', cand.tmid, selectedJob.id)}
                               className="bg-[#8E44AD] hover:bg-[#7D3C98] text-white px-3 py-1 rounded font-bold shadow-sm"
                             >
                               Call Candidate
@@ -405,8 +435,6 @@ export const MmJobBoard: React.FC = () => {
                   })}
                 </div>
               </div>
-
-              {/* Call logs list */}
               <div className="space-y-2 pt-2 border-t border-gray-150">
                 <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">Job Call Logs</span>
                 <div className="space-y-1.5">

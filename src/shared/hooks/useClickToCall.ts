@@ -14,7 +14,8 @@ export const useClickToCall = () => {
     phone: string,
     process: string = 'Click-to-Call Outbound',
     leadId: string = 'LD-' + Math.floor(1000 + Math.random() * 9000),
-    contextLine?: string
+    contextLine?: string,
+    extraState?: any
   ) => {
     // Intercept if SAN live dialer is active
     if ((window as any)._sanDial) {
@@ -25,7 +26,7 @@ export const useClickToCall = () => {
       let targetPath = '';
       if (path.startsWith('/dw')) targetPath = '/dw/dw-active-call-focus';
       else if (path.startsWith('/wct')) targetPath = '/wct/wct-active-call-focus';
-      else if (path.startsWith('/mm')) targetPath = '/mm/mm-active-call-focus';
+      else if (path.startsWith('/mm')) targetPath = '/mm/mm-active-call-focus-refined';
       else if (path.startsWith('/sc')) targetPath = '/sc/sc-active-call-focus';
       
       if (targetPath) {
@@ -34,7 +35,8 @@ export const useClickToCall = () => {
             userId: numericId,
             tmid: leadId,
             name: name,
-            mobile: phone
+            mobile: phone,
+            ...extraState
           }
         });
       }

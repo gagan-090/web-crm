@@ -2,3 +2,4 @@ export { default as SanCtiProvider, useSanCti, SanCtiContext } from './SanCtiPro
 export { default as CallControlBar } from './CallControlBar';
 export { default as PostCallDispositionModal } from './PostCallDispositionModal';
 export { default as CallNowButton } from './CallNowButton';
+export { default as TollFreeNotifier } from './TollFreeNotifier';

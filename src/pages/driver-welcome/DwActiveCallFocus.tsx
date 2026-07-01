@@ -1,6 +1,61 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSubmitCtiFeedbackMutation } from '../../services/api/ctiApi';
+
+const DWC_CONNECTED_OPTIONS = [
+  'Agree for Subscription',
+  'Agree for Subscription (Today)',
+  'Agree for Subscription (Tomorrow)',
+  'Already Subscribed',
+  'App Issue',
+  "Doesn't Understand App",
+  'Driver - Cab | Bus',
+  'Internet Issue - Low Speed',
+  'Language Barrier',
+  'Misbehave',
+  'Need Load',
+  'Needs Help in Profile',
+  'Needs Job Urgently',
+  'Neither Transporter nor Driver',
+  'No Money',
+  'Not Interested',
+  'Ready for Interview',
+  'Driver but Registered as Transporter',
+  'Transporter but Registered as Driver',
+  'Wants Demo Video',
+  'Wants to Think Before Subscribing',
+  'Will Subscribe Later (No specific time)',
+  'Will Subscribe When Job Needed',
+  'Subscription Done on Call',
+  'Wrong Number',
+  'Third Person Received - Asked to Call Later',
+  'User Registering (Socail-Lead)',
+  'Others',
+];
+
+const DWC_NOT_CONNECTED_OPTIONS = [
+  'Ringing - No Answer',
+  'Switched Off',
+  'Not Reachable',
+  'Call Disconnected',
+  'Number Busy',
+];
+
+const DWC_CALLBACK_OPTIONS = [
+  'Busy Right Now',
+  'Call Tomorrow Morning',
+  'Call In Evening',
+  'Call After 2 Days',
+];
+
+const isSubscriptionAgreeOption = (val: string) => {
+  return [
+    'Agree for Subscription',
+    'Agree for Subscription (Today)',
+    'Agree for Subscription (Tomorrow)',
+    'Subscription Done on Call'
+  ].includes(val);
+};
 import {
   useGetDwLeadDetailQuery,
   useLazyGetDwNextLeadQuery,
@@ -320,20 +375,26 @@ export const DwActiveCallFocus: React.FC = () => {
 
   const getCalculatedCallbackTime = (interval: string): string => {
     const now = new Date();
-    if (interval === 'tomorrow_morning') {
+    if (interval === 'tomorrow_morning' || interval === 'Call Tomorrow Morning') {
       const d = new Date(now);
       d.setDate(d.getDate() + 1);
       return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}T10:00`;
     }
-    if (interval === 'tomorrow_evening') {
+    if (interval === 'tomorrow_evening' || interval === 'Call In Evening') {
       const d = new Date(now);
-      d.setDate(d.getDate() + 1);
+      if (d.getHours() >= 17) {
+        d.setDate(d.getDate() + 1);
+      }
       return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}T17:00`;
     }
-    if (interval === 'two_days_morning') {
+    if (interval === 'two_days_morning' || interval === 'Call After 2 Days') {
       const d = new Date(now);
       d.setDate(d.getDate() + 2);
       return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}T10:00`;
+    }
+    if (interval === 'Busy Right Now') {
+      const d = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours later
+      return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}T${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
     }
     return '';
   };
@@ -343,24 +404,32 @@ export const DwActiveCallFocus: React.FC = () => {
     if (!level2Sub) return false;
 
     if (outcome === 'connected') {
-      if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') {
-        if (!planSelected || !paymentId) return false;
-      }
-      if (level2Sub === 'interested_callback') {
-        if (!callbackSub) return false;
-        if (callbackSub === 'custom' && !callbackAt) return false;
-      }
-      if (level2Sub === 'not_interested' || level2Sub === 'rejected') {
-        if (!reason) return false;
-      }
-      if (level2Sub === 'language_barrier') {
-        if (!languageNoted) return false;
-      }
-      if (level2Sub === 'placement_done') {
-        if (!feedbackStage) return false;
+      if (isDriverWelcome) {
+        if (isSubscriptionAgreeOption(level2Sub)) {
+          if (!planSelected || !paymentId) return false;
+        }
+      } else {
+        if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') {
+          if (!planSelected || !paymentId) return false;
+        }
+        if (level2Sub === 'interested_callback') {
+          if (!callbackSub) return false;
+          if (callbackSub === 'custom' && !callbackAt) return false;
+        }
+        if (level2Sub === 'not_interested' || level2Sub === 'rejected') {
+          if (!reason) return false;
+        }
+        if (level2Sub === 'language_barrier') {
+          if (!languageNoted) return false;
+        }
+        if (level2Sub === 'placement_done') {
+          if (!feedbackStage) return false;
+        }
       }
     } else if (outcome === 'callback_later') {
-      if (level2Sub === 'custom' && !callbackAt) return false;
+      if (!isDriverWelcome) {
+        if (level2Sub === 'custom' && !callbackAt) return false;
+      }
     }
     return true;
   };
@@ -376,22 +445,11 @@ export const DwActiveCallFocus: React.FC = () => {
 
     let dbFeedback = '';
     if (outcome === 'not_connected') {
-      if (level2Sub === 'no_answer') dbFeedback = 'No Answer / Ringing';
-      else if (level2Sub === 'busy') dbFeedback = 'Busy / Call Waiting';
-      else if (level2Sub === 'not_reachable') dbFeedback = 'Not Reachable / Switched Off';
-      else if (level2Sub === 'wrong_number') dbFeedback = 'Wrong Number / Invalid';
-      else if (level2Sub === 'disconnected') dbFeedback = 'Call Disconnected';
+      dbFeedback = level2Sub;
     } else if (outcome === 'callback_later') {
       dbFeedback = 'Call Back Later';
     } else if (outcome === 'connected') {
-      if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') dbFeedback = 'Agree for Subscription';
-      else if (level2Sub === 'interested_callback') dbFeedback = 'Interested (Will Pay Later)';
-      else if (level2Sub === 'not_interested') dbFeedback = 'Not Interested';
-      else if (level2Sub === 'already_subscribed') dbFeedback = 'Already Subscribed';
-      else if (level2Sub === 'language_barrier') dbFeedback = 'Language Barrier';
-      else if (level2Sub === 'placement_done') dbFeedback = 'Driver Placement Done';
-      else if (level2Sub === 'callback') dbFeedback = 'Call Back Later';
-      else if (level2Sub === 'rejected') dbFeedback = 'Rejected by Client';
+      dbFeedback = level2Sub;
     }
 
     let finalCallbackAt = null;
@@ -399,12 +457,8 @@ export const DwActiveCallFocus: React.FC = () => {
 
     if (outcome === 'callback_later') {
       finalCallbackSub = level2Sub;
-      if (level2Sub === 'custom') {
-        finalCallbackAt = callbackAt;
-      } else {
-        finalCallbackAt = getCalculatedCallbackTime(level2Sub);
-      }
-    } else if (outcome === 'connected' && level2Sub === 'interested_callback') {
+      finalCallbackAt = getCalculatedCallbackTime(level2Sub);
+    } else if (outcome === 'connected' && !isDriverWelcome && level2Sub === 'interested_callback') {
       finalCallbackSub = callbackSub;
       if (callbackSub === 'custom') {
         finalCallbackAt = callbackAt;
@@ -417,7 +471,7 @@ export const DwActiveCallFocus: React.FC = () => {
       // 1. Submit feedback to DWC CRM table
       await submitDwFeedback({
         user_id: Number(userId),
-        call_status: (outcome === 'callback_later' || level2Sub === 'interested_callback' || level2Sub === 'callback') ? 'callback_later' : outcome,
+        call_status: (outcome === 'callback_later' || (outcome === 'connected' && isDriverWelcome && level2Sub.includes('Call')) || level2Sub === 'interested_callback' || level2Sub === 'callback') ? 'callback_later' : outcome,
         call_feedback: dbFeedback,
         call_remarks: dispositionNotes || `Logged active call duration ${formatTimer(seconds)}`,
         call_duration: seconds,
@@ -1218,32 +1272,53 @@ export const DwActiveCallFocus: React.FC = () => {
               <div className="space-y-2 mb-4">
                 <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Step 2 — Reconnection State *</div>
                 <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { value: 'no_answer', label: 'No Answer / Ringing', label_hi: 'कॉल नहीं उठाया' },
-                    { value: 'busy', label: 'Busy / Call Waiting', label_hi: 'व्यस्त है' },
-                    { value: 'not_reachable', label: 'Not Reachable / Switched Off', label_hi: 'बंद/नेटवर्क से बाहर' },
-                    { value: 'wrong_number', label: 'Wrong Number / Invalid', label_hi: 'गलत नंबर' },
-                    { value: 'disconnected', label: 'Call Disconnected', label_hi: 'कॉल कट गया' }
-                  ].map(item => (
-                    <label
-                      key={item.value}
-                      className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-red-500 bg-red-50/20' : 'border-gray-200 bg-white hover:bg-gray-50'
-                        }`}
-                    >
-                      <input
-                        type="radio"
-                        name="level2Sub"
-                        value={item.value}
-                        checked={level2Sub === item.value}
-                        onChange={() => setLevel2Sub(item.value)}
-                        className="accent-red-500 mr-2"
-                      />
-                      <div>
-                        <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
-                        <div className="text-[9px] text-gray-400">{item.label_hi}</div>
-                      </div>
-                    </label>
-                  ))}
+                  {isDriverWelcome ? (
+                    DWC_NOT_CONNECTED_OPTIONS.map(opt => (
+                      <label
+                        key={opt}
+                        className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === opt ? 'border-red-500 bg-red-50/20' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                      >
+                        <input
+                          type="radio"
+                          name="level2Sub"
+                          value={opt}
+                          checked={level2Sub === opt}
+                          onChange={() => setLevel2Sub(opt)}
+                          className="accent-red-500 mr-2"
+                        />
+                        <div>
+                          <div className="font-semibold text-[11px] text-gray-800">{opt}</div>
+                        </div>
+                      </label>
+                    ))
+                  ) : (
+                    [
+                      { value: 'no_answer', label: 'No Answer / Ringing', label_hi: 'कॉल नहीं उठाया' },
+                      { value: 'busy', label: 'Busy / Call Waiting', label_hi: 'व्यस्त है' },
+                      { value: 'not_reachable', label: 'Not Reachable / Switched Off', label_hi: 'बंद/नेटवर्क से बाहर' },
+                      { value: 'wrong_number', label: 'Wrong Number / Invalid', label_hi: 'गलत नंबर' },
+                      { value: 'disconnected', label: 'Call Disconnected', label_hi: 'कॉल कट गया' }
+                    ].map(item => (
+                      <label
+                        key={item.value}
+                        className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-red-500 bg-red-50/20' : 'border-gray-200 bg-white hover:bg-gray-50'
+                          }`}
+                      >
+                        <input
+                          type="radio"
+                          name="level2Sub"
+                          value={item.value}
+                          checked={level2Sub === item.value}
+                          onChange={() => setLevel2Sub(item.value)}
+                          className="accent-red-500 mr-2"
+                        />
+                        <div>
+                          <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                          <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                        </div>
+                      </label>
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -1252,33 +1327,54 @@ export const DwActiveCallFocus: React.FC = () => {
               <div className="space-y-2 mb-4">
                 <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Step 2 — Callback Interval *</div>
                 <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { value: 'tomorrow_morning', label: 'Call Tomorrow Morning', label_hi: 'कल सुबह (10 AM)' },
-                    { value: 'tomorrow_evening', label: 'Call Tomorrow Evening', label_hi: 'कल शाम (5 PM)' },
-                    { value: 'two_days_morning', label: 'Call in 2 Days', label_hi: '2 दिन बाद (10 AM)' },
-                    { value: 'custom', label: 'Custom Date & Time', label_hi: 'कस्टम समय चुनें' }
-                  ].map(item => (
-                    <label
-                      key={item.value}
-                      className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-blue-500 bg-blue-50/20' : 'border-gray-200 bg-white hover:bg-gray-50'
-                        }`}
-                    >
-                      <input
-                        type="radio"
-                        name="level2Sub"
-                        value={item.value}
-                        checked={level2Sub === item.value}
-                        onChange={() => setLevel2Sub(item.value)}
-                        className="accent-blue-500 mr-2"
-                      />
-                      <div>
-                        <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
-                        <div className="text-[9px] text-gray-400">{item.label_hi}</div>
-                      </div>
-                    </label>
-                  ))}
+                  {isDriverWelcome ? (
+                    DWC_CALLBACK_OPTIONS.map(opt => (
+                      <label
+                        key={opt}
+                        className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === opt ? 'border-blue-500 bg-blue-50/20' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                      >
+                        <input
+                          type="radio"
+                          name="level2Sub"
+                          value={opt}
+                          checked={level2Sub === opt}
+                          onChange={() => setLevel2Sub(opt)}
+                          className="accent-blue-500 mr-2"
+                        />
+                        <div>
+                          <div className="font-semibold text-[11px] text-gray-800">{opt}</div>
+                        </div>
+                      </label>
+                    ))
+                  ) : (
+                    [
+                      { value: 'tomorrow_morning', label: 'Call Tomorrow Morning', label_hi: 'कल सुबह (10 AM)' },
+                      { value: 'tomorrow_evening', label: 'Call Tomorrow Evening', label_hi: 'कल शाम (5 PM)' },
+                      { value: 'two_days_morning', label: 'Call in 2 Days', label_hi: '2 दिन बाद (10 AM)' },
+                      { value: 'custom', label: 'Custom Date & Time', label_hi: 'कस्टम समय चुनें' }
+                    ].map(item => (
+                      <label
+                        key={item.value}
+                        className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-blue-500 bg-blue-50/20' : 'border-gray-200 bg-white hover:bg-gray-50'
+                          }`}
+                      >
+                        <input
+                          type="radio"
+                          name="level2Sub"
+                          value={item.value}
+                          checked={level2Sub === item.value}
+                          onChange={() => setLevel2Sub(item.value)}
+                          className="accent-blue-500 mr-2"
+                        />
+                        <div>
+                          <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                          <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                        </div>
+                      </label>
+                    ))
+                  )}
                 </div>
-                {level2Sub === 'custom' && (
+                {!isDriverWelcome && level2Sub === 'custom' && (
                   <div className="mt-2">
                     <input
                       type="datetime-local"
@@ -1294,97 +1390,112 @@ export const DwActiveCallFocus: React.FC = () => {
             {outcome === 'connected' && (
               <div className="space-y-2 mb-4">
                 <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Step 2 — Connected Outcome *</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {(isDriverWelcome || (!isTransporterWelcome && !isMatchmaking)) && (
-                    <>
-                      {[
-                        { value: 'agree_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
-                        { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
-                        { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
-                        { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' },
-                        { value: 'language_barrier', label: 'Language Barrier', label_hi: 'भाषा की समस्या' }
-                      ].map(item => (
-                        <label
-                          key={item.value}
-                          className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-[#27AE60] bg-[#EAFAF1]/30' : 'border-gray-200 bg-white hover:bg-gray-50'
-                            }`}
-                        >
-                          <input
-                            type="radio"
-                            name="level2Sub"
-                            value={item.value}
-                            checked={level2Sub === item.value}
-                            onChange={() => setLevel2Sub(item.value)}
-                            className="accent-[#27AE60] mr-2"
-                          />
-                          <div>
-                            <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
-                            <div className="text-[9px] text-gray-400">{item.label_hi}</div>
-                          </div>
-                        </label>
+                {isDriverWelcome ? (
+                  <div className="w-full">
+                    <select
+                      value={level2Sub}
+                      onChange={e => setLevel2Sub(e.target.value)}
+                      className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 outline-none font-semibold text-gray-800 text-xs"
+                    >
+                      <option value="">-- Choose Connected Feedback Option --</option>
+                      {DWC_CONNECTED_OPTIONS.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
                       ))}
-                    </>
-                  )}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {(!isTransporterWelcome && !isMatchmaking) && (
+                      <>
+                        {[
+                          { value: 'agree_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
+                          { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
+                          { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
+                          { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' },
+                          { value: 'language_barrier', label: 'Language Barrier', label_hi: 'भाषा की समस्या' }
+                        ].map(item => (
+                          <label
+                            key={item.value}
+                            className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-[#27AE60] bg-[#EAFAF1]/30' : 'border-gray-200 bg-white hover:bg-gray-50'
+                              }`}
+                          >
+                            <input
+                              type="radio"
+                              name="level2Sub"
+                              value={item.value}
+                              checked={level2Sub === item.value}
+                              onChange={() => setLevel2Sub(item.value)}
+                              className="accent-[#27AE60] mr-2"
+                            />
+                            <div>
+                              <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                              <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </>
+                    )}
 
-                  {isTransporterWelcome && (
-                    <>
-                      {[
-                        { value: 'agree_tr_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
-                        { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
-                        { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
-                        { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' }
-                      ].map(item => (
-                        <label
-                          key={item.value}
-                          className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-[#27AE60] bg-[#EAFAF1]/30' : 'border-gray-200 bg-white hover:bg-gray-50'
-                            }`}
-                        >
-                          <input
-                            type="radio"
-                            name="level2Sub"
-                            value={item.value}
-                            checked={level2Sub === item.value}
-                            onChange={() => setLevel2Sub(item.value)}
-                            className="accent-[#27AE60] mr-2"
-                          />
-                          <div>
-                            <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
-                            <div className="text-[9px] text-gray-400">{item.label_hi}</div>
-                          </div>
-                        </label>
-                      ))}
-                    </>
-                  )}
+                    {isTransporterWelcome && (
+                      <>
+                        {[
+                          { value: 'agree_tr_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
+                          { value: 'interested_callback', label: 'Interested - Callback Later', label_hi: 'रुचि है, बाद में करेंगे' },
+                          { value: 'not_interested', label: 'Not Interested', label_hi: 'रुचि नहीं है' },
+                          { value: 'already_subscribed', label: 'Already Subscribed', label_hi: 'पहले से सब्सक्राइब्ड है' }
+                        ].map(item => (
+                          <label
+                            key={item.value}
+                            className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-[#27AE60] bg-[#EAFAF1]/30' : 'border-gray-200 bg-white hover:bg-gray-50'
+                              }`}
+                          >
+                            <input
+                              type="radio"
+                              name="level2Sub"
+                              value={item.value}
+                              checked={level2Sub === item.value}
+                              onChange={() => setLevel2Sub(item.value)}
+                              className="accent-[#27AE60] mr-2"
+                            />
+                            <div>
+                              <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                              <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </>
+                    )}
 
-                  {isMatchmaking && (
-                    <>
-                      {[
-                        { value: 'placement_done', label: 'Driver Placement Done', label_hi: 'ड्राइवर प्लेसमेंट हो गया' },
-                        { value: 'callback', label: 'Call Back Later', label_hi: 'बाद में कॉल करें' },
-                        { value: 'rejected', label: 'Rejected by Driver/Transporter', label_hi: 'रिजेक्ट हो गया' }
-                      ].map(item => (
-                        <label
-                          key={item.value}
-                          className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-[#27AE60] bg-[#EAFAF1]/30' : 'border-gray-200 bg-white hover:bg-gray-50'
-                            }`}
-                        >
-                          <input
-                            type="radio"
-                            name="level2Sub"
-                            value={item.value}
-                            checked={level2Sub === item.value}
-                            onChange={() => setLevel2Sub(item.value)}
-                            className="accent-[#27AE60] mr-2"
-                          />
-                          <div>
-                            <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
-                            <div className="text-[9px] text-gray-400">{item.label_hi}</div>
-                          </div>
-                        </label>
-                      ))}
-                    </>
-                  )}
-                </div>
+                    {isMatchmaking && (
+                      <>
+                        {[
+                          { value: 'placement_done', label: 'Driver Placement Done', label_hi: 'ड्राइवर प्लेसमेंट हो गया' },
+                          { value: 'callback', label: 'Call Back Later', label_hi: 'बाद में कॉल करें' },
+                          { value: 'rejected', label: 'Rejected by Driver/Transporter', label_hi: 'रिजेक्ट हो गया' }
+                        ].map(item => (
+                          <label
+                            key={item.value}
+                            className={`flex items-center p-2 rounded-lg border cursor-pointer transition-all ${level2Sub === item.value ? 'border-[#27AE60] bg-[#EAFAF1]/30' : 'border-gray-200 bg-white hover:bg-gray-50'
+                              }`}
+                          >
+                            <input
+                              type="radio"
+                              name="level2Sub"
+                              value={item.value}
+                              checked={level2Sub === item.value}
+                              onChange={() => setLevel2Sub(item.value)}
+                              className="accent-[#27AE60] mr-2"
+                            />
+                            <div>
+                              <div className="font-semibold text-[11px] text-gray-800">{item.label}</div>
+                              <div className="text-[9px] text-gray-400">{item.label_hi}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1393,7 +1504,7 @@ export const DwActiveCallFocus: React.FC = () => {
               <div className="space-y-3 mb-4">
 
                 {/* Subscription Flow */}
-                {(level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') && (
+                {((isDriverWelcome && isSubscriptionAgreeOption(level2Sub)) || (!isDriverWelcome && (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription'))) && (
                   <>
                     <div>
                       <label className="text-gray-500 block mb-1 font-semibold">Select Subscription Plan *</label>
@@ -1442,7 +1553,7 @@ export const DwActiveCallFocus: React.FC = () => {
                 )}
 
                 {/* Callback Requested Flow */}
-                {level2Sub === 'interested_callback' && (
+                {(!isDriverWelcome && level2Sub === 'interested_callback') && (
                   <>
                     <div>
                       <label className="text-gray-500 block mb-1 font-semibold">Callback Schedule Interval *</label>
@@ -1489,7 +1600,7 @@ export const DwActiveCallFocus: React.FC = () => {
                 )}
 
                 {/* Rejection / Not Interested Flow */}
-                {(level2Sub === 'not_interested' || level2Sub === 'rejected') && (
+                {(!isDriverWelcome && (level2Sub === 'not_interested' || level2Sub === 'rejected')) && (
                   <div>
                     <label className="text-gray-500 block mb-1 font-semibold">Reason for Rejection *</label>
                     <select
@@ -1525,7 +1636,7 @@ export const DwActiveCallFocus: React.FC = () => {
                 )}
 
                 {/* Language Barrier Flow */}
-                {level2Sub === 'language_barrier' && (
+                {(!isDriverWelcome && level2Sub === 'language_barrier') && (
                   <div>
                     <label className="text-gray-500 block mb-1 font-semibold">Select Language Noted *</label>
                     <select
@@ -1541,7 +1652,7 @@ export const DwActiveCallFocus: React.FC = () => {
                       <option value="bengali">Bengali (বাংলা)</option>
                       <option value="marathi">Marathi (मराठी)</option>
                       <option value="gujarati">Gujarati (ગુજરાતી)</option>
-                      <option value="punjabi">Punjabi (ਪੰਜਾਬी)</option>
+                      <option value="punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
                       <option value="odia">Odia (ଓଡ଼ିଆ)</option>
                       <option value="other">Other</option>
                     </select>
@@ -1549,7 +1660,7 @@ export const DwActiveCallFocus: React.FC = () => {
                 )}
 
                 {/* Matchmaking Placement Done Flow */}
-                {level2Sub === 'placement_done' && (
+                {(!isDriverWelcome && level2Sub === 'placement_done') && (
                   <div>
                     <label className="text-gray-500 block mb-1 font-semibold">Verify Placement Stage *</label>
                     <select
@@ -1575,6 +1686,8 @@ export const DwActiveCallFocus: React.FC = () => {
                 )}
               </div>
             )}
+
+
 
             {/* Remarks / Notes */}
             {level2Sub && (

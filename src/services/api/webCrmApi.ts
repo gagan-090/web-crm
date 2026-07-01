@@ -364,6 +364,7 @@ export interface MmJobsResponse {
     jobId: string;
     route: string;
     transporter: string;
+    transporterId?: number;
     transporterTmid: string;
     phone: string;
     tier: string;
@@ -390,6 +391,50 @@ export interface MmDriversResponse {
     routes: string;
     matchScore: number;
     lastCall: string;
+  }>;
+}
+
+export interface MmJobApplicantsResponse {
+  status: boolean;
+  applicants: Array<{
+    id: number;
+    tmid: string;
+    name: string;
+    phone: string;
+    license: string;
+    experience: string;
+    city: string;
+    state: string;
+    matchPercent: number;
+    lastStatus: string;
+  }>;
+}
+
+export interface MmJobCallLogsResponse {
+  status: boolean;
+  logs: Array<{
+    date: string;
+    driver: string;
+    outcome: string;
+    caller: string;
+  }>;
+}
+
+export interface MmPlacementsResponse {
+  status: boolean;
+  placements: Array<{
+    id: number;
+    unique_id_transporter: string | null;
+    unique_id_driver: string | null;
+    assigned_to: number;
+    assigned_name: string | null;
+    job_id: number | string;
+    transporter_mobile: string | null;
+    driver_mobile: string | null;
+    match_status: string;
+    driver_name: string | null;
+    transporter_name: string | null;
+    created_at: string;
   }>;
 }
 
@@ -612,8 +657,11 @@ export interface DwQueueParams {
 export const webCrmApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // DW Endpoints
-    getDwDashboard: builder.query<DwDashboardResponse, void>({
-      query: () => '/web-crm/dw/dashboard',
+    getDwDashboard: builder.query<DwDashboardResponse, { period?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/dashboard',
+        params: params || undefined,
+      }),
     }),
     getDwQueue: builder.query<DwQueueResponse, { per_page?: number; page?: number; filter?: string; search?: string } | void>({
       query: (params) => ({
@@ -746,6 +794,29 @@ export const webCrmApi = baseApi.injectEndpoints({
         body,
       }),
     }),
+    getMmJobApplicants: builder.query<MmJobApplicantsResponse, string | number>({
+      query: (jobId) => `/web-crm/mm/job/${jobId}/applicants`,
+    }),
+    getMmJobCallLogs: builder.query<MmJobCallLogsResponse, string | number>({
+      query: (jobId) => `/web-crm/mm/job/${jobId}/call-logs`,
+    }),
+    getMmPlacements: builder.query<MmPlacementsResponse, void>({
+      query: () => '/web-crm/mm/placements',
+    }),
+    submitMmCallLog: builder.mutation<any, {
+      job_id: string | number;
+      driver_id?: number;
+      call_status: string;
+      call_feedback: string;
+      call_remarks?: string;
+      match_status?: string;
+    }>({
+      query: (body) => ({
+        url: '/web-crm/mm/call/log',
+        method: 'POST',
+        body,
+      }),
+    }),
 
     // QC Endpoint
     getQcDashboard: builder.query<QcDashboardResponse, void>({
@@ -841,6 +912,9 @@ export const webCrmApi = baseApi.injectEndpoints({
         body: { notes },
       }),
     }),
+    getDwGlobalSearch: builder.query<any, string>({
+      query: (searchStr) => `/web-crm/dw/global-search?q=${searchStr}`,
+    }),
   }),
 });
 
@@ -877,6 +951,10 @@ export const {
   useGetMmJobsQuery,
   useGetMmDriversQuery,
   usePlaceMmDriverMutation,
+  useGetMmJobApplicantsQuery,
+  useGetMmJobCallLogsQuery,
+  useGetMmPlacementsQuery,
+  useSubmitMmCallLogMutation,
   useGetQcDashboardQuery,
   useGetQcQueueQuery,
   useSubmitQcAuditMutation,
@@ -895,5 +973,7 @@ export const {
   useGetDwCampaignLeadsQuery,
   useLazyGetDwCampaignLeadsQuery,
   useUpdateDwCampaignLeadNotesMutation,
+  useGetDwGlobalSearchQuery,
+  useLazyGetDwGlobalSearchQuery,
 } = webCrmApi;
 

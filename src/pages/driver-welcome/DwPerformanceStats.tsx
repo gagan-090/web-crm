@@ -3,10 +3,11 @@ import { useGetDwPerformanceQuery } from '../../services/api/webCrmApi';
 import { useGetGateProgressQuery } from '../../services/api/incentiveApi';
 
 export const DwPerformanceStats: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'today' | 'this_week' | 'this_month'>('this_month');
+  const [activeTab, setActiveTab] = useState<'today' | 'yesterday' | 'this_week' | 'past_7_days' | 'this_month'>('this_month');
 
   // Fetch live performance stats
   const { data: response, isLoading } = useGetDwPerformanceQuery({ period: activeTab });
+  const { data: progress } = useGetGateProgressQuery('dwc');
 
   if (isLoading) {
     return (
@@ -30,7 +31,6 @@ export const DwPerformanceStats: React.FC = () => {
   const dispositions = data?.dispositions || [];
   const dailyTrend = data?.daily_trend || [];
   const monthly = data?.monthly || { revenue: 0, target: 50000, pct: 0 };
-  const { data: progress } = useGetGateProgressQuery('dwc');
   const monthlyRevenue = progress?.accruedIncentive ?? 0;
 
   // Base Salary Gate
@@ -59,8 +59,11 @@ export const DwPerformanceStats: React.FC = () => {
         <div className="bg-gray-100 p-1 rounded-lg flex items-center gap-1 select-none">
           {([
             { id: 'today', label: 'Today' },
+            { id: 'yesterday', label: 'Yesterday' },
             { id: 'this_week', label: 'This Week' },
-            { id: 'this_month', label: 'This Month' }
+            { id: 'past_7_days', label: 'Past 7 Days' },
+            { id: 'this_month', label: 'This Month' },
+            { id: 'all_time', label: 'All Time' }
           ] as const).map(tab => (
             <button
               key={tab.id}
@@ -106,8 +109,13 @@ export const DwPerformanceStats: React.FC = () => {
               <span className="text-2xl font-bold text-red-600">{metrics.conversion_rate}%</span>
               <span className="text-xs text-gray-500">Connected: {metrics.connected}</span>
             </div>
-            <div className="mt-3 py-1 bg-green-50 text-[#27AE60] text-xs font-bold px-2 rounded-lg text-center">
-              Conversions: {metrics.conversions}
+            <div className="flex items-center gap-2 mt-3">
+              <div className="py-1 bg-green-50 text-[#27AE60] text-xs font-bold px-2 rounded-lg text-center flex-1">
+                Conversions: {metrics.conversions}
+              </div>
+              <div className="py-1 bg-red-50 text-red-500 text-xs font-bold px-2 rounded-lg text-center flex-1">
+                Not Connected: {metrics.total_calls - metrics.connected}
+              </div>
             </div>
           </div>
 

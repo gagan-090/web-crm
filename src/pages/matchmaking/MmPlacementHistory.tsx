@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useGetMmPlacementsQuery } from '../../services/api/webCrmApi';
 
 export const MmPlacementHistory: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'thisMonth' | 'lastMonth' | 'history'>('thisMonth');
-  const [extraPlacements, setExtraPlacements] = useState(0); // For What-If simulator
+  const [extraPlacements, setExtraPlacements] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { data: placementsData } = useGetMmPlacementsQuery();
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
@@ -244,37 +246,80 @@ export const MmPlacementHistory: React.FC = () => {
       )}
 
       {activeTab === 'history' && (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden text-xs">
-          <div className="p-3 bg-gray-50 border-b border-gray-200 font-bold text-gray-700 uppercase tracking-wider">
-            Historic PlacementsHandover ledger
+        <div className="space-y-6">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden text-xs">
+            <div className="p-3 bg-gray-50 border-b border-gray-200 font-bold text-gray-700 uppercase tracking-wider">
+              Historic PlacementsHandover ledger
+            </div>
+
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-gray-50 text-gray-400 font-bold uppercase text-[9px] border-b border-gray-150">
+                  <th className="p-3 pl-4">Month</th>
+                  <th className="p-3 text-center">Placements</th>
+                  <th className="p-3 text-center">Monthly Target</th>
+                  <th className="p-3 text-center">SLA Compliance %</th>
+                  <th className="p-3 text-right pr-4">Incentive Paid</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+                {[
+                  { m: 'May 2026', qty: 58, tgt: 55, sla: '92.4%', pay: 2020 },
+                  { m: 'Apr 2026', qty: 52, tgt: 55, sla: '89.1%', pay: 1720 },
+                  { m: 'Mar 2026', qty: 61, tgt: 55, sla: '94.5%', pay: 2150 }
+                ].map((row, i) => (
+                  <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="p-3 pl-4 font-bold text-gray-850">{row.m}</td>
+                    <td className="p-3 text-center font-mono">{row.qty} jobs</td>
+                    <td className="p-3 text-center font-mono">{row.tgt} jobs</td>
+                    <td className="p-3 text-center font-mono">{row.sla}</td>
+                    <td className="p-3 text-right pr-4 font-mono font-bold text-green-600">₹{row.pay}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-gray-50 text-gray-400 font-bold uppercase text-[9px] border-b border-gray-150">
-                <th className="p-3 pl-4">Month</th>
-                <th className="p-3 text-center">Placements</th>
-                <th className="p-3 text-center">Monthly Target</th>
-                <th className="p-3 text-center">SLA Compliance %</th>
-                <th className="p-3 text-right pr-4">Incentive Paid</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
-              {[
-                { m: 'May 2026', qty: 58, tgt: 55, sla: '92.4%', pay: 2020 },
-                { m: 'Apr 2026', qty: 52, tgt: 55, sla: '89.1%', pay: 1720 },
-                { m: 'Mar 2026', qty: 61, tgt: 55, sla: '94.5%', pay: 2150 }
-              ].map((row, i) => (
-                <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="p-3 pl-4 font-bold text-gray-850">{row.m}</td>
-                  <td className="p-3 text-center font-mono">{row.qty} jobs</td>
-                  <td className="p-3 text-center font-mono">{row.tgt} jobs</td>
-                  <td className="p-3 text-center font-mono">{row.sla}</td>
-                  <td className="p-3 text-right pr-4 font-mono font-bold text-green-600">₹{row.pay}</td>
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden text-xs">
+            <div className="p-3 bg-gray-50 border-b border-gray-200 font-bold text-gray-700 uppercase tracking-wider">
+              Recent Placement Records (Live Data)
+            </div>
+
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-gray-50 text-gray-400 font-bold uppercase text-[9px] border-b border-gray-150">
+                  <th className="p-3 pl-4">Date</th>
+                  <th className="p-3">Job ID</th>
+                  <th className="p-3">Transporter</th>
+                  <th className="p-3">Driver Name</th>
+                  <th className="p-3">Mobile</th>
+                  <th className="p-3 text-right pr-4">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+                {placementsData?.placements && placementsData.placements.length > 0 ? (
+                  placementsData.placements.map((p, i) => (
+                    <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="p-3 pl-4 font-mono">{new Date(p.created_at).toLocaleDateString()}</td>
+                      <td className="p-3 font-mono">JD-{p.job_id}</td>
+                      <td className="p-3">{p.transporter_name || 'N/A'}</td>
+                      <td className="p-3 font-bold text-gray-850">{p.driver_name || 'N/A'}</td>
+                      <td className="p-3 font-mono">{p.driver_mobile || 'N/A'}</td>
+                      <td className="p-3 text-right pr-4">
+                        <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-200 text-[10px] font-extrabold uppercase">
+                          {p.match_status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-gray-400 italic">No live placement records recorded yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

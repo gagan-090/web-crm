@@ -5,11 +5,29 @@ import { usePermissions } from '../../shared/hooks/usePermissions';
 import { routeConfig } from '../../routes/routeConfig';
 import type { RouteItem } from '../../routes/routeConfig';
 import { ROLE_LABELS } from '../../shared/constants/roles';
+import { useGetDwQueueCountsQuery, useGetDwCampaignLeadsQuery } from '../../services/api/webCrmApi';
 
 export const Sidebar: React.FC = () => {
   const location = useLocation();
   const { logout } = useAuth();
   const { role, can } = usePermissions();
+
+  const isDwAgent = role?.includes('DW') || role?.includes('Welcome');
+
+  const { data: queueCounts } = useGetDwQueueCountsQuery(undefined, {
+    skip: !isDwAgent,
+    refetchOnMountOrArgChange: true,
+  });
+
+  const { data: tollfreeData } = useGetDwCampaignLeadsQuery({ source: 'TollFree' }, {
+    skip: !isDwAgent,
+    refetchOnMountOrArgChange: true,
+  });
+
+  const { data: generalCampaignData } = useGetDwCampaignLeadsQuery({ source: 'ALL' }, {
+    skip: !isDwAgent,
+    refetchOnMountOrArgChange: true,
+  });
 
   const menuItems = (routeConfig as RouteItem[]).filter(
     (item: RouteItem) => item.showInMenu && role && item.role.toUpperCase() === role.toUpperCase() && (!item.permission || can(item.permission))
@@ -18,6 +36,10 @@ export const Sidebar: React.FC = () => {
   const getInitials = (roleName: string) => {
     return roleName.slice(0, 2).toUpperCase();
   };
+
+  const freshCountVal = queueCounts?.data?.fresh ?? 0;
+  const tollFreeCountVal = tollfreeData?.pagination?.total ?? 0;
+  const generalCampaignCountVal = generalCampaignData?.pagination?.total ?? 0;
 
   return (
     <aside className="w-[240px] h-screen fixed left-0 top-0 border-r border-outline-variant bg-white flex flex-col py-md px-sm z-50">
@@ -38,7 +60,7 @@ export const Sidebar: React.FC = () => {
             displayName = 'My Queue';
             badge = (
               <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-full">
-                18
+                {isDwAgent ? freshCountVal : 18}
               </span>
             );
           } else if (item.path === '/wct/wct-call-queue') {
@@ -50,12 +72,7 @@ export const Sidebar: React.FC = () => {
             );
           } else if (item.path === '/dw/dw-campaign-leads' || item.path === '/wct/wct-campaign-leads') {
             displayName = 'Campaign Leads';
-            badge = (
-              <span className="ml-auto flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
-                <span>12</span>
-                <span className="text-[8px]">🔥</span>
-              </span>
-            );
+            badge = null;
           }
 
           return (

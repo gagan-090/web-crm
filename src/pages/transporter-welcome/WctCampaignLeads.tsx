@@ -249,7 +249,7 @@ export const WctCampaignLeads: React.FC = () => {
 
     // Source Filter
     if (sourceFilter !== 'ALL') {
-      result = result.filter(l => l.source === sourceFilter);
+      result = result.filter(l => l.source.toUpperCase() === sourceFilter.toUpperCase());
     }
 
     // Sort Logic

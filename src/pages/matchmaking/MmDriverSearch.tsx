@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useGetMmDriversQuery } from '../../services/api/webCrmApi';
 
 interface DriverItem {
   id: string;
@@ -41,15 +42,35 @@ export const MmDriverSearch: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Mock drivers database
-  const [drivers] = useState<DriverItem[]>([
+  const { data: liveDriversData } = useGetMmDriversQuery({
+    origin: originState || undefined,
+    destination: destState || undefined,
+    license: licenseClass.length > 0 ? licenseClass[0] : undefined
+  });
+
+  const mockDrivers: DriverItem[] = [
     { id: 'DR-48291', name: 'Suresh Yadav', phone: '+91 98765 43210', tier: 'Verified', city: 'Delhi', routes: 'Delhi ➔ Mumbai', experience: 6, lastActive: 'Today', truckType: 'Heavy Truck', license: 'HMV' },
     { id: 'DR-48292', name: 'Amit Singh', phone: '+91 88765 43211', tier: 'Trusted', city: 'Jaipur', routes: 'Jaipur ➔ Pune', experience: 4, lastActive: 'Yesterday', truckType: 'Medium Truck', license: 'HMV' },
     { id: 'DR-48293', name: 'Ramesh Kumar', phone: '+91 78765 43212', tier: 'Verified', city: 'Mumbai', routes: 'Mumbai ➔ Delhi', experience: 5, lastActive: '2 days ago', truckType: 'Heavy Truck', license: 'HMV' },
     { id: 'DR-48296', name: 'Devendra Pal', phone: '+91 98234 11223', tier: 'Verified', city: 'Ahmedabad', routes: 'Ahmedabad ➔ Chennai', experience: 5, lastActive: '3 days ago', truckType: 'Container 24ft', license: 'HMV' },
     { id: 'DR-48297', name: 'Harpreet Singh', phone: '+91 91112 23344', tier: 'Trusted', city: 'Amritsar', routes: 'Delhi ➔ Bangalore', experience: 7, lastActive: 'Today', truckType: 'Container 32ft', license: 'HMV' },
     { id: 'DR-48299', name: 'Karan Johar', phone: '+91 99999 88888', tier: 'Standard', city: 'Patna', routes: 'Kolkata ➔ Patna', experience: 2, lastActive: '5 days ago', truckType: 'Light Commercial', license: 'LMV' }
-  ]);
+  ];
+
+  const drivers = liveDriversData?.drivers && liveDriversData.drivers.length > 0
+    ? liveDriversData.drivers.map((d: any) => ({
+        id: d.tmid || `DR-${d.id}`,
+        name: d.name,
+        phone: d.phone,
+        tier: 'Verified' as const,
+        city: d.city || 'Delhi',
+        routes: d.routes || 'Delhi ➔ Mumbai',
+        experience: parseInt(d.experience, 10) || 5,
+        lastActive: 'Today',
+        truckType: 'Heavy Truck',
+        license: d.license || 'HMV'
+      }))
+    : mockDrivers;
 
   const handleToggleTruck = (truck: string) => {
     setSelectedTrucks(prev => 

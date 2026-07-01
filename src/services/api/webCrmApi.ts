@@ -898,7 +898,7 @@ export const webCrmApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { key }) => [{ type: 'Settings', id: key }],
     }),
-    getDwCampaignLeads: builder.query<any, { source?: string; search?: string; page?: number; per_page?: number } | void>({
+    getDwCampaignLeads: builder.query<any, { source?: string; search?: string; tab?: string; sort_by?: string; page?: number; per_page?: number } | void>({
       query: (params) => ({
         url: '/web-crm/dw/campaign-leads',
         params: params || undefined,

@@ -52,7 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, role?: Role, password?: string): Promise<User | null> => {
+  const login = async (email: string, _role?: Role, password?: string): Promise<User | null> => {
     setIsLoading(true);
 
     const controller = new AbortController();

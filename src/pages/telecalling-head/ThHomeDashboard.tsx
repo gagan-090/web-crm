@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useGetThDashboardQuery } from '../../services/api/webCrmApi';
 import { PageCardSkeleton } from '../../components/PageSkeleton';
 import {
@@ -34,13 +34,12 @@ interface SlaRiskItem {
 }
 
 export const ThHomeDashboard: React.FC = () => {
-  const navigate = useNavigate();
   const { data: realDashboard } = useGetThDashboardQuery();
   const { data: overviewData } = useGetThOverviewQuery();
   const { data: teamMonitorData } = useGetThTeamMonitorQuery({ process: 'all' });
   const { data: slaData } = useGetThSlaDashboardQuery();
   const { data: notificationsData } = useGetThNotificationsQuery();
-  const notificationsList = notificationsData?.data ?? [];
+  void notificationsData;
 
   // Brand new Overview dashboard APIs
   const { data: thOverviewRevenue, isLoading: isRevLoading, isFetching: isRevFetching } = useGetThOverviewRevenueQuery();
@@ -62,12 +61,11 @@ export const ThHomeDashboard: React.FC = () => {
   // Dashboard configuration & tab states
   const [feedFilter, setFeedFilter] = useState<'ALL' | 'DW' | 'TR' | 'SC' | 'MM'>('ALL');
   const [chartMode, setChartMode] = useState<'SIMPLE' | 'STACKED'>('STACKED');
-  const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
+  const [_dismissedAlerts, _setDismissedAlerts] = useState<string[]>([]);
   const [selectedSegment, setSelectedSegment] = useState<string | null>(null);
 
   // Extract database metrics
   const kpis = realDashboard?.data?.kpis;
-  const breakdown = realDashboard?.data?.breakdown;
 
   const totalCalls = kpis?.totalCalls ?? 2840;
   const connectedCalls = kpis?.connectedCalls ?? 2180;
@@ -154,10 +152,6 @@ export const ThHomeDashboard: React.FC = () => {
 
   // Extract campaign leads command strip metrics
   const campaignLeads = thOverviewCampaignLeads?.data || thOverviewCampaignLeads;
-  const driversRegistered = campaignLeads?.driversCount ?? campaignLeads?.drivers ?? campaignLeads?.driversRegistered ?? breakdown?.driversCount ?? 1420;
-  const transportersRegistered = campaignLeads?.transportersCount ?? campaignLeads?.transporters ?? campaignLeads?.transportersRegistered ?? breakdown?.transportersCount ?? 650;
-  const postedJobsCount = campaignLeads?.postedJobsCount ?? campaignLeads?.postedJobs ?? campaignLeads?.postedJobsCount ?? breakdown?.postedJobsCount ?? 180;
-
   const totalReceived = campaignLeads?.total_received ?? campaignLeads?.totalReceived ?? campaignLeads?.total ?? 3840;
   const hotUncalled = campaignLeads?.hot_uncalled ?? campaignLeads?.hotUncalled ?? campaignLeads?.hot ?? 12;
   const warmLeads = campaignLeads?.warm_leads ?? campaignLeads?.warmLeads ?? campaignLeads?.warm ?? 410;
@@ -176,28 +170,7 @@ export const ThHomeDashboard: React.FC = () => {
     return Number(val).toLocaleString();
   };
 
-  // Custom alert lists
-  const alerts = [
-    { id: 'campaign-sla', text: `🔥 SLA Alert: ${overviewData?.sla_alerts?.total || 12} Hot Campaign Leads uncalled for > 1 hour!`, actionText: 'Assign & Nudge →', severity: 'red' },
-    { id: 'untagged', text: `⚠ ${overviewData?.calls?.untagged_today || 7} calls untagged across all teams.`, actionText: 'View by Team →', severity: 'red' },
-    { id: 'sla', text: `⚠ ${overviewData?.sla_alerts?.total || 2} active SLA breaches — Transporter first-call and Job SLA.`, actionText: 'View →', severity: 'red' },
-    { id: 'backlog', text: `${safeLocaleString(overviewData?.team?.backlog_leads || 37384)} uncalled leads in backlog.`, actionText: 'Launch Sprint →', severity: 'orange' },
-    { id: 'hiring', text: `⚠ ${overviewData?.team?.open_positions || 2} CRITICAL open roles unfilled beyond target hire week.`, actionText: 'View Hiring →', severity: 'amber' },
-    ...notificationsList.map((n: any) => ({
-      id: `notif-${n.id}`,
-      text: `🔔 ${n.title}: ${n.message}`,
-      actionText: 'View Detail →',
-      actionUrl: '/th/notifications-alerts-center',
-      severity: n.type === 'critical' || n.type === 'error' ? 'red' : n.type === 'admin' ? 'amber' : 'orange'
-    }))
-  ];
-
-  const handleDismissAlert = (id: string) => {
-    setDismissedAlerts(prev => [...prev, id]);
-  };
-
   // Stacked chart daily data (representing DW, TR, SC, MM revenue portions)
-  const trendData = thOverviewRevenueTrend?.data || thOverviewRevenueTrend;
   // Map revenue-trend API: {day, dw, tr, sc, mm} — compute total since API doesn't include it
   const rawTrendData = Array.isArray(thOverviewRevenueTrend?.data)
     ? thOverviewRevenueTrend.data
@@ -305,22 +278,6 @@ export const ThHomeDashboard: React.FC = () => {
     { name: 'PP', fullName: 'Pooja Pal', role: 'MM', status: 'online' },
     { name: 'TA', fullName: 'Tanisha', role: 'MM', status: 'busy' }
   ]);
-
-  const handleAlertAction = (id: string, actionUrl?: string) => {
-    if (actionUrl) {
-      navigate(actionUrl);
-    } else if (id === 'campaign-sla') {
-      navigate('/th/global-campaign-console');
-    } else if (id === 'untagged') {
-      navigate('/th/team-monitor');
-    } else if (id === 'sla') {
-      navigate('/th/sla-dashboard');
-    } else if (id === 'backlog') {
-      navigate('/th/backlog-campaign-manager');
-    } else if (id === 'hiring') {
-      navigate('/hr/hiring-dashboard-live');
-    }
-  };
 
   const isPageLoading = isRevLoading && isCampaignLoading && isTeamPerfLoading && isTrendLoading;
 
@@ -676,7 +633,7 @@ export const ThHomeDashboard: React.FC = () => {
                   {/* Dashed Target line */}
                   <div className="absolute top-1/4 left-0 w-full border-t border-dashed border-primary/40 z-0"></div>
 
-                  {stackedChartData.map((d) => {
+                  {stackedChartData.map((d: any) => {
                     const totalVal = Number(d.total) || 0;
                     const dwVal = Number(d.dw) || 0;
                     const trVal = Number(d.tr) || 0;
@@ -716,7 +673,7 @@ export const ThHomeDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="flex justify-between mt-sm text-[10px] text-outline pl-[50px] uppercase font-semibold">
-                {stackedChartData.map(d => (
+                {stackedChartData.map((d: any) => (
                   <span key={d.day} className="w-12 text-center">{d.day}</span>
                 ))}
               </div>

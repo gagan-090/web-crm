@@ -95,10 +95,10 @@ export const TlOverviewDashboard: React.FC = () => {
   }, [tlMode]);
 
   const kpis = realDashboard?.data?.kpis;
-  const activeCallersCount = kpis?.activeCallers ?? 7;
-  const slaBreachesCount = kpis?.slaBreaches ?? 12;
-  const callsTodayCount = kpis?.callsToday ?? 324;
-  const unresolvedCallsCount = kpis?.unresolvedCalls ?? 5;
+  const activeCallersCount = (kpis as any)?.activeCallers ?? 7;
+  const slaBreachesCount = (kpis as any)?.slaBreaches ?? 12;
+  const callsTodayCount = (kpis as any)?.callsToday ?? 324;
+  const unresolvedCallsCount = (kpis as any)?.unresolvedCalls ?? 5;
 
   // Callbacks list
   const [callbacks, setCallbacks] = useState<CallbackItem[]>([

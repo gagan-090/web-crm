@@ -566,14 +566,14 @@ export const incentiveApi = baseApi.injectEndpoints({
       },
       keepUnusedDataFor: 60,
       async onCacheEntryAdded(arg, { updateCachedData, cacheEntryRemoved }) {
-        if (getRoleKey(arg) === 'dwc') {
+        if (getRoleKey(arg.role) === 'dwc') {
           await cacheEntryRemoved;
           return;
         }
 
         const unsubscribeStore = subscribe(() => {
           updateCachedData((draft) => {
-            const key = getRoleKey(arg);
+            const key = getRoleKey(arg.role);
             const conversions = mockStore[key].conversions;
             const teiScore = mockStore[key].teiScore;
 

@@ -5,7 +5,7 @@ import { usePermissions } from '../../shared/hooks/usePermissions';
 import { routeConfig } from '../../routes/routeConfig';
 import type { RouteItem } from '../../routes/routeConfig';
 import { ROLE_LABELS } from '../../shared/constants/roles';
-import { useGetDwQueueCountsQuery, useGetDwCampaignLeadsQuery } from '../../services/api/webCrmApi';
+import { useGetDwQueueCountsQuery } from '../../services/api/webCrmApi';
 
 export const Sidebar: React.FC = () => {
   const location = useLocation();
@@ -19,16 +19,6 @@ export const Sidebar: React.FC = () => {
     refetchOnMountOrArgChange: true,
   });
 
-  const { data: tollfreeData } = useGetDwCampaignLeadsQuery({ source: 'TollFree' }, {
-    skip: !isDwAgent,
-    refetchOnMountOrArgChange: true,
-  });
-
-  const { data: generalCampaignData } = useGetDwCampaignLeadsQuery({ source: 'ALL' }, {
-    skip: !isDwAgent,
-    refetchOnMountOrArgChange: true,
-  });
-
   const menuItems = (routeConfig as RouteItem[]).filter(
     (item: RouteItem) => item.showInMenu && role && item.role.toUpperCase() === role.toUpperCase() && (!item.permission || can(item.permission))
   );
@@ -38,8 +28,6 @@ export const Sidebar: React.FC = () => {
   };
 
   const freshCountVal = queueCounts?.data?.fresh ?? 0;
-  const tollFreeCountVal = tollfreeData?.pagination?.total ?? 0;
-  const generalCampaignCountVal = generalCampaignData?.pagination?.total ?? 0;
 
   return (
     <aside className="w-[240px] h-screen fixed left-0 top-0 border-r border-outline-variant bg-white flex flex-col py-md px-sm z-50">

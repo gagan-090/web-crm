@@ -3,7 +3,7 @@ import { useGetDwPerformanceQuery } from '../../services/api/webCrmApi';
 import { useGetGateProgressQuery } from '../../services/api/incentiveApi';
 
 export const DwPerformanceStats: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'today' | 'yesterday' | 'this_week' | 'past_7_days' | 'this_month'>('this_month');
+  const [activeTab, setActiveTab] = useState<'today' | 'yesterday' | 'this_week' | 'past_7_days' | 'this_month' | 'all_time'>('this_month');
 
   // Fetch live performance stats
   const { data: response, isLoading } = useGetDwPerformanceQuery({ period: activeTab });

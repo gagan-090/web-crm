@@ -147,7 +147,7 @@ export const ThGlobalCallChatLog: React.FC = () => {
     };
   }, [processFilter, callerFilter, outcomeFilter, searchQuery, page, fromDate, toDate]);
 
-  const { data: callLogData, isLoading, isFetching, isError, refetch } =
+  const { data: callLogData, isLoading, isFetching, isError: _isError, refetch } =
     useGetThCallLogQuery(callParams, { pollingInterval: 60000 });
 
   const { data: chatData, isLoading: chatLoading } =

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useGetThLeadManagementQuery, useGetThTelecallersQuery, useTransferThLeadsMutation, useReassignThColdLeadsMutation } from '../../services/api/teleheadApi';
+import { useGetThLeadManagementQuery, useGetThTelecallersQuery, useTransferThLeadsToAdminMutation, useReassignThColdLeadsMutation } from '../../services/api/teleheadApi';
 import { PageTableSkeleton } from '../../components/PageSkeleton';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -36,36 +36,6 @@ interface ColdLead {
   lastCalledDays: number;
   selected: boolean;
 }
-
-// ── Seed data ───────────────────────────────────────────────────────────────
-const ALL_LEADS: Lead[] = [
-  { id: 'TM-78291', name: 'Rajesh Logistics Pvt Ltd', mobile: '+91 98765-43210', type: 'FM', status: 'HOT', assignedCaller: 'Animesh Roy', process: 'Vendor Onboarding', regDate: '12 Oct, 2023', lastCalled: '2h ago' },
-  { id: 'TM-78292', name: 'Gagan Deep Transport', mobile: '+91 88221-11002', type: 'DR', status: 'WARM', assignedCaller: 'Sunita Sharma', process: 'KYC Verification', regDate: '12 Oct, 2023', lastCalled: 'Yesterday' },
-  { id: 'TM-78293', name: 'Pacific Express', mobile: '+91 77665-54433', type: 'TR', status: 'COLD', assignedCaller: 'Unassigned', process: 'RTO Check', regDate: '11 Oct, 2023', lastCalled: '5 days ago' },
-  { id: 'TM-78294', name: 'Vikas Transporter Hub', mobile: '+91 99887-76655', type: 'FM', status: 'HOT', assignedCaller: 'Animesh Roy', process: 'Direct Load Booking', regDate: '10 Oct, 2023', lastCalled: '10m ago' },
-  { id: 'TM-78295', name: 'Swift Cargo Movers', mobile: '+91 91234-56789', type: 'EC', status: 'WARM', assignedCaller: 'Preeti Jain', process: 'Account Setup', regDate: '09 Oct, 2023', lastCalled: '4h ago' },
-  { id: 'TM-78296', name: 'Bharat Road Carriers', mobile: '+91 90001-22334', type: 'DR', status: 'HOT', assignedCaller: 'Animesh Roy', process: 'Driver Registration', regDate: '09 Oct, 2023', lastCalled: '1h ago' },
-  { id: 'TM-78297', name: 'Northern Freight Co.', mobile: '+91 98765-00111', type: 'TR', status: 'WARM', assignedCaller: 'Sunita Sharma', process: 'Transporter Onboarding', regDate: '08 Oct, 2023', lastCalled: '3h ago' },
-  { id: 'TM-78298', name: 'Sunrise Logistics', mobile: '+91 77654-99101', type: 'FM', status: 'COLD', assignedCaller: 'Unassigned', process: 'KYC Verification', regDate: '07 Oct, 2023', lastCalled: '8 days ago' },
-  { id: 'TM-78299', name: 'Apex Fleet Solutions', mobile: '+91 88009-54321', type: 'EC', status: 'HOT', assignedCaller: 'Preeti Jain', process: 'Vendor Onboarding', regDate: '06 Oct, 2023', lastCalled: '30m ago' },
-  { id: 'TM-78300', name: 'Himalayan Cargo Express', mobile: '+91 91122-33445', type: 'DR', status: 'WARM', assignedCaller: 'Animesh Roy', process: 'Driver Registration', regDate: '05 Oct, 2023', lastCalled: '6h ago' },
-];
-
-const COLD_LEADS_SEED: ColdLead[] = [
-  { id: 'CL-1', name: 'Karan Sharma', tmId: 'TM-11029', type: 'TR', lastCalledDays: 24, selected: false },
-  { id: 'CL-2', name: 'Meena Kumari Logistics', tmId: 'TM-11204', type: 'FM', lastCalledDays: 41, selected: false },
-  { id: 'CL-3', name: 'Anand Heavy Haul', tmId: 'TM-10992', type: 'EC', lastCalledDays: 18, selected: false },
-  { id: 'CL-4', name: 'Blue Dart Vendor 4', tmId: 'TM-11005', type: 'TR', lastCalledDays: 30, selected: false },
-  { id: 'CL-5', name: 'Eastern Star Transport', tmId: 'TM-11340', type: 'DR', lastCalledDays: 52, selected: false },
-  { id: 'CL-6', name: 'Metro Fleet Pvt Ltd', tmId: 'TM-11567', type: 'FM', lastCalledDays: 35, selected: false },
-  // -- hidden until "Load more" --
-  { id: 'CL-7', name: 'Pioneer Cargo Services', tmId: 'TM-11621', type: 'TR', lastCalledDays: 28, selected: false },
-  { id: 'CL-8', name: 'Vijay Road Lines', tmId: 'TM-11734', type: 'DR', lastCalledDays: 60, selected: false },
-  { id: 'CL-9', name: 'Shree Ram Transport Co.', tmId: 'TM-11812', type: 'FM', lastCalledDays: 45, selected: false },
-  { id: 'CL-10', name: 'Deccan Freight Express', tmId: 'TM-11899', type: 'EC', lastCalledDays: 33, selected: false },
-  { id: 'CL-11', name: 'National Carriers Ltd', tmId: 'TM-11950', type: 'TR', lastCalledDays: 22, selected: false },
-  { id: 'CL-12', name: 'Green Valley Logistics', tmId: 'TM-12001', type: 'DR', lastCalledDays: 57, selected: false },
-];
 
 const STATUS_FILTERS = ['All', 'HOT', 'WARM', 'COLD'] as const;
 const DATE_FILTERS = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days', 'All Time', 'Custom'] as const;
@@ -241,8 +211,8 @@ export const ThLeadManagementConsole: React.FC = () => {
   };
 
   const { data: telecallersData } = useGetThTelecallersQuery();
-  const [transferThLeads, { isLoading: isTransferring }] = useTransferThLeadsMutation();
-  const [reassignThColdLeads, { isLoading: isReassigningCold }] = useReassignThColdLeadsMutation();
+  const [transferThLeads, { isLoading: isTransferring }] = useTransferThLeadsToAdminMutation();
+  const [reassignThColdLeads, { isLoading: _isReassigningCold }] = useReassignThColdLeadsMutation();
 
   const telecallers = useMemo(() => {
     return Array.isArray(telecallersData) ? telecallersData : (telecallersData?.data || []);

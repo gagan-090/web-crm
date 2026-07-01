@@ -74,7 +74,7 @@ export const ThTeamMonitor: React.FC = () => {
   const { data: activityData, isLoading, isFetching, error, refetch } = useGetThCallerActivityQuery(undefined, {
     pollingInterval: 5000,
   });
-  const [moveLeads] = useMoveThLeadsMutation();
+  const [_moveLeads] = useMoveThLeadsMutation();
   const [transferLeads, { isLoading: isTransferring }] = useTransferThLeadsMutation();
 
   const { data: telecallersData } = useGetThTelecallersQuery();
@@ -437,8 +437,8 @@ export const ThTeamMonitor: React.FC = () => {
                         queueDepth: detail?.queueDepth || 0,
                       };
                     })
-                    .filter(c => c.queueDepth > 0 && c.process !== 'TL')
-                    .map(c => (
+                    .filter((c: any) => c.queueDepth > 0 && c.process !== 'TL')
+                    .map((c: any) => (
                       <option key={c.id} value={c.name}>{c.name} ({c.process} - {c.queueDepth} leads)</option>
                     ))}
                 </select>
@@ -463,8 +463,8 @@ export const ThTeamMonitor: React.FC = () => {
                         queueDepth: detail?.queueDepth || 0,
                       };
                     })
-                    .filter(c => c.name !== rebalanceFrom && c.process !== 'TL')
-                    .map(c => (
+                    .filter((c: any) => c.name !== rebalanceFrom && c.process !== 'TL')
+                    .map((c: any) => (
                       <option key={c.id} value={c.name}>{c.name} ({c.process} - {c.queueDepth} leads)</option>
                     ))}
                 </select>

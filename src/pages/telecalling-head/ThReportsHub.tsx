@@ -7,9 +7,9 @@ export const ThReportsHub: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('revenue');
   const [dateFilter, setDateFilter] = useState<'oct' | 'sep' | 'all'>('oct');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [processFilter, setProcessFilter] = useState<string>('All');
-  const [leadTypeFilter, setLeadTypeFilter] = useState<string>('All');
+  const [_showAdvancedFilters, _setShowAdvancedFilters] = useState(false);
+  const [processFilter, _setProcessFilter] = useState<string>('All');
+  const [leadTypeFilter, _setLeadTypeFilter] = useState<string>('All');
   const [txPage, setTxPage] = useState<number>(1);
 
   const formatProcessLabel = (proc: string) => {
@@ -226,7 +226,7 @@ export const ThReportsHub: React.FC = () => {
   const benchmarksList = apiBenchmarks && Array.isArray(apiBenchmarks) ? apiBenchmarks : (apiBenchmarksData === undefined ? staticBenchmarks : []);
 
   // Fetch transactions from API with pagination parameter
-  const { data: apiTxData, isLoading: isTxLoading, isFetching: isTxFetching } = useGetThReportTransactionsQuery({
+  const { data: apiTxData, isLoading: _isTxLoading, isFetching: _isTxFetching } = useGetThReportTransactionsQuery({
     page: txPage,
     process: processFilter !== 'All' ? processFilter : undefined,
     lead_type: leadTypeFilter !== 'All' ? leadTypeFilter.toUpperCase() : undefined

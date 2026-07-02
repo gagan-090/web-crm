@@ -299,7 +299,12 @@ export default function SanCtiProvider({
       password: sanPassword,
       uniqueId: '',
       verifiedFlag: '2',
-      forceLogin: true
+      verified_flag: '2',
+      verifiedflag: '2',
+      verified: '2',
+      forceLogin: true,
+      force_login: true,
+      force: true
     });
   }, [sanUsername, sanPassword, postToSan]);
 
@@ -696,9 +701,27 @@ export default function SanCtiProvider({
       const { type, payload } = event.data || {};
       if (!type) return;
       hasSanResponseRef.current = true;
-      console.log('[SAN RECV]', type, payload);
+      console.log('[SAN RECV]', type, payload || event.data);
 
       switch (type) {
+        // ── LOGIN response event ──
+        case 'Login':
+        case 'login': {
+          const isFailure = payload?.success === false || payload?.success === 'false' || event.data?.success === false || event.data?.success === 'false' || event.data?.message?.includes('already login');
+          if (isFailure) {
+            console.warn('[SAN CTI] Login failed according to event data:', payload || event.data);
+            setAgentState('logged_out');
+            apiCall('POST', '/cti/status', { status: 'logged_out' });
+            break;
+          }
+          console.log('[SAN CTI] Login event received, setting agentState to ready');
+          setAgentState('ready');
+          apiCall('POST', '/cti/status', { status: 'ready' });
+          postToSan({ type: 'ready' });
+          postToSan({ type: 'ManualOn' });
+          break;
+        }
+
         // ── INIT: Agent logged into SAN ──
         case 'SANAppInitEvent':
           setExtension(payload?.login_extension_no || payload?.exten || '');

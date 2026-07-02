@@ -932,11 +932,11 @@ export const DwActiveCallFocus: React.FC = () => {
                       </div>
                       <div>
                         <span className="text-gray-400 font-semibold block text-[10px] uppercase">Mobile Number</span>
-                        <span className="font-mono font-bold text-gray-800">{driverProfile.mobile || '—'}</span>
+                        <span className="font-mono font-bold text-gray-800">**********</span>
                       </div>
                       <div>
                         <span className="text-gray-400 font-semibold block text-[10px] uppercase">Email ID</span>
-                        <span className="font-bold text-gray-800 break-all">{driverProfile.email || '—'}</span>
+                        <span className="font-bold text-gray-800 break-all">**********</span>
                       </div>
                       <div>
                         <span className="text-gray-400 font-semibold block text-[10px] uppercase">City / State</span>
@@ -1787,7 +1787,7 @@ export const DwActiveCallFocus: React.FC = () => {
                     </span>
                   </div>
                   <div className="text-[10px] text-gray-500 mt-1 flex justify-between">
-                    <span>{lead.mobile}</span>
+                    <span>**********</span>
                     <span className="font-semibold text-gray-400 capitalize">{lead.last_status || 'Fresh'}</span>
                   </div>
                   {isActive && (

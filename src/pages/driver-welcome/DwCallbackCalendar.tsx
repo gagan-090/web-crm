@@ -240,7 +240,7 @@ export const DwCallbackCalendar: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div>
                     <span className="text-gray-400 block">Mobile:</span>
-                    <span className="font-bold text-gray-700">{selectedEvent.mobile}</span>
+                    <span className="font-bold text-gray-700">**********</span>
                   </div>
                   <div>
                     <span className="text-gray-400 block">Vehicle Type:</span>

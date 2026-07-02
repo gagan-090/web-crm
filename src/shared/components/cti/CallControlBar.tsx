@@ -93,7 +93,7 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
         <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 1 }}>
           {cfg.label} {cfg.showTimer && `— ${formatTime(callDuration)}`}
           {currentPhoneNumber && activeName !== currentPhoneNumber && (
-            <span style={{ marginLeft: 6, color: '#6B7280' }}>· {currentPhoneNumber}</span>
+            <span style={{ marginLeft: 6, color: '#6B7280' }}>· **********</span>
           )}
         </div>
       </div>

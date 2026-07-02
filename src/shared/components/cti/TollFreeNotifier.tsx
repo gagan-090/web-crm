@@ -193,7 +193,7 @@ export default function TollFreeNotifier() {
                   {activeLead.name || 'Incoming TollFree caller'}
                 </h3>
                 <p className="text-red-500 font-mono font-bold text-sm tracking-wider mt-1">
-                  {activeLead.phone}
+                  **********
                 </p>
                 <div className="inline-flex items-center gap-1 mt-2 px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>

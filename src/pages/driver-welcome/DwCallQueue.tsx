@@ -7,6 +7,7 @@ import {
 import { useQueueCache, useQueueCountsCache, invalidateQueueCache } from '../../shared/hooks/useQueueCache';
 import type { QueueType } from '../../shared/hooks/useQueueCache';
 import { useSanCti } from '../../shared/components/cti/SanCtiProvider';
+import { useAuth } from '../../app/providers/AuthProvider';
 
 const SkeletonCard = () => (
   <div className="p-3 border-l-4 border-gray-200 bg-white animate-pulse space-y-2">
@@ -24,6 +25,7 @@ const SkeletonCard = () => (
 
 export const DwCallQueue: React.FC = () => {
   const { dial, callState } = useSanCti();
+  const { user } = useAuth();
 
   // Search, Tab, Sort & Pagination States
   const [activeTab, setActiveTab] = useState<QueueType>(
@@ -132,16 +134,26 @@ export const DwCallQueue: React.FC = () => {
 
   // Selected Lead state
   const [selectedId, setSelectedId] = useState<number | string>('');
+  const prevLeadsRef = useRef<any[]>([]);
 
   useEffect(() => {
     if (leads.length > 0) {
-      const exists = leads.some(l => l.id === selectedId);
-      if (!exists) {
+      if (!selectedId) {
         setSelectedId(leads[0].id);
+      } else {
+        const wasInPrevLeads = prevLeadsRef.current.some(l => l.id === selectedId);
+        const isInCurrentLeads = leads.some(l => l.id === selectedId);
+        if (wasInPrevLeads && !isInCurrentLeads) {
+          setSelectedId(leads[0].id);
+        }
       }
     } else {
-      setSelectedId('');
+      const isGlobalSearchSelection = String(selectedId).startsWith('sm-') || (!leads.some(l => l.id === selectedId) && selectedId !== '');
+      if (!isGlobalSearchSelection) {
+        setSelectedId('');
+      }
     }
+    prevLeadsRef.current = leads;
   }, [leads, selectedId]);
 
   // Fetch lead details dynamically when selectedId changes
@@ -178,6 +190,7 @@ export const DwCallQueue: React.FC = () => {
   }, [selectedId, removeLead, refetchCounts, refetchQueue, refetchDetail]);
 
   const driverProfile = detailResponse?.data?.profile;
+  const isAssignedToOther = driverProfile && driverProfile.assigned_to && user?.id && Number(driverProfile.assigned_to) !== Number(user?.id);
   const planCard = detailResponse?.data?.plan_card;
   const ivrHistory = detailResponse?.data?.ivr_history || [];
   const mmHistory = detailResponse?.data?.mm_history || [];
@@ -209,7 +222,9 @@ export const DwCallQueue: React.FC = () => {
       return;
     }
     setSelectedId(lead.id);
-    dial(lead.mobile, lead.id, lead.name, lead.tmid);
+    const isSocial = String(lead.id).startsWith('sm-');
+    const cleanId = isSocial ? parseInt(String(lead.id).replace(/\D/g, ''), 10) : lead.id;
+    dial(lead.mobile, cleanId, lead.name, lead.tmid, isSocial ? 'social_media' : 'driver');
   };
 
   const handleQuickAction = async (action: string) => {
@@ -315,7 +330,8 @@ export const DwCallQueue: React.FC = () => {
                   <div
                     key={`${res.source}-${res.id}`}
                     onClick={() => {
-                      setSelectedId(res.id);
+                      const finalId = res.source === 'social_media' ? `sm-${res.id}` : res.id;
+                      setSelectedId(finalId);
                       setIsGlobalSearchOpen(false);
                       setGlobalSearchInput('');
                     }}
@@ -337,7 +353,7 @@ export const DwCallQueue: React.FC = () => {
                     </div>
                     <div className="text-right">
                       <div className="text-xs font-mono text-gray-600 bg-gray-100 px-1 rounded">{res.tmid}</div>
-                      <div className="text-[11px] font-medium text-[#27AE60] mt-0.5">{res.mobile}</div>
+                      <div className="text-[11px] font-medium text-[#27AE60] mt-0.5">**********</div>
                     </div>
                   </div>
                 ))
@@ -656,19 +672,23 @@ export const DwCallQueue: React.FC = () => {
               </div>
               
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    if (callState !== 'idle') {
-                      triggerToast('Finish or hang up the current call before dialing another lead.');
-                      return;
-                    }
-                    dial(driverProfile.mobile, driverProfile.id, driverProfile.name, driverProfile.tmid);
-                  }}
-                  className="bg-[#27AE60] hover:bg-[#219653] text-white text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 shadow-sm transition-colors active:scale-95"
-                  title="Call this lead directly"
-                >
-                  <span className="material-symbols-outlined text-[16px]">call</span> Call Lead
-                </button>
+                {!isAssignedToOther && (
+                  <button
+                    onClick={() => {
+                      if (callState !== 'idle') {
+                        triggerToast('Finish or hang up the current call before dialing another lead.');
+                        return;
+                      }
+                      const isSocial = String(driverProfile.id).startsWith('sm-');
+                      const cleanId = isSocial ? parseInt(String(driverProfile.id).replace(/\D/g, ''), 10) : driverProfile.id;
+                      dial(driverProfile.mobile, cleanId, driverProfile.name, driverProfile.tmid, isSocial ? 'social_media' : 'driver');
+                    }}
+                    className="bg-[#27AE60] hover:bg-[#219653] text-white text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 shadow-sm transition-colors active:scale-95"
+                    title="Call this lead directly"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">call</span> Call Lead
+                  </button>
+                )}
 
                 <span className="bg-[#EAFAF1] text-[#27AE60] text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border border-[#27AE60]/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60]"></span> Language: {driverProfile.language.toUpperCase()}
@@ -721,7 +741,7 @@ export const DwCallQueue: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-gray-400 block uppercase text-[9px]">Email</span>
-                    <span className="font-bold text-gray-800 mt-0.5 block truncate" title={driverProfile.email || 'N/A'}>{driverProfile.email || 'N/A'}</span>
+                    <span className="font-bold text-gray-800 mt-0.5 block truncate">**********</span>
                   </div>
                   <div className="col-span-2">
                     <span className="text-gray-400 block uppercase text-[9px]">Full Address</span>
@@ -923,12 +943,18 @@ export const DwCallQueue: React.FC = () => {
         {driverProfile && (
           <div className="border-t border-gray-200 bg-white p-4 flex flex-wrap justify-between items-center gap-2 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] shrink-0 z-10">
             <div className="flex items-center gap-2 flex-grow md:flex-grow-0">
-              <button 
-                onClick={() => handleCallNow(driverProfile)}
-                className="bg-[#27AE60] hover:bg-[#219653] text-white h-11 px-6 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-sm flex-1 md:flex-none justify-center active:scale-[0.98]"
-              >
-                <span className="material-symbols-outlined text-[18px]">phone</span> Call Now
-              </button>
+              {!isAssignedToOther ? (
+                <button 
+                  onClick={() => handleCallNow(driverProfile)}
+                  className="bg-[#27AE60] hover:bg-[#219653] text-white h-11 px-6 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-sm flex-1 md:flex-none justify-center active:scale-[0.98]"
+                >
+                  <span className="material-symbols-outlined text-[18px]">phone</span> Call Now
+                </button>
+              ) : (
+                <div className="bg-red-50 text-red-700 border border-red-100 text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center gap-1.5 shadow-sm">
+                  <span className="material-symbols-outlined text-[16px]">lock</span> Assigned to Another Agent
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-1">

@@ -270,7 +270,7 @@ export const DwCallHistory: React.FC = () => {
                       <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400 font-medium">
                         <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">{r.tmid}</span>
                         <span>•</span>
-                        <span>{r.mobile}</span>
+                        <span>**********</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -436,7 +436,7 @@ export const DwCallHistory: React.FC = () => {
                   </div>
                   <div>
                     <label className="text-[10.5px] text-gray-400 font-bold block">Mobile Number</label>
-                    <span className="text-sm font-bold text-gray-800">{selectedRecord.mobile || '—'}</span>
+                    <span className="text-sm font-bold text-gray-800">**********</span>
                   </div>
                   <div>
                     <label className="text-[10.5px] text-gray-400 font-bold block">Database User ID</label>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGetMmDriversQuery } from '../../services/api/webCrmApi';
+import { DriverForm } from './MmDriverBank';
 
 interface DriverItem {
   id: string;
@@ -25,6 +26,7 @@ export const MmDriverSearch: React.FC = () => {
   const jobRequirements = state.requirements || null;
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [bankPrefill, setBankPrefill]   = useState<any | null>(null);
   
   // Filter states
   const [originState, setOriginState] = useState('');
@@ -385,9 +387,9 @@ export const MmDriverSearch: React.FC = () => {
                       >
                         Add to Shortlist
                       </button>
-                      <button 
-                        onClick={() => triggerToast(`Added ${d.name} to personal Driver Bank ✓`)}
-                        className="text-gray-500 hover:text-gray-800 font-semibold text-[10px]"
+                      <button
+                        onClick={() => setBankPrefill({ name: d.name, mobile: d.phone.replace(/\s/g, ''), tmid: d.id.startsWith('DR-') ? '' : d.id })}
+                        className="bg-[#8E44AD] hover:bg-[#7D3C98] text-white px-2 py-0.5 rounded font-bold text-[10px]"
                       >
                         + Bank
                       </button>
@@ -405,6 +407,12 @@ export const MmDriverSearch: React.FC = () => {
         </div>
       </section>
 
+      {bankPrefill && (
+        <DriverForm
+          prefill={bankPrefill}
+          onClose={() => { setBankPrefill(null); triggerToast('Driver added to bank ✓'); }}
+        />
+      )}
     </main>
   );
 };

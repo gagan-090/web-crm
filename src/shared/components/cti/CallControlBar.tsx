@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useSanCti } from './SanCtiProvider';
 
 interface CallControlBarProps {
@@ -21,7 +21,14 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
     currentPhoneNumber,
     currentLeadName,
     isIncomingCall,
+    conferenceMembers,
+    conferenceDialingMembers,
+    startConference,
+    addConferenceNumber,
   } = useSanCti();
+
+  const [showConferencePanel, setShowConferencePanel] = useState(false);
+  const [conferenceInput, setConferenceInput] = useState('');
 
   const activeName = driverName || currentLeadName || currentPhoneNumber || 'Unknown';
 
@@ -50,7 +57,86 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
   const cfg = stateConfig[callState] || stateConfig.dialing;
 
   return (
-    <div style={{
+    <>
+      {showConferencePanel && callState === 'connected' && (
+        <div style={{
+          position: 'fixed',
+          bottom: 96,
+          right: 24,
+          backgroundColor: '#1F2937',
+          borderRadius: 16,
+          padding: 16,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          zIndex: 9999,
+          color: '#fff',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          width: 280,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Add to Call</div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <input
+              type="text"
+              value={conferenceInput}
+              onChange={(e) => setConferenceInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && conferenceInput.trim()) {
+                  addConferenceNumber(conferenceInput.trim());
+                  setConferenceInput('');
+                }
+              }}
+              placeholder="Enter phone number"
+              style={{
+                flex: 1,
+                borderRadius: 8,
+                border: '1px solid #374151',
+                backgroundColor: '#111827',
+                color: '#fff',
+                padding: '6px 10px',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+            <button
+              onClick={() => {
+                if (!conferenceInput.trim()) return;
+                addConferenceNumber(conferenceInput.trim());
+                setConferenceInput('');
+              }}
+              style={{ ...btnStyle, backgroundColor: '#4F46E5' }}
+            >
+              Add
+            </button>
+          </div>
+
+          {conferenceDialingMembers.length === 0 && conferenceMembers.length === 0 ? (
+            <div style={{ fontSize: 12, color: '#9CA3AF' }}>No one else on this call yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {conferenceDialingMembers.map((m, i) => (
+                <div key={`dialing-${m.conf_member || m.caller_id || i}`} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  backgroundColor: '#111827', borderRadius: 8, padding: '6px 10px', fontSize: 13,
+                }}>
+                  <span>{m.conf_member || m.caller_id}</span>
+                  <span style={{ fontSize: 11, color: '#FCD34D' }}>Dialing...</span>
+                </div>
+              ))}
+              {conferenceMembers.map((m, i) => (
+                <div key={`member-${m.conf_member || i}`} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  backgroundColor: '#111827', borderRadius: 8, padding: '6px 10px', fontSize: 13,
+                }}>
+                  <span>{m.conf_member}</span>
+                  <span style={{ fontSize: 11, color: '#22C55E' }}>On call</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{
       position: 'fixed',
       bottom: 24,
       right: 24,
@@ -131,6 +217,19 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
             }}>
               {isMuted ? 'Unmute' : 'Mute'}
             </button>
+            <button
+              onClick={() => {
+                const opening = !showConferencePanel;
+                setShowConferencePanel(opening);
+                if (opening) startConference();
+              }}
+              style={{
+                ...btnStyle,
+                backgroundColor: showConferencePanel ? '#4F46E5' : '#374151',
+              }}
+            >
+              Add Call
+            </button>
           </>
         )}
 
@@ -148,7 +247,8 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
           50% { opacity: 0.5; transform: scale(1.3); }
         }
       `}</style>
-    </div>
+      </div>
+    </>
   );
 }
 

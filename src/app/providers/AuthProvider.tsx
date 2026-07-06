@@ -32,24 +32,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check local storage for existing session
     const storedUser = localStorage.getItem('tm_connect_user');
     if (storedUser) {
-      // try {
-      //   const parsed = JSON.parse(storedUser);
-      //   // Reject sessions cached with a role value that no longer exists
-      //   // (e.g. pre-migration short codes like 'dw' vs current 'Driver Welcome').
-      //   // Stale role strings silently break role-gated UI with no error shown.
-      //   if (parsed?.role && Object.values(Role).includes(parsed.role)) {
-      //     setUser(parsed);
-      //   } else {
-      //     localStorage.removeItem('tm_connect_user');
-      //   }
-      // } catch (e) {
-      //   localStorage.removeItem('tm_connect_user');
-      // }
+      try {
+        const parsed = JSON.parse(storedUser);
+        // Restore session immediately so UI works without a re-login
+        setUser(parsed);
+        // Then silently re-fetch from /me to get any updated san_password, san_username, etc.
+        if (parsed?.token) {
+          fetch(`${API_BASE}/web-crm/me`, {
+            headers: {
+              'Authorization': `Bearer ${parsed.token}`,
+              'Accept': 'application/json',
+            },
+          })
+            .then(r => r.json())
+            .then(json => {
+              if (json?.status && json?.user) {
+                const refreshed: User = {
+                  ...parsed,
+                  san_username:  json.user.san_username  || parsed.san_username,
+                  san_password:  json.user.san_password  || parsed.san_password,
+                  san_extension: json.user.san_extension || parsed.san_extension,
+                };
+                setUser(refreshed);
+                localStorage.setItem('tm_connect_user', JSON.stringify(refreshed));
+              }
+              setIsLoading(false);
+            })
+            .catch(() => {
+              /* network error — keep stored session */
+              setIsLoading(false);
+            });
+        } else {
+          setIsLoading(false);
+        }
+      } catch (e) {
+        localStorage.removeItem('tm_connect_user');
+        setIsLoading(false);
+      }
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   const login = async (email: string, _role?: Role, password?: string): Promise<User | null> => {

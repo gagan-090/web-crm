@@ -129,6 +129,7 @@ export interface DwLeadDetailResponse {
       preferred_location: string | null;
       routes: string | null;
       previous_employer: string | null;
+      assigned_to: number | null;
     };
     plan_card: {
       has_plan: boolean;
@@ -346,14 +347,23 @@ export interface WctQueueResponse {
 export interface MmDashboardResponse {
   status: boolean;
   data: {
-    kpis: {
-      placementsCount: number;
-      targetPlacements: number;
-      slaComplianceRate: number;
-      activeJobsCount: number;
+    user: {
+      name: string;
+      role: string;
     };
-    driverPoolFreshness: string;
-    rejectionRate: string;
+    stats: {
+      total_jobs: { count: number };
+      approved_jobs: { count: number };
+      pending_jobs: { count: number };
+      closed_jobs: { count: number };
+      expired_jobs: { count: number };
+      expiring_soon_jobs: { count: number };
+      total_applicants: { count: number };
+    };
+    job_categories: {
+      regular_jobs: number;
+      greenline_jobs: number;
+    };
   };
 }
 
@@ -436,6 +446,129 @@ export interface MmPlacementsResponse {
     transporter_name: string | null;
     created_at: string;
   }>;
+}
+
+// ── Extended MM Types ──────────────────────────────────────────────────────
+export interface MmJobListingsResponse {
+  success: boolean;
+  data: {
+    jobs: Array<{
+      id: number;
+      job_id: string;
+      job_title: string;
+      status: string;
+      user_id: number;
+      tm_user_id: string;
+      transporter_name: string;
+      transporter_mobile: string;
+      location: string;
+      license_type: string;
+      salary_range: string;
+      experience_required: string;
+      vehicle_type: string;
+      benefits: { stay: string; food: string; esi_pf: string };
+      assigned_to: string | null;
+      deadline: string | null;
+      applicants_count: number;
+      created_at: string;
+      closed_job: number;
+      is_greenline: boolean;
+      subscription_plan_id: number | null;
+      plan_type: string;
+    }>;
+    pagination: { next_cursor: number | null; has_more: boolean; limit: number };
+  };
+}
+
+export interface MmJobDetailResponse {
+  success: boolean;
+  data: {
+    id: number;
+    job_id: string;
+    job_title: string;
+    job_location: string;
+    route: string | null;
+    license_type: string | null;
+    salary_range: string | null;
+    required_experience: string | null;
+    vehicle_type: string | null;
+    number_of_drivers_required: string | null;
+    application_deadline: string | null;
+    job_description: string | null;
+    benefits: {
+      esi_pf: any; food_allowance: any; trip_incentive: any;
+      rahane_ki_suvidha: any; mileage: any; fast_tag_road_kharcha: any;
+    };
+    transporter_id: number | null;
+    transporter_name: string | null;
+    transporter_tm_id: string | null;
+    transporter_mobile: string | null;
+    assigned_admin: { id: number; name: string; email: string } | null;
+    counts: { applicants: number; call_logs: number; match_making: number };
+    closed_job: number;
+    status: string | null;
+    created_at: string | null;
+  };
+}
+
+export interface MmJobTransporterResponse {
+  success: boolean;
+  data: {
+    job_info: { job_id: string; job_title: string };
+    transporter: {
+      id: number;
+      name: string;
+      mobile: string;
+      unique_id: string;
+      company_name: string | null;
+      gst_number: string | null;
+      email: string | null;
+      stats: { total_jobs_posted: number; active_jobs: number };
+      created_at: string;
+    };
+    call_logs: Array<{
+      id: number;
+      call_status: string | null;
+      call_feedback: string | null;
+      call_remarks: string | null;
+      assigned_admin_name: string | null;
+      created_at: string;
+    }>;
+    call_logs_count: number;
+  };
+}
+
+export interface MmApplicant {
+  application_id: number;
+  driver_id: number;
+  name: string;
+  mobile: string;
+  unique_id: string;
+  state: string | null;
+  age: number | null;
+  experience: string | null;
+  income: string | null;
+  call_status: string;
+  last_call: string | null;
+  last_call_time: string | null;
+  feedback: string | null;
+  pipeline_status: string;
+  pipeline_detail: string | null;
+  screening: any;
+  interview: any;
+  applied_at: string;
+  is_matched: boolean;
+  selected_jobs: Array<{ job_id: string; job_title: string; job_location: string; selected_at: string }>;
+  match_making_status: { status: string; feedback: string; called_at: string } | null;
+}
+
+export interface MmApplicantsFullResponse {
+  status: boolean;
+  job_info: { job_id: string; job_title: string };
+  data: MmApplicant[];
+  total_applicants: number;
+  match_making: any[];
+  pagination: { next_cursor: number | null; has_more: boolean; per_page: number };
 }
 
 export interface QcDashboardResponse {
@@ -776,7 +909,7 @@ export const webCrmApi = baseApi.injectEndpoints({
 
     // MM Endpoint
     getMmDashboard: builder.query<MmDashboardResponse, void>({
-      query: () => '/web-crm/mm/dashboard',
+      query: () => '/web-crm/match-making/home',
     }),
     getMmJobs: builder.query<MmJobsResponse, void>({
       query: () => '/web-crm/mm/jobs',
@@ -816,6 +949,95 @@ export const webCrmApi = baseApi.injectEndpoints({
         method: 'POST',
         body,
       }),
+    }),
+
+    getMmJobListings: builder.query<MmJobListingsResponse, {
+      type?: string; section?: string; status?: string; search?: string;
+      license_type?: string; vehicle_type?: string; plan_type?: string;
+      limit?: number; cursor?: number | null;
+    }>({
+      query: (params) => ({
+        url: '/web-crm/match-making/jobs',
+        params: Object.fromEntries(
+          Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
+        ),
+      }),
+    }),
+
+    getMmJobDetail: builder.query<MmJobDetailResponse, string>({
+      query: (jobId) => `/web-crm/match-making/job/${jobId}`,
+    }),
+
+    getMmJobTransporterDetail: builder.query<MmJobTransporterResponse, string>({
+      query: (jobId) => `/web-crm/match-making/job/${jobId}/transporter`,
+    }),
+
+    getMmApplicantsFull: builder.query<MmApplicantsFullResponse, {
+      jobId: string; per_page?: number; cursor?: number | null; search?: string; status?: string;
+    }>({
+      query: ({ jobId, ...params }) => ({
+        url: `/web-crm/match-making/job/${jobId}/applicants`,
+        params: Object.fromEntries(
+          Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+        ),
+      }),
+    }),
+
+    createMmJobBriefCall: builder.mutation<{ success: boolean; data: { job_brief_id: number } }, {
+      unique_id: string; user_id: number; assigned_to: number; job_id: string;
+      name?: string; call_type?: string;
+    }>({
+      query: (body) => ({ url: '/web-crm/match-making/create-jobBrief', method: 'POST', body }),
+    }),
+
+    updateMmJobBriefCall: builder.mutation<any, {
+      id: number; call_status: 'connected' | 'not_connected' | 'callback_later';
+      call_feedback?: string; call_remarks?: string; closed_job?: number;
+    }>({
+      query: (body) => ({ url: '/web-crm/match-making/manual-call-update-jobBrief', method: 'POST', body }),
+    }),
+
+    createMmDriverCall: builder.mutation<{ success: boolean; data: { match_id: number } }, {
+      unique_id_driver?: string; user_id_driver?: number; assigned_to: number;
+      job_id: string; driver_name?: string; transporter_name?: string;
+    }>({
+      query: (body) => ({ url: '/web-crm/match-making/manual-call-jobMatching', method: 'POST', body }),
+    }),
+
+    updateMmDriverCall: builder.mutation<any, {
+      id: number; call_status: 'connected' | 'not_connected' | 'callback_later';
+      call_feedback: string; call_remarks?: string; match_status?: string;
+      driver_name?: string; transporter_name?: string;
+    }>({
+      query: (body) => ({ url: '/web-crm/match-making/manual-call-update-jobMatching', method: 'POST', body }),
+    }),
+
+    // Driver Bank endpoints
+    getDriverBank: builder.query<any, { search?: string; job_id?: string; availability?: string; per_page?: number; cursor?: number | null }>({
+      query: (params) => ({
+        url: '/web-crm/match-making/driver-bank',
+        params: Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')),
+      }),
+      providesTags: ['DriverBank'],
+    }),
+    addDriverBank: builder.mutation<any, {
+      user_id?: number; tmid?: string; name: string; mobile: string;
+      job_id?: string; location?: string; license_type?: string; vehicle_type?: string;
+      experience?: string; availability?: string; feedback?: string; remarks?: string;
+    }>({
+      query: (body) => ({ url: '/web-crm/match-making/driver-bank', method: 'POST', body }),
+      invalidatesTags: ['DriverBank'],
+    }),
+    updateDriverBank: builder.mutation<any, { id: number; availability?: string; feedback?: string; remarks?: string; job_id?: string }>({
+      query: ({ id, ...body }) => ({ url: `/web-crm/match-making/driver-bank/${id}`, method: 'PUT', body }),
+      invalidatesTags: ['DriverBank'],
+    }),
+    deleteDriverBank: builder.mutation<any, number>({
+      query: (id) => ({ url: `/web-crm/match-making/driver-bank/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['DriverBank'],
+    }),
+    searchDriverBankUser: builder.query<any, string>({
+      query: (q) => ({ url: '/web-crm/match-making/driver-bank/search-user', params: { q } }),
     }),
 
     // QC Endpoint
@@ -955,6 +1177,19 @@ export const {
   useGetMmJobCallLogsQuery,
   useGetMmPlacementsQuery,
   useSubmitMmCallLogMutation,
+  useGetMmJobListingsQuery,
+  useGetMmJobDetailQuery,
+  useGetMmJobTransporterDetailQuery,
+  useGetMmApplicantsFullQuery,
+  useCreateMmJobBriefCallMutation,
+  useUpdateMmJobBriefCallMutation,
+  useCreateMmDriverCallMutation,
+  useUpdateMmDriverCallMutation,
+  useGetDriverBankQuery,
+  useAddDriverBankMutation,
+  useUpdateDriverBankMutation,
+  useDeleteDriverBankMutation,
+  useLazySearchDriverBankUserQuery,
   useGetQcDashboardQuery,
   useGetQcQueueQuery,
   useSubmitQcAuditMutation,

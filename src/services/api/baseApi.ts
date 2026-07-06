@@ -35,7 +35,8 @@ export const baseApi = createApi({
     'Payroll',
     'SprintItems',
     'Notifications',
-    'Settings'
+    'Settings',
+    'DriverBank'
   ],
   endpoints: () => ({}), // Endpoints will be injected by domain features
 });

@@ -103,6 +103,7 @@ import MmPlacementConfirmation from '../pages/matchmaking/MmPlacementConfirmatio
 import MmDriverSearch from '../pages/matchmaking/MmDriverSearch';
 import MmScriptLibrary from '../pages/matchmaking/MmScriptLibrary';
 import MmJobBoard from '../pages/matchmaking/MmJobBoard';
+import MmJobDetail from '../pages/matchmaking/MmJobDetail';
 import MmTrainingHub from '../pages/matchmaking/MmTrainingHub';
 import MmPlacementHistory from '../pages/matchmaking/MmPlacementHistory';
 import GlobalOverlaysContainer from '../shared/components/business/GlobalOverlaysContainer';
@@ -260,6 +261,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="mm/mm-script-library" element={<RoleGuard permission="calls:dial"><MmScriptLibrary /></RoleGuard>} />
           <Route path="mm/mm-placement-history" element={<RoleGuard permission="calls:dial"><MmPlacementHistory /></RoleGuard>} />
           <Route path="mm/mm-job-board" element={<RoleGuard permission="calls:dial"><MmJobBoard /></RoleGuard>} />
+          <Route path="mm/mm-job-detail" element={<RoleGuard permission="calls:dial"><MmJobDetail /></RoleGuard>} />
           <Route path="mm/mm-training-hub" element={<RoleGuard permission="calls:dial"><MmTrainingHub /></RoleGuard>} />
           <Route path="sc/score-trends" element={<RoleGuard permission="calls:dial"><ScoreTrends /></RoleGuard>} />
           <Route path="sc/script-editor-console" element={<RoleGuard permission="calls:dial"><ScriptEditorConsole /></RoleGuard>} />

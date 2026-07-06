@@ -15,6 +15,12 @@ export interface DispositionData {
   feedback_stage?: string | null;
 }
 
+export interface ConferenceMember {
+  conf_member: string;
+  conf_exten?: string;
+  [key: string]: any;
+}
+
 export interface SanCtiContextType {
   agentState: string;
   callState: string;
@@ -24,6 +30,8 @@ export interface SanCtiContextType {
   isManualMode: boolean;
   isHeld: boolean;
   isMuted: boolean;
+  conferenceMembers: ConferenceMember[];
+  conferenceDialingMembers: ConferenceMember[];
   callDuration: number;
   currentCallId: number | null;
   currentLeadId: number | string | null;
@@ -42,6 +50,8 @@ export interface SanCtiContextType {
   hangup: () => void;
   toggleHold: () => void;
   toggleMute: () => void;
+  startConference: () => void;
+  addConferenceNumber: (phoneNumber: string) => void;
   acceptIncoming: () => void;
   logout: () => void;
   toggleManualMode: () => void;
@@ -87,8 +97,16 @@ export default function SanCtiProvider({
   // never be used. 'Agent2@Demo' is the verified-working fallback.
   const bearerToken = propBearerToken || user?.token || '';
   const agentId = propAgentId || user?.id || 0;
-  const sanUsername = propSanUsername || user?.san_username || 'Agent2@Demo';
-  const sanPassword = propSanPassword || user?.san_password || 'NzJTQ1JCa2hEa2FKNzRMWXNzYzg5Zz09';
+
+  // credOverride lets the CTI settings panel update credentials at runtime
+  // without requiring a page reload — saved to DB and applied immediately.
+  const [credOverride, setCredOverride] = useState<{ username: string; password: string; extension: string } | null>(null);
+  const [showCtiSettings, setShowCtiSettings] = useState(false);
+  const [ctiSettingsSaving, setCtiSettingsSaving] = useState(false);
+  const [ctiSettingsErr, setCtiSettingsErr] = useState('');
+
+  const sanUsername = credOverride?.username || propSanUsername || user?.san_username || 'Agent2@Demo';
+  const sanPassword = credOverride?.password || propSanPassword || user?.san_password || 'TDY2cmlkZS9sQy9ITFhaYVBXdFhJQT09';
 
   // Check if there is a pending disposition stored in localStorage
   const getPendingDisposition = () => {
@@ -102,6 +120,12 @@ export default function SanCtiProvider({
   };
 
   const pending = getPendingDisposition();
+
+  // Increment to force iframe remount (used after fresh login so SAN's module-level
+  // logged_agent is re-initialized from localStorage by getCurrentSession()).
+  const [sanIframeKey, setSanIframeKey] = useState(0);
+  // True after the first post-login reload so we only reload once per session.
+  const freshLoginReloadDoneRef = useRef<boolean>(false);
 
   // ── Agent State ──
   const [agentState, setAgentState] = useState<string>('logged_out');
@@ -123,6 +147,11 @@ export default function SanCtiProvider({
   const [callDuration, setCallDuration] = useState<number>(pending ? pending.callDuration : 0);
   const [isHeld, setIsHeld] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  // Keyed by conf_member (SAN's own member id) — SANAppConfEventjoin/Leave
+  // send the full current member dict on every event, so these are replaced
+  // wholesale rather than merged incrementally.
+  const [conferenceMembers, setConferenceMembers] = useState<ConferenceMember[]>([]);
+  const [conferenceDialingMembers, setConferenceDialingMembers] = useState<ConferenceMember[]>([]);
   // Reactive mirror of acceptingIncomingRef — drives the iframe click-overlay
   // sizing/positioning below, which needs to re-render when this flips.
   const [isAcceptingIncoming, setIsAcceptingIncoming] = useState<boolean>(false);
@@ -186,6 +215,15 @@ export default function SanCtiProvider({
   // "already logged in on another machine", corrupting the session before
   // the agent ever gets to dial.
   const hasSanResponseRef = useRef<boolean>(false);
+  // Set while a login() call is in-flight. The SAN iframe fires {type:'Login', success:false}
+  // as an intermediate ack BEFORE their own callapi.js finishes the HTTP request — that event
+  // is NOT a real failure. We only clear this flag when SANAppInitEvent arrives (real outcome)
+  // or the watchdog fires after 12 s with no Init event.
+  const loginPendingRef = useRef<boolean>(false);
+  const loginWatchdogRef = useRef<any>(null);
+  // Fallback: if SANAppReadyEvent never fires after we send {type:'ready'}, force ready after 4s.
+  // Cleared when SANAppReadyEvent arrives so we don't double-fire.
+  const readyFallbackRef = useRef<any>(null);
   // Guard: set to true when agent clicks "Accept". Blocks all state-resetting
   // SAN events (Ready, SavePage) for up to 8 s while the SIP handshake completes.
   // Cleared immediately when SANAppIncomingEvent(Answer) fires.
@@ -248,6 +286,18 @@ export default function SanCtiProvider({
     callDurationRef.current = callDuration;
   }, [callDuration]);
 
+  // When CRM user logs out (user → null), send SAN logout so the softphone session is ended.
+  const prevUserIdRef = useRef<number | null>(user?.id ?? null);
+  useEffect(() => {
+    const prevId = prevUserIdRef.current;
+    const currId = user?.id ?? null;
+    if (prevId !== null && currId === null) {
+      console.log('[SAN CTI] CRM logout detected — logging out SAN session');
+      postToSan({ type: 'Logout' });
+    }
+    prevUserIdRef.current = currId;
+  }, [user, postToSan]);
+
   // Sync live-value refs before paint so the persistent SAN message handler always
   // reads current state even when React hasn't re-registered the listener yet.
   useLayoutEffect(() => { callStateRef.current = callState; }, [callState]);
@@ -293,20 +343,73 @@ export default function SanCtiProvider({
    */
   const login = useCallback(() => {
     if (!sanUsername) return;
+    freshLoginReloadDoneRef.current = false;
+    loginPendingRef.current = true;
+    if (loginWatchdogRef.current) clearTimeout(loginWatchdogRef.current);
+    loginWatchdogRef.current = setTimeout(() => {
+      loginPendingRef.current = false;
+      loginWatchdogRef.current = null;
+      if (agentStateRef.current !== 'ready' && agentStateRef.current !== 'logged_in') {
+        if (hasSanResponseRef.current) {
+          // SAN responded but SANAppInitEvent hasn't fired yet.
+          // The SANAppInitEvent handler already knows the fix: reload the iframe so
+          // SAN's init.js re-runs getCurrentSession() and initializes the module-level
+          // `logged_agent` from localStorage. Without that reload, dialCall() and
+          // dispositionFormSubmit() crash with "Cannot read properties of undefined
+          // (reading 'agent_id')" / "Object.keys(null)" even after agent appears ready.
+          if (!freshLoginReloadDoneRef.current) {
+            // First occurrence — reload the iframe exactly as SANAppInitEvent does.
+            // Keep agentState as 'logged_out' so the auto-login effect re-fires on
+            // the new iframe load and starts a fresh 35s watchdog.
+            freshLoginReloadDoneRef.current = true;
+            console.warn('[SAN CTI] Login watchdog (35s): SANAppInitEvent pending — reloading iframe to force logged_agent init. ManualOn suppressed.');
+            setSanIframeKey(prev => prev + 1);
+          } else {
+            // Already reloaded once and still no SANAppInitEvent — mark ready as
+            // last resort so the agent isn't stuck forever. ManualOn still suppressed.
+            console.warn('[SAN CTI] Login watchdog (35s): SANAppInitEvent still pending after reload — marking ready as fallback. ManualOn suppressed.');
+            setAgentState('ready');
+            apiCall('POST', '/cti/status', { status: 'ready' });
+          }
+        } else {
+          console.warn('[SAN CTI] Login watchdog (35s): no SANAppInitEvent and no SAN response — login failed');
+          setAgentState('logged_out');
+        }
+      }
+    }, 35000);
     postToSan({
       type: 'login',
       user_name: sanUsername,
       password: sanPassword,
       uniqueId: '',
-      verifiedFlag: '2',
-      verified_flag: '2',
-      verifiedflag: '2',
-      verified: '2',
-      forceLogin: true,
-      force_login: true,
-      force: true
     });
-  }, [sanUsername, sanPassword, postToSan]);
+  }, [sanUsername, sanPassword, agentId, postToSan, apiCall]);
+
+  /**
+   * Save SAN CTI credentials to DB and re-login immediately.
+   */
+  const saveCtiCredentials = async (username: string, password: string, extension: string) => {
+    if (!username.trim() || !password.trim()) { setCtiSettingsErr('Username and password are required.'); return; }
+    setCtiSettingsSaving(true);
+    setCtiSettingsErr('');
+    try {
+      const res = await fetch(`${apiBaseUrl}/me/cti-credentials`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${bearerToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ san_username: username, san_password: password, san_extension: extension || null }),
+      });
+      const json = await res.json();
+      if (!json.status) throw new Error(json.message || 'Save failed');
+      setCredOverride({ username, password, extension });
+      setShowCtiSettings(false);
+      // Small delay so the new credentials are applied before re-login
+      setTimeout(() => login(), 300);
+    } catch (e: any) {
+      setCtiSettingsErr(e?.message || 'Failed to save credentials.');
+    } finally {
+      setCtiSettingsSaving(false);
+    }
+  };
 
   /**
    * Go ready (live). Called after SANAppInitEvent with status='1'.
@@ -379,7 +482,7 @@ export default function SanCtiProvider({
       return;
     }
 
-    // 1. Tell SAN to dial
+    // 1. Tell SAN to dial — exactly as the SAN reference HTML does.
     postToSan({
       type: 'dial',
       number: cleanNumber,
@@ -467,6 +570,8 @@ export default function SanCtiProvider({
       setCallDuration(0);
       setIsHeld(false);
       setIsMuted(false);
+      setConferenceMembers([]);
+      setConferenceDialingMembers([]);
     } else {
       // The agent dialed this lead — always surface disposition immediately.
       // callState can't be trusted to mean "never connected": SAN has been
@@ -518,6 +623,27 @@ export default function SanCtiProvider({
     setIsMuted(prev => !prev);
     setIsHeld(prev => !prev);
   }, [isMuted, postToSan]);
+
+  /**
+   * Enter conference mode on SAN's side. Mirrors SAN's own reference
+   * integration (SanCCS-Mini): ConfrenceToggle switches their iframe into
+   * "add member" mode for the current call; it does not by itself add
+   * anyone — addConferenceNumber below dials the new leg in.
+   */
+  const startConference = useCallback(() => {
+    postToSan({ type: 'ConfrenceToggle' });
+  }, [postToSan]);
+
+  /**
+   * Dial an additional number into the in-progress call as a conference
+   * member. SAN bridges the new leg in automatically; join/leave state comes
+   * back via the SANAppConfEventjoin / conferenceDialing / SANAppConfEventLeave
+   * bridged events handled below.
+   */
+  const addConferenceNumber = useCallback((phoneNumber: string) => {
+    if (!phoneNumber?.trim()) return;
+    postToSan({ type: 'ConfrenceNumber', phone: phoneNumber.trim() });
+  }, [postToSan]);
 
   /**
    * Accept incoming call.
@@ -683,6 +809,8 @@ export default function SanCtiProvider({
     setCallDuration(0);
     setIsHeld(false);
     setIsMuted(false);
+    setConferenceMembers([]);
+    setConferenceDialingMembers([]);
     setIsIncomingCall(false);
     setUserInitiatedHangup(false);
     // Reset dial guard so next call starts clean
@@ -707,36 +835,78 @@ export default function SanCtiProvider({
         // ── LOGIN response event ──
         case 'Login':
         case 'login': {
-          const isFailure = payload?.success === false || payload?.success === 'false' || event.data?.success === false || event.data?.success === 'false' || event.data?.message?.includes('already login');
-          if (isFailure) {
-            console.warn('[SAN CTI] Login failed according to event data:', payload || event.data);
-            setAgentState('logged_out');
-            apiCall('POST', '/cti/status', { status: 'logged_out' });
+          const evData = payload || event.data || {};
+          const isExplicitSuccess = evData?.success === true || evData?.success === 'true';
+          const isFailure = evData?.success === false || evData?.success === 'false';
+
+          if (isExplicitSuccess) {
+            // Some SAN versions send explicit success — still wait for SANAppInitEvent for proper state
+            console.log('[SAN CTI] Login event (success=true) — awaiting SANAppInitEvent for final state');
             break;
           }
-          console.log('[SAN CTI] Login event received, setting agentState to ready');
-          setAgentState('ready');
-          apiCall('POST', '/cti/status', { status: 'ready' });
-          postToSan({ type: 'ready' });
-          postToSan({ type: 'ManualOn' });
+
+          if (isFailure) {
+            if (loginPendingRef.current) {
+              // SAN fires {success:false} as an INTERMEDIATE ack before their HTTP request completes.
+              // Real outcome arrives via SANAppInitEvent. Ignore this interim event.
+              console.log('[SAN CTI] Login intermediate ack (success=false) — awaiting SANAppInitEvent');
+              break;
+            }
+            // Not during a pending login — genuine failure (e.g., wrong creds on retry)
+            console.warn('[SAN CTI] Login failed:', evData);
+            if (loginWatchdogRef.current) { clearTimeout(loginWatchdogRef.current); loginWatchdogRef.current = null; }
+            setAgentState('logged_out');
+            apiCall('POST', '/cti/status', { status: 'logged_out' });
+          }
           break;
         }
 
         // ── INIT: Agent logged into SAN ──
         case 'SANAppInitEvent':
+          loginPendingRef.current = false;
+          if (loginWatchdogRef.current) { clearTimeout(loginWatchdogRef.current); loginWatchdogRef.current = null; }
+
+          // After a fresh login SAN's loginFormSubmit saves the session to localStorage
+          // but does NOT reassign the module-level `logged_agent` variable (set once at
+          // page load via getCurrentSession()). As a result toggleManualOnOff and dialCall
+          // both crash with "Cannot read properties of undefined (reading 'agent_id')" because
+          // logged_agent['agent'] is still null. Reloading the iframe forces SAN's init.js
+          // to re-run `var logged_agent = getCurrentSession()` with the now-populated
+          // localStorage, fixing both crashes permanently. We only do this ONCE per login.
+          if (!freshLoginReloadDoneRef.current) {
+            freshLoginReloadDoneRef.current = true;
+            console.log('[SAN CTI] SANAppInitEvent (first) — reloading iframe so logged_agent initialises from localStorage');
+            setAgentState('logged_in');
+            setSanIframeKey(prev => prev + 1);
+            break;
+          }
+
           setExtension(payload?.login_extension_no || payload?.exten || '');
           switch (payload?.status) {
-            case '1': // Logged in, needs to click Ready
+            case '1': // Logged in — SAN needs our ready signal before agent is live.
+              // Send ready: SAN calls agentReady HTTP (async). We must NOT send ManualOn
+              // yet — SAN's toggleManualOnOff reads crmstates.agent_id which is null until
+              // the agentReady response is processed. Wait for SANAppReadyEvent, which SAN
+              // fires AFTER processing that response. Fall back after 20 s in case it never comes.
               setAgentState('logged_in');
-              apiCall('POST', '/cti/status', { status: 'logged_in' });
-              // Automatically make agent ready
               postToSan({ type: 'ready' });
+              if (readyFallbackRef.current) clearTimeout(readyFallbackRef.current);
+              readyFallbackRef.current = setTimeout(() => {
+                readyFallbackRef.current = null;
+                setAgentState(prev => {
+                  if (prev === 'logged_in') {
+                    console.warn('[SAN CTI] readyFallback: SANAppReadyEvent never fired after 20s — forcing ready');
+                    apiCall('POST', '/cti/status', { status: 'ready' });
+                    return 'ready';
+                  }
+                  return prev;
+                });
+              }, 20000);
               break;
             case '3': // Already idle/ready
               setAgentState('ready');
               apiCall('POST', '/cti/status', { status: 'ready' });
-              // Automatically enable manual dial mode to allow dialing
-              postToSan({ type: 'ManualOn' });
+              setTimeout(() => postToSan({ type: 'ManualOn' }), 1500);
               break;
             case '4': // On break
               setAgentState('ready');
@@ -753,8 +923,8 @@ export default function SanCtiProvider({
               setIsManualMode(payload?.status === '10');
               setAgentState('ready');
               if (payload?.status === '11') {
-                // Automatically enable manual dial mode
-                postToSan({ type: 'ManualOn' });
+                // Delay ManualOn: crmstates.agent_id may not be set yet
+                setTimeout(() => postToSan({ type: 'ManualOn' }), 1500);
               }
               break;
           }
@@ -762,6 +932,7 @@ export default function SanCtiProvider({
 
         // ── READY: Agent is now live ──
         case 'SANAppReadyEvent':
+          if (readyFallbackRef.current) { clearTimeout(readyFallbackRef.current); readyFallbackRef.current = null; }
           setExtension(payload?.exten || '');
           setAgentState('ready');
           apiCall('POST', '/cti/status', { status: 'ready' });
@@ -778,8 +949,11 @@ export default function SanCtiProvider({
             } else if (!hasDialedThisSession.current) {
               // No dial happened this session — safe to go idle
               setCallState('idle');
-              // Only enable manual mode when truly idle (not mid-call)
-              postToSan({ type: 'ManualOn' });
+              // SANAppReadyEvent fires from inside SAN's agentReady callback, sometimes
+              // BEFORE crmstates is assigned in SAN's JS. Sending ManualOn immediately
+              // causes toggleManualOnOff to crash reading crmstates.agent_id.
+              // Delay 1.5 s to let SAN finish its own internal state setup.
+              setTimeout(() => postToSan({ type: 'ManualOn' }), 1500);
             }
             // If hasDialedThisSession is true but we're not in incoming call,
             // disposition modal is already open — don't reset, don't re-send ManualOn.
@@ -1005,6 +1179,8 @@ export default function SanCtiProvider({
             setCallDuration(0);
             setIsHeld(false);
             setIsMuted(false);
+            setConferenceMembers([]);
+            setConferenceDialingMembers([]);
           }
           break;
         }
@@ -1022,6 +1198,22 @@ export default function SanCtiProvider({
             setSanDispositionOptions(payload.map((d: any) => d.disposition));
           }
           break;
+
+        // ── CONFERENCE: member joined / left. SAN sends the full current
+        // member dict on every event (not incremental), so replace wholesale. ──
+        case 'SANAppConfEventjoin':
+        case 'SANAppConfEventLeave': {
+          const memberDict = payload?.conf_memeber || payload?.conf_member || {};
+          setConferenceMembers(Object.values(memberDict).filter(Boolean) as ConferenceMember[]);
+          break;
+        }
+
+        // ── CONFERENCE: numbers currently being dialed into the conference ──
+        case 'conferenceDialing': {
+          const dialingDict = payload?.conference_dialing_members || {};
+          setConferenceDialingMembers(Object.values(dialingDict).filter(Boolean) as ConferenceMember[]);
+          break;
+        }
       }
     }
 
@@ -1035,7 +1227,8 @@ export default function SanCtiProvider({
       'SANAppInitEvent', 'SANAppReadyEvent', 'SANAppOutgoingEvent',
       'SANAppIncomingEvent', 'SANAppHoldEvent', 'SANAppSavePageEvent',
       'SANAppManualOnOffEvent', 'SANAppBreakEvent', 'SANAppLogoutEvent',
-      'SEND_DISPOSITION',
+      'SEND_DISPOSITION', 'SANAppConfEventjoin', 'SANAppConfEventLeave',
+      'conferenceDialing',
     ];
     const previousHandlers: Record<string, any> = {};
     bridgedEvents.forEach(name => {
@@ -1079,6 +1272,7 @@ export default function SanCtiProvider({
       return;
     }
     console.log('[SAN CTI] Iframe loaded and user profile resolved. Performing initial login...');
+    console.log('[SAN CTI] Resolved credentials — user.san_username:', user?.san_username, '| user.san_password:', user?.san_password, '| fallback used:', !user?.san_password);
     hasSanResponseRef.current = false;
     login();
 
@@ -1165,6 +1359,8 @@ export default function SanCtiProvider({
     isManualMode,
     isHeld,
     isMuted,
+    conferenceMembers,
+    conferenceDialingMembers,
     callDuration,
     currentCallId,
     currentLeadId,
@@ -1185,6 +1381,8 @@ export default function SanCtiProvider({
     hangup,
     toggleHold,
     toggleMute,
+    startConference,
+    addConferenceNumber,
     acceptIncoming,
     logout,
     toggleManualMode,
@@ -1212,66 +1410,128 @@ export default function SanCtiProvider({
         // useEffect above). isCtiMinimized stays true at all other times.
         const isVisible = callState === 'incoming_ringing' || !isCtiMinimized;
         return (
-        <div style={{
-          position: 'fixed',
-          bottom: 25,
-          left: isVisible ? 25 : -9999,
-          width: 320,
-          height: 440,
-          zIndex: 9999,
-          borderRadius: 12,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-          backgroundColor: '#111827',
-          border: '1px solid #374151',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          {/* Header Bar */}
           <div style={{
-            height: 40,
-            padding: '0 12px',
-            backgroundColor: '#1F2937',
-            borderBottom: '1px solid #374151',
+            position: 'fixed',
+            bottom: 25,
+            left: isVisible ? 25 : -9999,
+            width: 320,
+            height: 440,
+            zIndex: 9999,
+            borderRadius: 12,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            backgroundColor: '#111827',
+            border: '1px solid #374151',
+            overflow: 'hidden',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            userSelect: 'none',
-            flexShrink: 0,
+            flexDirection: 'column',
           }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#F3F4F6' }}>
-              SAN Softphone — {agentState}
-            </span>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              {/* No Logout button: SAN's own init.js logOut() unconditionally
-                  reads currentAgent.name off its internal state and throws
-                  if that was never populated (e.g. login never completed) —
-                  a bug in their script we can't fix from here. Ending the
-                  session by navigating away/refreshing is the safe path. */}
-              <button
-                onClick={() => setIsCtiMinimized(!isCtiMinimized)}
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 4,
-                  border: '1px solid #4B5563',
-                  backgroundColor: '#374151',
-                  color: '#fff',
-                  fontSize: 14,
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                title={isCtiMinimized ? 'Show' : 'Hide'}
-              >
-                {isCtiMinimized ? '+' : '−'}
-              </button>
+            {/* Header Bar */}
+            <div style={{
+              height: 40,
+              padding: '0 12px',
+              backgroundColor: '#1F2937',
+              borderBottom: '1px solid #374151',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              userSelect: 'none',
+              flexShrink: 0,
+            }}>
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#F3F4F6' }}>
+                  SAN Softphone
+                </span>
+                <span style={{
+                  marginLeft: 6, fontSize: 10, fontWeight: 600,
+                  color: agentState === 'logged_out' ? '#F87171' : agentState === 'ready' ? '#34D399' : '#FCD34D',
+                }}>
+                  {agentState}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {/* Gear: open CTI credential settings */}
+                <button
+                  onClick={() => { setCtiSettingsErr(''); setShowCtiSettings(s => !s); }}
+                  style={{
+                    width: 24, height: 24, borderRadius: 4,
+                    border: '1px solid #4B5563', backgroundColor: '#374151',
+                    color: '#9CA3AF', fontSize: 14, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                  title="CTI Credentials Settings"
+                >⚙</button>
+                <button
+                  onClick={() => setIsCtiMinimized(!isCtiMinimized)}
+                  style={{
+                    width: 24, height: 24, borderRadius: 4,
+                    border: '1px solid #4B5563', backgroundColor: '#374151',
+                    color: '#fff', fontSize: 14, fontWeight: 'bold', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                  title={isCtiMinimized ? 'Show' : 'Hide'}
+                >
+                  {isCtiMinimized ? '+' : '−'}
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Iframe Content.
+            {/* ── CTI Credentials Settings Panel ── */}
+            {showCtiSettings && (() => {
+              const [uInput, setUInput] = React.useState(sanUsername);
+              const [pInput, setPInput] = React.useState('');
+              const [eInput, setEInput] = React.useState(credOverride?.extension || user?.san_extension || '');
+              return (
+                <div style={{
+                  position: 'absolute', top: 40, left: 0, right: 0, zIndex: 10,
+                  backgroundColor: '#111827', borderBottom: '1px solid #374151',
+                  padding: '12px 14px',
+                }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                    CTI Login Credentials
+                  </p>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 10, color: '#6B7280', display: 'block', marginBottom: 3 }}>SAN Username</label>
+                    <input
+                      value={uInput} onChange={e => setUInput(e.target.value)}
+                      placeholder="e.g. Sonam@TruckMitr"
+                      style={{ width: '100%', padding: '5px 8px', borderRadius: 4, border: '1px solid #374151', backgroundColor: '#1F2937', color: '#F3F4F6', fontSize: 11, outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 10, color: '#6B7280', display: 'block', marginBottom: 3 }}>SAN Password / Token</label>
+                    <input
+                      type="password" value={pInput} onChange={e => setPInput(e.target.value)}
+                      placeholder="Enter token (leave blank to keep current)"
+                      style={{ width: '100%', padding: '5px 8px', borderRadius: 4, border: '1px solid #374151', backgroundColor: '#1F2937', color: '#F3F4F6', fontSize: 11, outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 10, color: '#6B7280', display: 'block', marginBottom: 3 }}>Extension (optional)</label>
+                    <input
+                      value={eInput} onChange={e => setEInput(e.target.value)}
+                      placeholder="e.g. 101"
+                      style={{ width: '100%', padding: '5px 8px', borderRadius: 4, border: '1px solid #374151', backgroundColor: '#1F2937', color: '#F3F4F6', fontSize: 11, outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  {ctiSettingsErr && (
+                    <p style={{ fontSize: 10, color: '#F87171', marginBottom: 6 }}>{ctiSettingsErr}</p>
+                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => setShowCtiSettings(false)}
+                      style={{ flex: 1, padding: '5px 0', borderRadius: 4, border: '1px solid #4B5563', backgroundColor: 'transparent', color: '#9CA3AF', fontSize: 11, cursor: 'pointer' }}
+                    >Cancel</button>
+                    <button
+                      onClick={() => saveCtiCredentials(uInput, pInput || sanPassword, eInput)}
+                      disabled={ctiSettingsSaving}
+                      style={{ flex: 1, padding: '5px 0', borderRadius: 4, border: 'none', backgroundColor: '#7C3AED', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: ctiSettingsSaving ? 0.6 : 1 }}
+                    >{ctiSettingsSaving ? 'Saving…' : 'Save & Re-login'}</button>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Iframe Content.
               src has NO trailing slash and allow is exactly "microphone;
               camera" — confirmed via direct A/B testing earlier in this
               project to be the one configuration that gives two-way audio.
@@ -1280,27 +1540,28 @@ export default function SanCtiProvider({
               briefly was) was tried multiple times and reproduces one-way
               audio every time — the agent's real click needs to land on
               SAN's own actual, visible button, not an invisible stand-in. */}
-          <div style={{ flex: 1, backgroundColor: '#000', position: 'relative' }}>
-            <iframe
-              ref={iframeRef}
-              id="childIframe"
-              src="https://ccsslb.sansoftwares.com/callerMini"
-              allow="microphone; camera"
-              style={{
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                display: 'block',
-              }}
-              title="SAN CTI"
-              onLoad={() => {
-                console.log('[SAN IFRAME] loaded successfully');
-                setIsIframeLoaded(true);
-              }}
-              onError={() => console.error('[SAN IFRAME] failed to load')}
-            />
+            <div style={{ flex: 1, backgroundColor: '#000', position: 'relative' }}>
+              <iframe
+                ref={iframeRef}
+                key={sanIframeKey}
+                id="childIframe"
+                src="https://ccsslb.sansoftwares.com/callerMini"
+                allow="microphone; camera"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  display: 'block',
+                }}
+                title="SAN CTI"
+                onLoad={() => {
+                  console.log('[SAN IFRAME] loaded successfully');
+                  setIsIframeLoaded(true);
+                }}
+                onError={() => console.error('[SAN IFRAME] failed to load')}
+              />
+            </div>
           </div>
-        </div>
         );
       })()}
     </SanCtiContext.Provider>

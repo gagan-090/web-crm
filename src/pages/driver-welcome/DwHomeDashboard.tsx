@@ -81,7 +81,7 @@ export const DwHomeDashboard: React.FC = () => {
   const formattedDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
+    <div className="space-y-5 max-w-7xl mx-auto w-full p-4">
 
       {/* Header */}
       <section className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-200 pb-4">

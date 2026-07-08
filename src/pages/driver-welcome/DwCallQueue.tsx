@@ -6,7 +6,7 @@ import {
 } from '../../services/api/webCrmApi';
 import { useQueueCache, useQueueCountsCache, invalidateQueueCache } from '../../shared/hooks/useQueueCache';
 import type { QueueType } from '../../shared/hooks/useQueueCache';
-import { useSanCti } from '../../shared/components/cti/SanCtiProvider';
+import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import { useAuth } from '../../app/providers/AuthProvider';
 
 const SkeletonCard = () => (
@@ -24,12 +24,8 @@ const SkeletonCard = () => (
 );
 
 export const DwCallQueue: React.FC = () => {
-  const {
-    dial, callState, agentState,
-    conferenceMembers, conferenceDialingMembers, startConference, addConferenceNumber,
-  } = useSanCti();
+  const { dial, callState, agentState } = useSanCti();
   const { user } = useAuth();
-  const [conferenceNumberInput, setConferenceNumberInput] = useState('');
 
   // Search, Tab, Sort & Pagination States
   const [activeTab, setActiveTab] = useState<QueueType>(
@@ -193,19 +189,6 @@ export const DwCallQueue: React.FC = () => {
     return () => window.removeEventListener('san-disposition-complete', handleDispositionComplete);
   }, [selectedId, removeLead, refetchCounts, refetchQueue, refetchDetail]);
 
-  // Arm SAN's conference mode once per connected call (testing: manual second
-  // number dial-in). ConfrenceToggle only needs to fire once — after that the
-  // agent can add multiple numbers via addConferenceNumber.
-  const conferenceArmedRef = useRef(false);
-  useEffect(() => {
-    if (callState === 'connected' && !conferenceArmedRef.current) {
-      conferenceArmedRef.current = true;
-      startConference();
-    }
-    if (callState !== 'connected') {
-      conferenceArmedRef.current = false;
-    }
-  }, [callState, startConference]);
 
   const driverProfile = detailResponse?.data?.profile;
   const isAssignedToOther = driverProfile && driverProfile.assigned_to && user?.id && Number(driverProfile.assigned_to) !== Number(user?.id);
@@ -236,7 +219,9 @@ export const DwCallQueue: React.FC = () => {
     // so the in-progress call and the post-call disposition form simply
     // appear on top of this screen — the agent never has to leave it.
     if (agentState !== 'ready') {
-      triggerToast('CTI agent is not ready yet — please wait a moment and try again.');
+      triggerToast(agentState === 'logged_out'
+        ? 'CTI login failed — check the SAN softphone panel (bottom-left) for the reason, e.g. agent already logged in elsewhere.'
+        : 'CTI agent is not ready yet — please wait a moment and try again.');
       return;
     }
     if (callState !== 'idle') {
@@ -321,50 +306,6 @@ export const DwCallQueue: React.FC = () => {
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
           <span className="w-2 h-2 rounded-full bg-[#27AE60]"></span>
           {toast}
-        </div>
-      )}
-
-      {/* TESTING: manual conference dial-in — visible whenever a call is connected */}
-      {callState === 'connected' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white border border-indigo-200 shadow-lg rounded-lg z-40 px-3 py-2 flex items-center gap-2">
-          <span className="material-symbols-outlined text-indigo-500 text-[18px]">group_add</span>
-          <input
-            type="text"
-            value={conferenceNumberInput}
-            onChange={(e) => setConferenceNumberInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && conferenceNumberInput.trim()) {
-                addConferenceNumber(conferenceNumberInput.trim());
-                setConferenceNumberInput('');
-              }
-            }}
-            placeholder="Second number to add to call"
-            className="text-xs border border-gray-300 rounded px-2 py-1 w-48 outline-none focus:ring-1 focus:ring-indigo-400"
-          />
-          <button
-            onClick={() => {
-              if (!conferenceNumberInput.trim()) return;
-              addConferenceNumber(conferenceNumberInput.trim());
-              setConferenceNumberInput('');
-            }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1 rounded"
-          >
-            Add to Call
-          </button>
-          {(conferenceDialingMembers.length > 0 || conferenceMembers.length > 0) && (
-            <div className="flex items-center gap-1 ml-1 text-[11px]">
-              {conferenceDialingMembers.map((m, i) => (
-                <span key={`d-${i}`} className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
-                  {m.conf_member || m.caller_id} dialing…
-                </span>
-              ))}
-              {conferenceMembers.map((m, i) => (
-                <span key={`m-${i}`} className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
-                  {m.conf_member} on call
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -742,7 +683,9 @@ export const DwCallQueue: React.FC = () => {
                   <button
                     onClick={() => {
                       if (agentState !== 'ready') {
-                        triggerToast('CTI agent is not ready yet — please wait a moment and try again.');
+                        triggerToast(agentState === 'logged_out'
+                          ? 'CTI login failed — check the SAN softphone panel (bottom-left) for the reason, e.g. agent already logged in elsewhere.'
+                          : 'CTI agent is not ready yet — please wait a moment and try again.');
                         return;
                       }
                       if (callState !== 'idle') {

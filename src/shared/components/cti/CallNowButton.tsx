@@ -1,5 +1,5 @@
 import React from 'react';
-import { useSanCti } from './SanCtiProvider';
+import { useSanCti } from './SanCtiContext';
 
 interface CallNowButtonProps {
   phoneNumber: string;

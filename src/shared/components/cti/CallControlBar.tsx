@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useSanCti } from './SanCtiProvider';
+import { useSanCti } from './SanCtiContext';
+import { useAuth } from '../../../app/providers/AuthProvider';
 
 interface CallControlBarProps {
   driverName?: string;
@@ -30,6 +31,17 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
   const [showConferencePanel, setShowConferencePanel] = useState(false);
   const [conferenceInput, setConferenceInput] = useState('');
 
+  // Conference (Add Call) is NOT offered to Transporter Welcome agents.
+  // Driver Welcome has it re-enabled FOR TESTING (user request 2026-07-08) —
+  // as a manual button only, never auto-armed: pressing it converts the live
+  // call into a SAN conference bridge, and a bridged call does NOT end when
+  // the far end hangs up — the agent must hang up manually.
+  const { user } = useAuth();
+  const role = user?.role || '';
+  const conferenceAllowed = !(
+    role.includes('TW') || role.includes('WCT') || role.includes('Transporter')
+  );
+
   const activeName = driverName || currentLeadName || currentPhoneNumber || 'Unknown';
 
   if (callState === 'idle' || callState === 'disposition_pending') return null;
@@ -58,7 +70,7 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
 
   return (
     <>
-      {showConferencePanel && callState === 'connected' && (
+      {conferenceAllowed && showConferencePanel && callState === 'connected' && (
         <div style={{
           position: 'fixed',
           bottom: 96,
@@ -217,19 +229,21 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
             }}>
               {isMuted ? 'Unmute' : 'Mute'}
             </button>
-            <button
-              onClick={() => {
-                const opening = !showConferencePanel;
-                setShowConferencePanel(opening);
-                if (opening) startConference();
-              }}
-              style={{
-                ...btnStyle,
-                backgroundColor: showConferencePanel ? '#4F46E5' : '#374151',
-              }}
-            >
-              Add Call
-            </button>
+            {conferenceAllowed && (
+              <button
+                onClick={() => {
+                  const opening = !showConferencePanel;
+                  setShowConferencePanel(opening);
+                  if (opening) startConference();
+                }}
+                style={{
+                  ...btnStyle,
+                  backgroundColor: showConferencePanel ? '#4F46E5' : '#374151',
+                }}
+              >
+                Add Call
+              </button>
+            )}
           </>
         )}
 

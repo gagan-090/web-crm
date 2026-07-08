@@ -40,10 +40,16 @@ const JobCard: React.FC<{ job: any; onClick: () => void }> = ({ job, onClick }) 
 
     <p className="text-gray-500 font-semibold text-[10px] truncate">
       <span className="material-symbols-outlined text-[10px] align-middle">business</span> {job.transporter_name}
+      {job.transporter_mobile && <span className="text-gray-400 font-normal"> · {job.transporter_mobile}</span>}
     </p>
-    {job.location && (
+    {(job.route || job.location) && (
       <p className="text-gray-400 text-[10px] truncate mt-0.5">
-        <span className="material-symbols-outlined text-[10px] align-middle">location_on</span> {job.location}
+        <span className="material-symbols-outlined text-[10px] align-middle">location_on</span> {job.route || job.location}
+      </p>
+    )}
+    {job.load_details && (
+      <p className="text-gray-400 text-[10px] truncate mt-0.5" title={job.load_details}>
+        <span className="material-symbols-outlined text-[10px] align-middle">package_2</span> {job.load_details}
       </p>
     )}
 
@@ -52,7 +58,26 @@ const JobCard: React.FC<{ job: any; onClick: () => void }> = ({ job, onClick }) 
       {job.license_type && <span className="bg-indigo-50 text-indigo-700 text-[9px] font-bold px-1.5 py-0.5 rounded border border-indigo-100">{job.license_type}</span>}
       {job.salary_range && <span className="bg-green-50 text-green-700 text-[9px] font-bold px-1.5 py-0.5 rounded border border-green-100">{job.salary_range}</span>}
       {job.is_greenline && <span className="bg-emerald-100 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-200">GREENLINE</span>}
+      {job.match_status && (
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border capitalize ${job.match_status === 'selected' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+          MM: {String(job.match_status).replace('_', ' ')}
+        </span>
+      )}
     </div>
+
+    {/* Latest transporter call outcome */}
+    {job.last_call_status && (
+      <div className="flex items-center gap-1.5 mt-2 text-[9.5px]">
+        <span className={`font-bold px-1.5 py-0.5 rounded capitalize ${
+          job.last_call_status === 'connected' ? 'bg-green-50 text-green-700' :
+          job.last_call_status === 'callback_later' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-500'
+        }`}>
+          {String(job.last_call_status).replace('_', ' ')}
+        </span>
+        {job.last_call_feedback && <span className="text-gray-500 truncate" title={job.last_call_feedback}>{job.last_call_feedback}</span>}
+        {job.last_call_time && <span className="text-gray-400 ml-auto shrink-0">{job.last_call_time}</span>}
+      </div>
+    )}
 
     <div className="flex justify-between items-center mt-3 pt-2.5 border-t border-gray-100">
       <div className="flex items-center gap-1.5">
@@ -85,7 +110,7 @@ const JobsGrid: React.FC<{
   const [cursor, setCursor] = useState<number | null>(null);
   const [allJobs, setAllJobs] = useState<any[]>([]);
 
-  const { data, isLoading, isFetching } = useGetMmJobListingsQuery(
+  const { data, isLoading, isFetching, isError, refetch } = useGetMmJobListingsQuery(
     {
       type,
       // 'all' → no status restriction (shows every job); 'active' → scoped to open/non-expired
@@ -130,6 +155,22 @@ const JobsGrid: React.FC<{
         {[...Array(8)].map((_, i) => (
           <div key={i} className="h-40 bg-white rounded-xl border border-gray-200 animate-pulse" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError && allJobs.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+        <span className="material-symbols-outlined text-5xl mb-3 text-red-300">error</span>
+        <p className="font-semibold text-sm">Could not load jobs</p>
+        <p className="text-[11px] mt-1">Check your connection and try again</p>
+        <button
+          onClick={() => refetch()}
+          className="mt-4 px-6 py-2 bg-white border border-[#8E44AD] text-[#8E44AD] rounded-xl font-bold hover:bg-purple-50 text-xs"
+        >
+          Retry
+        </button>
       </div>
     );
   }

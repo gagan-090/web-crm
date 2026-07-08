@@ -1,17 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   useGetMmJobDetailQuery,
   useGetMmJobTransporterDetailQuery,
   useGetMmApplicantsFullQuery,
-  useCreateMmJobBriefCallMutation,
-  useUpdateMmJobBriefCallMutation,
-  useCreateMmDriverCallMutation,
-  useUpdateMmDriverCallMutation,
   type MmApplicant,
 } from '../../services/api/webCrmApi';
-import { useAuth } from '../../app/providers/AuthProvider';
-import { useClickToCall } from '../../shared/hooks/useClickToCall';
+import { useMmCallFlow } from './useMmCallFlow';
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 const pipelineBadge = (status: string) => {
@@ -35,306 +30,29 @@ const callStatusBadge = (status: string) => {
   return 'bg-amber-50 text-amber-700 border-amber-200';
 };
 
-// ── Transporter Call Modal ───────────────────────────────────────────────────
-interface TxCallModalProps {
-  jobId: string;
-  transporter: { id: number; name: string; mobile: string; unique_id: string };
-  assignedTo: number;
-  onClose: () => void;
-}
-
-const TxCallModal: React.FC<TxCallModalProps> = ({ jobId, transporter, assignedTo, onClose }) => {
-  const { triggerCall } = useClickToCall();
-  const [phase, setPhase] = useState<'confirm' | 'feedback'>('confirm');
-  const [briefId, setBriefId] = useState<number | null>(null);
-  const [callStatus, setCallStatus] = useState<'connected' | 'not_connected' | 'callback_later'>('connected');
-  const [feedback, setFeedback] = useState('');
-  const [remarks, setRemarks] = useState('');
-  const [createBrief, { isLoading: creating }] = useCreateMmJobBriefCallMutation();
-  const [updateBrief, { isLoading: updating }] = useUpdateMmJobBriefCallMutation();
-
-  const handleStartCall = async () => {
-    try {
-      const res = await createBrief({
-        unique_id: transporter.unique_id,
-        user_id: transporter.id,
-        assigned_to: assignedTo,
-        job_id: jobId,
-        name: transporter.name,
-        call_type: 'manual',
-      }).unwrap();
-      setBriefId(res.data.job_brief_id);
-      triggerCall(transporter.name, transporter.mobile, 'Transporter MM Job Brief', transporter.unique_id);
-      setPhase('feedback');
-    } catch {
-      // error handled silently; stays on confirm
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!briefId) return;
-    await updateBrief({ id: briefId, call_status: callStatus, call_feedback: feedback, call_remarks: remarks }).unwrap();
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="p-4 bg-[#8E44AD] text-white flex justify-between items-center">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider opacity-80">Transporter Call</p>
-            <h3 className="font-extrabold">{transporter.name}</h3>
-            <p className="text-xs opacity-80">{transporter.mobile} · {transporter.unique_id}</p>
-          </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white text-lg font-bold">✕</button>
-        </div>
-
-        {phase === 'confirm' ? (
-          <div className="p-5 space-y-4">
-            <p className="text-xs text-gray-500">You are about to call this transporter for a <strong>Job Brief Discussion</strong> regarding job <span className="font-mono font-bold text-[#8E44AD]">{jobId}</span>.</p>
-            <div className="bg-purple-50 rounded-xl p-3 text-xs text-purple-700 font-semibold">
-              A call log will be created. Please update the outcome after the call.
-            </div>
-            <button
-              onClick={handleStartCall}
-              disabled={creating}
-              className="w-full bg-[#8E44AD] hover:bg-[#7D3C98] disabled:opacity-50 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md"
-            >
-              <span className="material-symbols-outlined text-sm">call</span>
-              {creating ? 'Initiating...' : 'Start Call & Log'}
-            </button>
-          </div>
-        ) : (
-          <div className="p-5 space-y-4">
-            <div className="bg-green-50 rounded-lg p-2 text-xs text-green-700 font-semibold text-center">
-              Call initiated · Log ID #{briefId}
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Call Outcome</p>
-              <div className="flex gap-2">
-                {(['connected', 'not_connected', 'callback_later'] as const).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setCallStatus(s)}
-                    className={`flex-1 py-2 rounded-lg border font-bold text-[10px] uppercase transition-colors ${callStatus === s ? 'bg-[#8E44AD] text-white border-[#8E44AD]' : 'bg-white text-gray-500 border-gray-200'}`}
-                  >
-                    {s === 'not_connected' ? 'No Answer' : s === 'callback_later' ? 'Callback' : 'Connected'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Feedback</p>
-              <input
-                value={feedback}
-                onChange={e => setFeedback(e.target.value)}
-                placeholder="e.g. Discussed job details, transporter interested..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-[#8E44AD]"
-              />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Remarks</p>
-              <textarea
-                value={remarks}
-                onChange={e => setRemarks(e.target.value)}
-                rows={2}
-                placeholder="Additional notes..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-[#8E44AD] resize-none"
-              />
-            </div>
-            <button
-              onClick={handleSubmit}
-              disabled={updating}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-2.5 rounded-xl font-bold shadow-md"
-            >
-              {updating ? 'Saving...' : 'Submit Feedback'}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// ── Driver Call Modal ────────────────────────────────────────────────────────
-interface DriverCallModalProps {
-  jobId: string;
-  transporterName: string;
-  driver: MmApplicant;
-  assignedTo: number;
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-const DRIVER_FEEDBACKS = ['Interested', 'Not Interested', 'Callback Later', 'Already Placed', 'Language Barrier', 'Wrong Number'];
-const MATCH_STATUSES = ['pending', 'interested', 'not_interested', 'selected', 'callback', 'rejected'];
-
-const DriverCallModal: React.FC<DriverCallModalProps> = ({ jobId, transporterName, driver, assignedTo, onClose, onSuccess }) => {
-  const { triggerCall } = useClickToCall();
-  const [phase, setPhase] = useState<'confirm' | 'feedback'>('confirm');
-  const [matchId, setMatchId] = useState<number | null>(null);
-  const [callStatus, setCallStatus] = useState<'connected' | 'not_connected' | 'callback_later'>('connected');
-  const [feedbackText, setFeedbackText] = useState('Interested');
-  const [matchStatus, setMatchStatus] = useState('pending');
-  const [remarks, setRemarks] = useState('');
-  const [createCall, { isLoading: creating }] = useCreateMmDriverCallMutation();
-  const [updateCall, { isLoading: updating }] = useUpdateMmDriverCallMutation();
-
-  const handleStartCall = async () => {
-    try {
-      const res = await createCall({
-        unique_id_driver: driver.unique_id,
-        user_id_driver: driver.driver_id,
-        assigned_to: assignedTo,
-        job_id: jobId,
-        driver_name: driver.name,
-        transporter_name: transporterName,
-      }).unwrap();
-      setMatchId(res.data.match_id);
-      triggerCall(driver.name, driver.mobile, 'Driver Matchmaking', driver.unique_id, undefined, {
-        jobId, driverName: driver.name, driverTmid: driver.unique_id,
-      });
-      setPhase('feedback');
-    } catch {
-      // error stays on confirm; backend returns 422 if previous call pending
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!matchId) return;
-    await updateCall({
-      id: matchId,
-      call_status: callStatus,
-      call_feedback: feedbackText,
-      call_remarks: remarks,
-      match_status: matchStatus,
-      driver_name: driver.name,
-      transporter_name: transporterName,
-    }).unwrap();
-    onSuccess();
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="p-4 bg-[#1A5276] text-white flex justify-between items-center">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider opacity-80">Driver Matchmaking Call</p>
-            <h3 className="font-extrabold">{driver.name}</h3>
-            <p className="text-xs opacity-80">{driver.mobile} · {driver.unique_id}</p>
-          </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white text-lg font-bold">✕</button>
-        </div>
-
-        {phase === 'confirm' ? (
-          <div className="p-5 space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 rounded-xl p-3">
-              <div className="text-gray-400">State</div><div className="font-semibold text-gray-800">{driver.state || '—'}</div>
-              <div className="text-gray-400">Experience</div><div className="font-semibold text-gray-800">{driver.experience || '—'}</div>
-              <div className="text-gray-400">Income</div><div className="font-semibold text-gray-800">{driver.income || '—'}</div>
-              <div className="text-gray-400">Age</div><div className="font-semibold text-gray-800">{driver.age ? `${driver.age} yrs` : '—'}</div>
-              <div className="text-gray-400">Pipeline</div>
-              <div><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${pipelineBadge(driver.pipeline_status)}`}>{driver.pipeline_status}</span></div>
-              {driver.last_call_time && (
-                <><div className="text-gray-400">Last Call</div><div className="font-semibold text-gray-800">{driver.last_call_time}</div></>
-              )}
-            </div>
-            {driver.match_making_status && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-700">
-                <strong>Previous MM:</strong> {driver.match_making_status.status} — {driver.match_making_status.feedback} ({driver.match_making_status.called_at})
-              </div>
-            )}
-            <button
-              onClick={handleStartCall}
-              disabled={creating}
-              className="w-full bg-[#1A5276] hover:bg-[#154360] disabled:opacity-50 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md"
-            >
-              <span className="material-symbols-outlined text-sm">call</span>
-              {creating ? 'Initiating...' : 'Call Driver & Log'}
-            </button>
-          </div>
-        ) : (
-          <div className="p-5 space-y-4">
-            <div className="bg-blue-50 rounded-lg p-2 text-xs text-blue-700 font-semibold text-center">
-              Call initiated · Match ID #{matchId}
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Call Outcome</p>
-              <div className="flex gap-2">
-                {(['connected', 'not_connected', 'callback_later'] as const).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setCallStatus(s)}
-                    className={`flex-1 py-2 rounded-lg border font-bold text-[10px] uppercase transition-colors ${callStatus === s ? 'bg-[#1A5276] text-white border-[#1A5276]' : 'bg-white text-gray-500 border-gray-200'}`}
-                  >
-                    {s === 'not_connected' ? 'No Answer' : s === 'callback_later' ? 'Callback' : 'Connected'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Driver Response</p>
-              <div className="flex flex-wrap gap-1.5">
-                {DRIVER_FEEDBACKS.map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setFeedbackText(f)}
-                    className={`px-3 py-1 rounded-full border font-bold text-[10px] transition-colors ${feedbackText === f ? 'bg-[#1A5276] text-white border-[#1A5276]' : 'bg-white text-gray-500 border-gray-200'}`}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Match Status</p>
-              <select
-                value={matchStatus}
-                onChange={e => setMatchStatus(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-[#1A5276]"
-              >
-                {MATCH_STATUSES.map(s => (
-                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1).replace('_', ' ')}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Remarks</p>
-              <textarea
-                value={remarks}
-                onChange={e => setRemarks(e.target.value)}
-                rows={2}
-                placeholder="Additional notes..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-[#1A5276] resize-none"
-              />
-            </div>
-            <button
-              onClick={handleSubmit}
-              disabled={updating}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-2.5 rounded-xl font-bold shadow-md"
-            >
-              {updating ? 'Saving...' : 'Submit Disposition'}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
+// ── Query error panel (shared retry state) ──────────────────────────────────
+const ErrorPanel: React.FC<{ label: string; onRetry: () => void }> = ({ label, onRetry }) => (
+  <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+    <span className="material-symbols-outlined text-3xl mb-2 text-red-300">error</span>
+    <p className="font-semibold text-[11px]">{label}</p>
+    <button
+      onClick={onRetry}
+      className="mt-2 px-4 py-1.5 border border-[#8E44AD] text-[#8E44AD] rounded-lg font-bold text-[10px] hover:bg-purple-50"
+    >
+      Retry
+    </button>
+  </div>
+);
 
 // ── Applicant Card ────────────────────────────────────────────────────────────
 interface ApplicantCardProps {
   driver: MmApplicant;
-  jobId: string;
-  transporterName: string;
-  assignedTo: number;
-  onCallSuccess: () => void;
+  onCall: (driver: MmApplicant) => void;
 }
 
-const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, jobId, transporterName, assignedTo, onCallSuccess }) => {
+const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, onCall }) => {
   const [expanded, setExpanded] = useState(false);
-  const [showCallModal, setShowCallModal] = useState(false);
+  const timeline = driver.call_timeline ?? [];
 
   return (
     <div className={`bg-white border rounded-xl transition-shadow ${driver.is_matched ? 'border-green-300 shadow-green-50 shadow' : 'border-gray-200 hover:shadow-sm'}`}>
@@ -367,8 +85,9 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, jobId, transporte
             {driver.pipeline_status}
           </span>
           <button
-            onClick={e => { e.stopPropagation(); setShowCallModal(true); }}
+            onClick={e => { e.stopPropagation(); onCall(driver); }}
             className="bg-[#1A5276] hover:bg-[#154360] text-white px-3 py-1.5 rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1"
+            title="Call this applicant via CTI — feedback opens automatically after the call"
           >
             <span className="material-symbols-outlined text-xs">call</span>Call
           </button>
@@ -432,20 +151,20 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, jobId, transporte
           )}
 
           {/* Full Call Timeline */}
-          {(driver as any).call_timeline?.length > 0 ? (
+          {timeline.length > 0 ? (
             <div className="bg-white rounded-lg p-2 border border-gray-100">
               <p className="text-[9px] text-gray-400 uppercase font-bold mb-2">
-                Call Timeline <span className="text-gray-300 font-normal">({(driver as any).call_timeline.length} entries)</span>
+                Call Timeline <span className="text-gray-300 font-normal">({timeline.length} entries)</span>
               </p>
               <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-                {(driver as any).call_timeline.map((entry: any, i: number) => (
+                {timeline.map((entry, i) => (
                   <div key={i} className="flex gap-2 items-start text-[10px]">
                     <div className="shrink-0 mt-0.5">
                       <div className={`w-2 h-2 rounded-full mt-0.5 ${
                         entry.call_status === 'connected' ? 'bg-green-500' :
                         entry.call_status === 'not_connected' ? 'bg-red-400' : 'bg-amber-400'
                       }`} />
-                      {i < (driver as any).call_timeline.length - 1 && (
+                      {i < timeline.length - 1 && (
                         <div className="w-px h-full bg-gray-200 ml-[3px] mt-0.5 min-h-[12px]" />
                       )}
                     </div>
@@ -521,40 +240,61 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, jobId, transporte
           )}
         </div>
       )}
-
-      {showCallModal && (
-        <DriverCallModal
-          jobId={jobId}
-          transporterName={transporterName}
-          driver={driver}
-          assignedTo={assignedTo}
-          onClose={() => setShowCallModal(false)}
-          onSuccess={onCallSuccess}
-        />
-      )}
     </div>
   );
 };
 
 // ── Main MmJobDetail Page ────────────────────────────────────────────────────
+//
+// Calling here mirrors the Driver Welcome flow exactly: the Call buttons dial
+// via SanCti IN PLACE (no navigation). The global CallControlBar shows the
+// live call, the global PostCallDispositionModal opens when it ends, and
+// useMmCallFlow syncs the submitted disposition onto the job-linked MM row
+// (jobs_match_making / job_details_call_logs) before the lists refresh via
+// RTK tag invalidation.
 const MmJobDetail: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const jobId: string = location.state?.jobId || '';
 
-  const { user } = useAuth();
-  const assignedTo = user?.id ?? 0;
-
   const [search, setSearch] = useState('');
   const [applicantStatus, setApplicantStatus] = useState('');
-  const [showTxModal, setShowTxModal] = useState(false);
   const [applicantPage, setApplicantPage] = useState<number | null>(null);
+  const [allApplicants, setAllApplicants] = useState<MmApplicant[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const { data: jobData, isLoading: jobLoading } = useGetMmJobDetailQuery(jobId, { skip: !jobId });
-  const { data: txData, isLoading: txLoading } = useGetMmJobTransporterDetailQuery(jobId, { skip: !jobId });
+  const triggerToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const { callTransporter, callApplicant } = useMmCallFlow({
+    onToast: triggerToast,
+    // Lists refetch through tag invalidation; reset the cursor so the
+    // accumulated pages rebuild from page 1 instead of mixing stale pages.
+    onLogSaved: (p) => {
+      setApplicantPage(null);
+      triggerToast(`Disposition saved for ${p.name} ✓`);
+    },
+  });
+
+  const {
+    data: jobData,
+    isLoading: jobLoading,
+    isError: jobError,
+    refetch: refetchJob,
+  } = useGetMmJobDetailQuery(jobId, { skip: !jobId });
+  const {
+    data: txData,
+    isLoading: txLoading,
+    isError: txError,
+    refetch: refetchTx,
+  } = useGetMmJobTransporterDetailQuery(jobId, { skip: !jobId });
   const {
     data: applicantsData,
     isLoading: appLoading,
+    isFetching: appFetching,
+    isError: appError,
     refetch: refetchApplicants,
   } = useGetMmApplicantsFullQuery(
     { jobId, per_page: 30, cursor: applicantPage ?? undefined, search: search || undefined, status: applicantStatus || undefined },
@@ -564,18 +304,48 @@ const MmJobDetail: React.FC = () => {
   const job = jobData?.data;
   const tx = txData?.data?.transporter;
   const txCallLogs = txData?.data?.call_logs || [];
-  const applicants = applicantsData?.data || [];
   const pagination = applicantsData?.pagination;
 
+  // Accumulate cursor pages (Load More previously REPLACED the list).
+  useEffect(() => {
+    const rows = applicantsData?.data ?? [];
+    if (applicantPage === null) {
+      setAllApplicants(rows);
+    } else if (rows.length > 0) {
+      setAllApplicants(prev => {
+        const ids = new Set(prev.map(a => a.application_id));
+        return [...prev, ...rows.filter(a => !ids.has(a.application_id))];
+      });
+    }
+  }, [applicantsData, applicantPage]);
+
+  // Filter changes restart pagination from page 1.
+  useEffect(() => {
+    setApplicantPage(null);
+  }, [search, applicantStatus]);
+
   const filteredApplicants = useMemo(() => {
-    if (!search) return applicants;
+    if (!search) return allApplicants;
     const q = search.toLowerCase();
-    return applicants.filter(a =>
+    return allApplicants.filter(a =>
       a.name.toLowerCase().includes(q) ||
       a.unique_id.toLowerCase().includes(q) ||
       a.mobile?.includes(q)
     );
-  }, [applicants, search]);
+  }, [allApplicants, search]);
+
+  const handleCallApplicant = (driver: MmApplicant) => {
+    callApplicant({
+      jobId,
+      transporterName: job?.transporter_name || '',
+      driver: {
+        driver_id: driver.driver_id,
+        name: driver.name,
+        mobile: driver.mobile,
+        unique_id: driver.unique_id,
+      },
+    });
+  };
 
   if (!jobId) {
     return (
@@ -591,6 +361,14 @@ const MmJobDetail: React.FC = () => {
 
   return (
     <div className="flex flex-col h-[calc(100vh-60px)] bg-gray-50 overflow-hidden text-xs">
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#8E44AD]"></span>
+          {toast}
+        </div>
+      )}
 
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0">
@@ -630,6 +408,8 @@ const MmJobDetail: React.FC = () => {
               <div className="space-y-2">
                 {[...Array(6)].map((_, i) => <div key={i} className="h-4 bg-gray-100 rounded animate-pulse"></div>)}
               </div>
+            ) : jobError ? (
+              <ErrorPanel label="Failed to load job details" onRetry={refetchJob} />
             ) : job ? (
               <div className="space-y-2">
                 {[
@@ -647,6 +427,12 @@ const MmJobDetail: React.FC = () => {
                     <span className="font-semibold text-gray-800">{val}</span>
                   </div>
                 ))}
+                {job.job_description && (
+                  <div className="pt-1">
+                    <span className="text-gray-400 block mb-0.5">Load / Description</span>
+                    <p className="font-medium text-gray-700 text-[10px] leading-relaxed">{job.job_description}</p>
+                  </div>
+                )}
                 <div className="pt-2 grid grid-cols-2 gap-1 text-[10px]">
                   {[
                     ['ESI/PF', job.benefits?.esi_pf],
@@ -675,6 +461,8 @@ const MmJobDetail: React.FC = () => {
             <h2 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Transporter</h2>
             {txLoading ? (
               <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-4 bg-gray-100 rounded animate-pulse"></div>)}</div>
+            ) : txError ? (
+              <ErrorPanel label="Failed to load transporter" onRetry={refetchTx} />
             ) : tx ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -708,8 +496,12 @@ const MmJobDetail: React.FC = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => setShowTxModal(true)}
+                  onClick={() => callTransporter({
+                    jobId,
+                    transporter: { id: tx.id, name: tx.name, mobile: tx.mobile, unique_id: tx.unique_id },
+                  })}
                   className="w-full bg-[#8E44AD] hover:bg-[#7D3C98] text-white py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm"
+                  title="Dial via CTI — the job feedback form opens automatically when the call ends"
                 >
                   <span className="material-symbols-outlined text-sm">call</span>
                   Call Transporter
@@ -725,11 +517,11 @@ const MmJobDetail: React.FC = () => {
             <div className="p-4 space-y-2">
               <h2 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Transporter Call Log</h2>
               <div className="space-y-2">
-                {txCallLogs.slice(0, 5).map((log: any) => (
+                {txCallLogs.slice(0, 5).map((log) => (
                   <div key={log.id} className="bg-gray-50 rounded-lg p-2 text-[10px]">
                     <div className="flex justify-between">
-                      <span className={`font-bold capitalize ${log.call_status === 'connected' ? 'text-green-600' : 'text-gray-500'}`}>
-                        {log.call_status || 'Pending'}
+                      <span className={`font-bold capitalize ${log.call_status === 'connected' ? 'text-green-600' : log.call_status ? 'text-gray-500' : 'text-amber-600'}`}>
+                        {log.call_status || 'Feedback Pending'}
                       </span>
                       <span className="text-gray-400">{new Date(log.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
                     </div>
@@ -783,12 +575,14 @@ const MmJobDetail: React.FC = () => {
 
           {/* Applicant list */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-            {appLoading ? (
+            {appLoading && allApplicants.length === 0 ? (
               <div className="space-y-2">
                 {[...Array(5)].map((_, i) => (
                   <div key={i} className="h-14 bg-white rounded-xl border border-gray-200 animate-pulse"></div>
                 ))}
               </div>
+            ) : appError && allApplicants.length === 0 ? (
+              <ErrorPanel label="Failed to load applicants" onRetry={refetchApplicants} />
             ) : filteredApplicants.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                 <span className="material-symbols-outlined text-4xl mb-2">people</span>
@@ -801,18 +595,16 @@ const MmJobDetail: React.FC = () => {
                   <ApplicantCard
                     key={driver.application_id}
                     driver={driver}
-                    jobId={jobId}
-                    transporterName={job?.transporter_name || ''}
-                    assignedTo={assignedTo}
-                    onCallSuccess={() => refetchApplicants()}
+                    onCall={handleCallApplicant}
                   />
                 ))}
                 {pagination?.has_more && (
                   <button
                     onClick={() => setApplicantPage(pagination.next_cursor)}
-                    className="w-full py-2 text-[#8E44AD] font-bold border border-[#8E44AD] rounded-xl hover:bg-purple-50 transition-colors"
+                    disabled={appFetching}
+                    className="w-full py-2 text-[#8E44AD] font-bold border border-[#8E44AD] rounded-xl hover:bg-purple-50 transition-colors disabled:opacity-50"
                   >
-                    Load More
+                    {appFetching ? 'Loading…' : 'Load More'}
                   </button>
                 )}
               </>
@@ -820,16 +612,6 @@ const MmJobDetail: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Transporter call modal */}
-      {showTxModal && tx && job && (
-        <TxCallModal
-          jobId={job.job_id}
-          transporter={{ id: tx.id, name: tx.name, mobile: tx.mobile, unique_id: tx.unique_id }}
-          assignedTo={assignedTo}
-          onClose={() => setShowTxModal(false)}
-        />
-      )}
     </div>
   );
 };

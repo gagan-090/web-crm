@@ -19,7 +19,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, role?: Role, password?: string) => Promise<User | null>;
-  logout: () => void;
+  logout: () => Promise<void>;
   switchRole: (role: Role) => void;
 }
 
@@ -131,7 +131,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // SAN CTI logout must COMPLETE before the user is cleared: clearing the
+    // user unmounts DashboardLayout (and the SAN softphone iframe inside it),
+    // which would abort SAN's logout request mid-flight and leave the agent
+    // session locked on SAN's server — every later login then fails with
+    // "You are already login on another machine". __sanCtiLogout is exposed
+    // by SanCtiProvider and resolves on SAN's confirmation (or a 2.5s cap).
+    try {
+      await (window as any).__sanCtiLogout?.();
+    } catch (_) { /* best-effort — never block sign-out */ }
     setUser(null);
     localStorage.clear();
   };

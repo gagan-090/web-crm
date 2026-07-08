@@ -47,15 +47,6 @@ const DWC_CALLBACK_OPTIONS = [
   'Call In Evening',
   'Call After 2 Days',
 ];
-
-const isSubscriptionAgreeOption = (val: string) => {
-  return [
-    'Agree for Subscription',
-    'Agree for Subscription (Today)',
-    'Agree for Subscription (Tomorrow)',
-    'Subscription Done on Call'
-  ].includes(val);
-};
 import {
   useGetDwLeadDetailQuery,
   useLazyGetDwNextLeadQuery,
@@ -68,7 +59,7 @@ import {
   useSubmitDwFeedbackMutation,
   useSkipDwLeadMutation
 } from '../../services/api/webCrmApi';
-import { useSanCti } from '../../shared/components/cti/SanCtiProvider';
+import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { invalidateQueueCache, useQueueCache } from '../../shared/hooks/useQueueCache';
 import type { QueueType } from '../../shared/hooks/useQueueCache';
@@ -272,8 +263,6 @@ export const DwActiveCallFocus: React.FC = () => {
   // Post-Call details
   const [level2Sub, setLevel2Sub] = useState<string>('');
   const [callbackSub, setCallbackSub] = useState<string>('');
-  const [planSelected, setPlanSelected] = useState<string>('');
-  const [paymentId, setPaymentId] = useState<string>('');
   const [languageNoted, setLanguageNoted] = useState<string>('');
   const [feedbackStage, setFeedbackStage] = useState<string>('');
   const [reason, setReason] = useState<string>('');
@@ -404,14 +393,7 @@ export const DwActiveCallFocus: React.FC = () => {
     if (!level2Sub) return false;
 
     if (outcome === 'connected') {
-      if (isDriverWelcome) {
-        if (isSubscriptionAgreeOption(level2Sub)) {
-          if (!planSelected || !paymentId) return false;
-        }
-      } else {
-        if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') {
-          if (!planSelected || !paymentId) return false;
-        }
+      if (!isDriverWelcome) {
         if (level2Sub === 'interested_callback') {
           if (!callbackSub) return false;
           if (callbackSub === 'custom' && !callbackAt) return false;
@@ -479,8 +461,8 @@ export const DwActiveCallFocus: React.FC = () => {
         disposition_sub: level2Sub || null,
         callback_sub: finalCallbackSub || null,
         callback_at: finalCallbackAt || null,
-        plan_selected: planSelected || null,
-        payment_id: paymentId || null,
+        plan_selected: null,
+        payment_id: null,
         language_noted: languageNoted || null,
         feedback_stage: feedbackStage || null,
       }).unwrap();
@@ -1504,53 +1486,7 @@ export const DwActiveCallFocus: React.FC = () => {
               <div className="space-y-3 mb-4">
 
                 {/* Subscription Flow */}
-                {((isDriverWelcome && isSubscriptionAgreeOption(level2Sub)) || (!isDriverWelcome && (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription'))) && (
-                  <>
-                    <div>
-                      <label className="text-gray-500 block mb-1 font-semibold">Select Subscription Plan *</label>
-                      <select
-                        value={planSelected}
-                        onChange={e => setPlanSelected(e.target.value)}
-                        className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs"
-                      >
-                        <option value="">Choose a subscription plan...</option>
-                        {isDriverWelcome && [
-                          { value: 'job_ready', label: 'Job Ready Driver (₹199 Plan)' },
-                          { value: 'verified', label: 'Verified Driver (₹299 Plan)' },
-                          { value: 'trusted', label: 'Trusted Driver (₹499 Plan)' }
-                        ].map(p => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                        {isTransporterWelcome && [
-                          { value: 'tr_subscription', label: 'Transporter Subscription (₹999 Plan)' },
-                          { value: 'premium_posting', label: 'Premium Job Posting (₹1,999 Plan)' },
-                          { value: 'sp_posting', label: 'Super Premium Posting (₹2,999 Plan)' }
-                        ].map(p => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                        {!isDriverWelcome && !isTransporterWelcome && [
-                          { value: '199_plan', label: '₹199 Basic' },
-                          { value: '299_plan', label: '₹299 Standard' },
-                          { value: '499_plan', label: '₹499 Premium' },
-                          { value: '1999_plan', label: '₹1,999 Pro' },
-                          { value: '2999_plan', label: '₹2,999 Super Pro' }
-                        ].map(p => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-gray-500 block mb-1 font-semibold">Payment Transaction ID *</label>
-                      <input
-                        type="text"
-                        placeholder="Enter payment transaction ID..."
-                        value={paymentId}
-                        onChange={e => setPaymentId(e.target.value)}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs"
-                      />
-                    </div>
-                  </>
-                )}
+
 
                 {/* Callback Requested Flow */}
                 {(!isDriverWelcome && level2Sub === 'interested_callback') && (

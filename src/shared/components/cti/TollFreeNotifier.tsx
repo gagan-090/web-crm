@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGetDwCampaignLeadsQuery } from '../../../services/api/webCrmApi';
 import { useAuth } from '../../../app/providers/AuthProvider';
@@ -18,12 +18,19 @@ export default function TollFreeNotifier() {
     }
   );
 
-  const leads = (campaignData?.leads || [])
-    .filter((l: any) => !l.history || l.history.length === 0)
-    .filter((l: any) => {
-      const capturedTime = l.capturedTimestamp || (l.created_at ? new Date(l.created_at).getTime() : Date.now());
-      return (Date.now() - capturedTime) <= 48 * 60 * 60 * 1000;
-    });
+  // Memoized on campaignData: without this, .filter().filter() allocates a
+  // brand-new array on EVERY render (even ones caused by unrelated state
+  // elsewhere in the tree), which made the effect below — keyed on `leads`
+  // by reference — re-run and re-diff on every single render instead of
+  // only when the underlying query data actually changes.
+  const leads = useMemo(() => {
+    return (campaignData?.leads || [])
+      .filter((l: any) => !l.history || l.history.length === 0)
+      .filter((l: any) => {
+        const capturedTime = l.capturedTimestamp || (l.created_at ? new Date(l.created_at).getTime() : Date.now());
+        return (Date.now() - capturedTime) <= 48 * 60 * 60 * 1000;
+      });
+  }, [campaignData]);
   const [activeLead, setActiveLead] = useState<any | null>(null);
   const [showModal, setShowModal] = useState<boolean>(false);
   const [showBubble, setShowBubble] = useState<boolean>(false);
@@ -115,29 +122,66 @@ export default function TollFreeNotifier() {
   };
 
   const dragDistance = useRef(0);
+  // Live position ref, always fresh — lets the drag handlers below stay
+  // referentially stable (useCallback with empty deps) instead of being
+  // recreated every render, since they read position from here instead of
+  // closing over the `bubblePos` state value. Synced via effect, not during
+  // render, per this codebase's no-ref-writes-during-render rule.
+  const bubblePosRef = useRef(bubblePos);
+  useEffect(() => { bubblePosRef.current = bubblePos; }, [bubblePos]);
 
-  // Drag handlers
-  const handleStart = (clientX: number, clientY: number) => {
-    isDragging.current = true;
-    dragStart.current = { x: clientX - bubblePos.x, y: clientY - bubblePos.y };
-    dragDistance.current = 0;
-  };
-
-  const handleMove = (clientX: number, clientY: number) => {
-    if (!isDragging.current) return;
+  // Drag handlers. Window-level mousemove/touchmove/mouseup/touchend
+  // listeners are attached ONLY while a drag is in progress (from
+  // handleStart until detachDragListenersRef.current() fires) instead of for the
+  // component's entire lifetime. Previously they were permanently attached
+  // AND re-subscribed on every bubblePos change — meaning every pixel of
+  // movement during a drag tore down and re-added 4 window listeners, and
+  // outside of any drag the notifier still ran a mousemove handler on every
+  // mouse movement across the whole app for as long as a DW agent was
+  // logged in. Every handler here is useCallback'd with an empty
+  // dependency array (they only touch refs and the stable setBubblePos
+  // dispatcher) so the SAME function reference is used for every
+  // add/removeEventListener pair, no matter which render triggered it —
+  // including the unmount safety net below.
+  const handleMove = useCallback((clientX: number, clientY: number) => {
     const newX = Math.max(10, Math.min(clientX - dragStart.current.x, window.innerWidth - 130));
     const newY = Math.max(10, Math.min(clientY - dragStart.current.y, window.innerHeight - 80));
 
-    const dx = newX - bubblePos.x;
-    const dy = newY - bubblePos.y;
+    const dx = newX - bubblePosRef.current.x;
+    const dy = newY - bubblePosRef.current.y;
     dragDistance.current += Math.sqrt(dx * dx + dy * dy);
 
     setBubblePos({ x: newX, y: newY });
-  };
+  }, []);
 
-  const handleEnd = () => {
+  const onMouseMove = useCallback((e: MouseEvent) => handleMove(e.clientX, e.clientY), [handleMove]);
+  const onTouchMove = useCallback((e: TouchEvent) => {
+    if (e.touches.length > 0) handleMove(e.touches[0].clientX, e.touches[0].clientY);
+  }, [handleMove]);
+
+  // Held in a ref (rather than referencing the const from inside its own
+  // useCallback body) purely so removeEventListener's 'mouseup'/'touchend'
+  // handler can detach itself without a self-referential closure. The ref
+  // is synced via effect, not during render.
+  const detachDragListenersRef = useRef<() => void>(() => {});
+  const detachDragListeners = useCallback(() => {
     isDragging.current = false;
-  };
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', detachDragListenersRef.current);
+    window.removeEventListener('touchmove', onTouchMove);
+    window.removeEventListener('touchend', detachDragListenersRef.current);
+  }, [onMouseMove, onTouchMove]);
+  useEffect(() => { detachDragListenersRef.current = detachDragListeners; }, [detachDragListeners]);
+
+  const handleStart = useCallback((clientX: number, clientY: number) => {
+    isDragging.current = true;
+    dragStart.current = { x: clientX - bubblePosRef.current.x, y: clientY - bubblePosRef.current.y };
+    dragDistance.current = 0;
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', detachDragListenersRef.current);
+    window.addEventListener('touchmove', onTouchMove);
+    window.addEventListener('touchend', detachDragListenersRef.current);
+  }, [onMouseMove, onTouchMove]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     handleStart(e.clientX, e.clientY);
@@ -150,28 +194,10 @@ export default function TollFreeNotifier() {
     }
   };
 
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY);
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 0) {
-        handleMove(e.touches[0].clientX, e.touches[0].clientY);
-      }
-    };
-    const onMouseUp = () => handleEnd();
-    const onTouchEnd = () => handleEnd();
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    window.addEventListener('touchmove', onTouchMove);
-    window.addEventListener('touchend', onTouchEnd);
-
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('touchend', onTouchEnd);
-    };
-  }, [bubblePos]);
+  // Safety net: if the component unmounts mid-drag, don't leak listeners.
+  // Reads the ref at cleanup time rather than closing over a snapshot, so it
+  // always matches whatever detach function is currently attached.
+  useEffect(() => () => detachDragListenersRef.current(), []);
 
   if (!isDwAgent || leads.length === 0) return null;
 
@@ -179,7 +205,12 @@ export default function TollFreeNotifier() {
     <>
       {/* TollFree Popup Modal */}
       {showModal && activeLead && (
-        <div className="fixed inset-0 bg-black/75 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
+        // backdrop-blur-sm removed: a live GPU blur recomputed every frame
+        // across the full viewport, while both the header (animate-pulse)
+        // and the hot-lead badge (animate-ping) animate underneath/inside
+        // it — this was the actual cause of the reported lag. A flat darker
+        // overlay reads the same visually without the per-frame blur cost.
+        <div className="fixed inset-0 bg-black/85 z-[9999] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full border-4 border-red-500 shadow-2xl p-6 relative overflow-hidden">
             {/* Top red header banner */}
             <div className="bg-red-500 text-white text-center py-2 font-bold uppercase tracking-widest text-[11px] rounded-lg mb-4 flex items-center justify-center gap-1.5 animate-pulse">

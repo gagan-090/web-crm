@@ -19,6 +19,40 @@ export interface DwLead {
   call_count: number;
 }
 
+export interface DwCdrStats {
+  agent_name: string | null;
+  total_calls: number;
+  connected: number;
+  missed_calls: number;
+  incoming_total: number;
+  incoming_missed: number;
+  outgoing_total: number;
+  outgoing_missed: number;
+  talk_time: string;
+  total_duration: string;
+  avg_ring_seconds: number;
+  recent_missed: Array<{
+    caller_id: string | null;
+    call_type: string | null;
+    start_time: string | null;
+    ring_durn: string | null;
+    cause_txt: string | null;
+    user_id: number | null;
+    user_name: string | null;
+    user_tmid: string | null;
+  }>;
+}
+
+export interface DwSubscriptionStats {
+  period: string;
+  period_count: number;
+  period_amount: number;
+  today_count: number;
+  today_amount: number;
+  month_count: number;
+  month_amount: number;
+}
+
 export interface DwDashboardResponse {
   status: boolean;
   data: {
@@ -31,7 +65,11 @@ export interface DwDashboardResponse {
       feedback_missing: number;
       call_time: string;
       monthly_revenue: number;
+      missed_calls: number;
+      incoming_missed: number;
     };
+    cdr_stats: DwCdrStats;
+    subscriptions: DwSubscriptionStats;
     overdue_callbacks: Array<{
       id: number;
       tmid: string;
@@ -462,6 +500,12 @@ export interface MmJobListingsResponse {
       transporter_name: string;
       transporter_mobile: string;
       location: string;
+      route: string | null;
+      load_details: string | null;
+      last_call_status: string | null;
+      last_call_feedback: string | null;
+      last_call_time: string | null;
+      match_status: string | null;
       license_type: string;
       salary_range: string;
       experience_required: string;
@@ -560,6 +604,15 @@ export interface MmApplicant {
   is_matched: boolean;
   selected_jobs: Array<{ job_id: string; job_title: string; job_location: string; selected_at: string }>;
   match_making_status: { status: string; feedback: string; called_at: string } | null;
+  call_timeline?: Array<{
+    call_status: string | null;
+    match_status: string | null;
+    process: string | null;
+    feedback: string | null;
+    remarks: string | null;
+    called_by: string | null;
+    called_at: string;
+  }>;
 }
 
 export interface MmApplicantsFullResponse {
@@ -936,21 +989,6 @@ export const webCrmApi = baseApi.injectEndpoints({
     getMmPlacements: builder.query<MmPlacementsResponse, void>({
       query: () => '/web-crm/mm/placements',
     }),
-    submitMmCallLog: builder.mutation<any, {
-      job_id: string | number;
-      driver_id?: number;
-      call_status: string;
-      call_feedback: string;
-      call_remarks?: string;
-      match_status?: string;
-    }>({
-      query: (body) => ({
-        url: '/web-crm/mm/call/log',
-        method: 'POST',
-        body,
-      }),
-    }),
-
     getMmJobListings: builder.query<MmJobListingsResponse, {
       type?: string; section?: string; status?: string; search?: string;
       license_type?: string; vehicle_type?: string; plan_type?: string;
@@ -962,14 +1000,17 @@ export const webCrmApi = baseApi.injectEndpoints({
           Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
         ),
       }),
+      providesTags: ['MmJobs'],
     }),
 
     getMmJobDetail: builder.query<MmJobDetailResponse, string>({
       query: (jobId) => `/web-crm/match-making/job/${jobId}`,
+      providesTags: ['MmJobs'],
     }),
 
     getMmJobTransporterDetail: builder.query<MmJobTransporterResponse, string>({
       query: (jobId) => `/web-crm/match-making/job/${jobId}/transporter`,
+      providesTags: ['MmTransporter'],
     }),
 
     getMmApplicantsFull: builder.query<MmApplicantsFullResponse, {
@@ -981,35 +1022,18 @@ export const webCrmApi = baseApi.injectEndpoints({
           Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
         ),
       }),
+      providesTags: ['MmApplicants'],
     }),
 
-    createMmJobBriefCall: builder.mutation<{ success: boolean; data: { job_brief_id: number } }, {
-      unique_id: string; user_id: number; assigned_to: number; job_id: string;
-      name?: string; call_type?: string;
+    // call_history_ivr is the single source of truth for all calls. SanCti
+    // logs the call and its disposition via /web-crm/call/*; this endpoint
+    // only stamps the matchmaking context (job + match outcome) onto that
+    // same call row after the disposition is submitted.
+    tagMmCall: builder.mutation<{ success: boolean; message: string }, {
+      call_id: number; job_id: string; match_status?: string;
     }>({
-      query: (body) => ({ url: '/web-crm/match-making/create-jobBrief', method: 'POST', body }),
-    }),
-
-    updateMmJobBriefCall: builder.mutation<any, {
-      id: number; call_status: 'connected' | 'not_connected' | 'callback_later';
-      call_feedback?: string; call_remarks?: string; closed_job?: number;
-    }>({
-      query: (body) => ({ url: '/web-crm/match-making/manual-call-update-jobBrief', method: 'POST', body }),
-    }),
-
-    createMmDriverCall: builder.mutation<{ success: boolean; data: { match_id: number } }, {
-      unique_id_driver?: string; user_id_driver?: number; assigned_to: number;
-      job_id: string; driver_name?: string; transporter_name?: string;
-    }>({
-      query: (body) => ({ url: '/web-crm/match-making/manual-call-jobMatching', method: 'POST', body }),
-    }),
-
-    updateMmDriverCall: builder.mutation<any, {
-      id: number; call_status: 'connected' | 'not_connected' | 'callback_later';
-      call_feedback: string; call_remarks?: string; match_status?: string;
-      driver_name?: string; transporter_name?: string;
-    }>({
-      query: (body) => ({ url: '/web-crm/match-making/manual-call-update-jobMatching', method: 'POST', body }),
+      query: (body) => ({ url: '/web-crm/match-making/ivr-call-tag-job', method: 'POST', body }),
+      invalidatesTags: ['MmApplicants', 'MmTransporter', 'MmJobs'],
     }),
 
     // Driver Bank endpoints
@@ -1176,15 +1200,11 @@ export const {
   useGetMmJobApplicantsQuery,
   useGetMmJobCallLogsQuery,
   useGetMmPlacementsQuery,
-  useSubmitMmCallLogMutation,
   useGetMmJobListingsQuery,
   useGetMmJobDetailQuery,
   useGetMmJobTransporterDetailQuery,
   useGetMmApplicantsFullQuery,
-  useCreateMmJobBriefCallMutation,
-  useUpdateMmJobBriefCallMutation,
-  useCreateMmDriverCallMutation,
-  useUpdateMmDriverCallMutation,
+  useTagMmCallMutation,
   useGetDriverBankQuery,
   useAddDriverBankMutation,
   useUpdateDriverBankMutation,

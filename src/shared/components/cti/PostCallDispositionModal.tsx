@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSanCti } from './SanCtiProvider';
+import { useSanCti } from './SanCtiContext';
 import { useTriggerMockConversionMutation } from '../../../services/api/incentiveApi';
 import { useAuth } from '../../../app/providers/AuthProvider';
 
@@ -20,25 +20,6 @@ const mmStages = [
   { value: '8', label: 'Stage 8: Final Placement Confirmed' },
 ];
 
-const dwPlans = [
-  { value: 'job_ready', label: 'Job Ready Driver (₹199 Plan)' },
-  { value: 'verified', label: 'Verified Driver (₹299 Plan)' },
-  { value: 'trusted', label: 'Trusted Driver (₹499 Plan)' },
-];
-
-const twPlans = [
-  { value: 'tr_subscription', label: 'Transporter Subscription (₹999 Plan)' },
-  { value: 'premium_posting', label: 'Premium Job Posting (₹1,999 Plan)' },
-  { value: 'sp_posting', label: 'Super Premium Posting (₹2,999 Plan)' },
-];
-
-const generalPlans = [
-  { value: '199_plan', label: '₹199 Basic' },
-  { value: '299_plan', label: '₹299 Standard' },
-  { value: '499_plan', label: '₹499 Premium' },
-  { value: '1999_plan', label: '₹1,999 Pro' },
-  { value: '2999_plan', label: '₹2,999 Super Pro' },
-];
 
 const rejectionReasons = [
   { value: 'already_have_loads', label: 'Already Have Loads' },
@@ -209,14 +190,7 @@ export default function PostCallDispositionModal({
     if (!level2Sub) return false;
 
     if (level1 === 'connected') {
-      if (isDriverWelcome) {
-        if (isSubscriptionAgreeOption(level2Sub)) {
-          if (!planSelected || !paymentId) return false;
-        }
-      } else {
-        if (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription') {
-          if (!planSelected || !paymentId) return false;
-        }
+      if (!isDriverWelcome) {
         if (level2Sub === 'interested_callback') {
           if (!callbackSub) return false;
           if (callbackSub === 'custom' && !callbackAt) return false;
@@ -607,40 +581,7 @@ export default function PostCallDispositionModal({
         {level1 === 'connected' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
             
-            {/* Subscription Flow */}
-            {((isDriverWelcome && isSubscriptionAgreeOption(level2Sub)) || (!isDriverWelcome && (level2Sub === 'agree_subscription' || level2Sub === 'agree_tr_subscription'))) && (
-              <>
-                <div>
-                  <label style={subLabelStyle}>Select Subscription Plan *</label>
-                  <select
-                    value={planSelected}
-                    onChange={e => setPlanSelected(e.target.value)}
-                    style={inputStyle}
-                  >
-                    <option value="">Choose a subscription plan...</option>
-                    {isDriverWelcome && dwPlans.map(p => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
-                    {isTransporterWelcome && twPlans.map(p => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
-                    {!isDriverWelcome && !isTransporterWelcome && generalPlans.map(p => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={subLabelStyle}>Payment Transaction ID *</label>
-                  <input
-                    type="text"
-                    placeholder="Enter payment/UPI reference transaction ID..."
-                    value={paymentId}
-                    onChange={e => setPaymentId(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-              </>
-            )}
+
 
             {/* Callback Requested Flow */}
             {(!isDriverWelcome && level2Sub === 'interested_callback') && (

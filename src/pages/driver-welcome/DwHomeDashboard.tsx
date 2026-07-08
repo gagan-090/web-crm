@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGetDwDashboardQuery } from '../../services/api/webCrmApi';
 import { useGetGateProgressQuery } from '../../services/api/incentiveApi';
 import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
+import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 
 type Period = 'today' | 'yesterday' | 'last_7_days' | 'this_week' | 'this_month' | 'all';
 
@@ -43,17 +44,70 @@ const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, icon, iconColor, i
 export const DwHomeDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [period, setPeriod] = useState<Period>('today');
+  const { agentState, callState, dial } = useSanCti();
+  const [toast, setToast] = useState<string | null>(null);
+
+  const triggerToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  // Call back a missed caller — same guard + dial as DwCallQueue, but lands
+  // the agent on the Active Call Focus screen with the user's details. The
+  // SanCti flow logs the call and its disposition into call_history_ivr
+  // automatically (/call/initiate + /call/disposition).
+  const handleMissedCallback = (m: { user_id: number | null; user_name: string | null; user_tmid: string | null; caller_id: string | null }) => {
+    if (!m.user_id || !m.caller_id) return;
+    if (agentState !== 'ready') {
+      triggerToast(agentState === 'logged_out'
+        ? 'CTI login failed — check the SAN softphone panel (bottom-left).'
+        : 'CTI agent is not ready yet — please wait a moment and try again.');
+      return;
+    }
+    if (callState !== 'idle') {
+      triggerToast('Finish or hang up the current call before dialing another lead.');
+      return;
+    }
+    navigate('/dw/dw-active-call-focus', {
+      state: {
+        userId: m.user_id,
+        name: m.user_name || m.caller_id,
+        tmid: m.user_tmid || '',
+        mobile: m.caller_id,
+      },
+    });
+    dial(m.caller_id, m.user_id, m.user_name || m.caller_id, m.user_tmid || '', 'driver');
+  };
 
   const { data: response, isLoading, isFetching } = useGetDwDashboardQuery(
     { period },
     { refetchOnMountOrArgChange: true }
   );
-  const { data: progress } = useGetGateProgressQuery('dwc');
+  // refetchOnMountOrArgChange: the gate figures must always be live — a
+  // cached response from before the latest subscription showed ₹0 gates
+  // while the dashboard's own (fresh) queries already counted the sale.
+  const { data: progress } = useGetGateProgressQuery('dwc', { refetchOnMountOrArgChange: true });
 
   const kpis = response?.data?.kpis || {
     calls_pending: 0, assigned_total: 0, calls_today: 0,
     connected_today: 0, subscriptions_today: 0,
     feedback_missing: 0, call_time: '0h 0m', monthly_revenue: 0,
+    missed_calls: 0, incoming_missed: 0,
+  };
+
+  // SAN's network-side CDR stats (webhook_crm) — the only source that sees
+  // incoming calls that were never answered.
+  const cdr = response?.data?.cdr_stats || {
+    agent_name: null, total_calls: 0, connected: 0, missed_calls: 0,
+    incoming_total: 0, incoming_missed: 0, outgoing_total: 0, outgoing_missed: 0,
+    talk_time: '0h 0m', total_duration: '0h 0m', avg_ring_seconds: 0,
+    recent_missed: [],
+  };
+
+  // Subscriptions collected by this telecaller (collection_by ledger)
+  const subs = response?.data?.subscriptions || {
+    period: 'today', period_count: 0, period_amount: 0,
+    today_count: 0, today_amount: 0, month_count: 0, month_amount: 0,
   };
 
   const overdueCallbacks = response?.data?.overdue_callbacks || [];
@@ -75,13 +129,24 @@ export const DwHomeDashboard: React.FC = () => {
   const remainingToIncentive   = progress?.incentiveGateRemaining  ?? Math.max(0, incentiveGateThreshold - monthlyRevenue);
   const incentiveGatePercent   = progress?.incentiveGatePercentage ?? 0;
 
-  const todayEarnings        = kpis.subscriptions_today * 150;
+  // Real amount collected today from the collection_by ledger — previously
+  // this was a hardcoded ₹150-per-sale estimate that contradicted the actual
+  // subscription amounts (e.g. one ₹199 sale showed as ₹150).
+  const todayEarnings        = subs.today_amount;
   const todayEarningsPercent = Math.min(100, Math.round((todayEarnings / 1667) * 100));
 
   const formattedDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto w-full p-4">
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          {toast}
+        </div>
+      )}
 
       {/* Header */}
       <section className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-200 pb-4">
@@ -126,13 +191,13 @@ export const DwHomeDashboard: React.FC = () => {
 
       {/* KPI Summary Tiles */}
       {isLoading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-2 animate-pulse">
-          {Array.from({ length: 9 }).map((_, i) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 animate-pulse">
+          {Array.from({ length: 12 }).map((_, i) => (
             <div key={i} className="bg-gray-100 rounded-lg h-20"></div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
           <KpiTile
             label="Total Calls"   value={cs.total_calls}
             icon="phone"          iconBg="bg-slate-100"    iconColor="text-slate-500"
@@ -180,8 +245,118 @@ export const DwHomeDashboard: React.FC = () => {
             icon="timer"          iconBg="bg-orange-50"   iconColor="text-orange-500"
             valueColor="text-orange-700" borderColor="border-orange-100"
           />
+          <KpiTile
+            label="Missed Calls"  value={cdr.missed_calls}
+            icon="phone_missed"   iconBg="bg-rose-50"     iconColor="text-rose-500"
+            valueColor="text-rose-700"   borderColor="border-rose-200"
+            sub={`${cdr.outgoing_missed} out · ${cdr.incoming_missed} in`}
+          />
+          <KpiTile
+            label="Incoming Missed" value={cdr.incoming_missed}
+            icon="phone_callback" iconBg="bg-red-50"      iconColor="text-red-500"
+            valueColor="text-red-700"    borderColor="border-red-200"
+            sub={`of ${cdr.incoming_total} incoming`}
+          />
+          <KpiTile
+            label="Subscriptions" value={subs.period_count}
+            icon="workspace_premium" iconBg="bg-green-50" iconColor="text-green-600"
+            valueColor="text-green-700"  borderColor="border-green-200"
+            sub={`₹${subs.period_amount.toLocaleString()} collected`}
+          />
         </div>
       )}
+
+      {/* Subscriptions + SAN Missed Call Detail */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* My Subscriptions (collection_by ledger) */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">My Subscriptions</span>
+            <span className="material-symbols-outlined text-[18px] text-green-500">workspace_premium</span>
+          </div>
+          <div className="flex items-end gap-2">
+            <span className="text-3xl font-bold text-gray-800">{subs.period_count}</span>
+            <span className="text-[11px] text-gray-400 mb-1">this period · ₹{subs.period_amount.toLocaleString()}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-gray-100 text-center">
+            <div>
+              <div className="text-sm font-bold text-gray-800">{subs.today_count}</div>
+              <div className="text-[9px] text-gray-400 uppercase font-semibold">Today</div>
+            </div>
+            <div>
+              <div className="text-sm font-bold text-gray-800">{subs.month_count}</div>
+              <div className="text-[9px] text-gray-400 uppercase font-semibold">This Month</div>
+            </div>
+            <div>
+              <div className="text-sm font-bold text-green-700">₹{subs.month_amount.toLocaleString()}</div>
+              <div className="text-[9px] text-gray-400 uppercase font-semibold">Month Revenue</div>
+            </div>
+          </div>
+        </div>
+
+        {/* SAN Network Stats — missed calls with detail (webhook_crm CDR) */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm md:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">Missed Calls — SAN Network (CDR)</span>
+              {cdr.agent_name && (
+                <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">{cdr.agent_name}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 text-[10px] text-gray-400">
+              <span>Talk: <strong className="text-gray-600">{cdr.talk_time}</strong></span>
+              <span>Total: <strong className="text-gray-600">{cdr.total_duration}</strong></span>
+              <span>Avg Ring: <strong className="text-gray-600">{cdr.avg_ring_seconds}s</strong></span>
+            </div>
+          </div>
+          {cdr.recent_missed.length === 0 ? (
+            <div className="flex items-center justify-center py-6 text-gray-400 text-[11px]">
+              <span className="material-symbols-outlined text-base mr-1 text-emerald-400">check_circle</span>
+              No missed calls in this period
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {cdr.recent_missed.map((m, i) => (
+                <div key={i} className="flex items-center gap-3 py-1.5 text-[11px]">
+                  <span className={`material-symbols-outlined text-sm shrink-0 ${m.call_type === 'Incoming' ? 'text-red-500' : 'text-rose-400'}`}>
+                    {m.call_type === 'Incoming' ? 'phone_callback' : 'phone_missed'}
+                  </span>
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    {/* Mobile number intentionally hidden — name + TMID only */}
+                    <span className="font-semibold text-gray-800 truncate">{m.user_name || 'Unknown Caller'}</span>
+                    {m.user_tmid && (
+                      <span className="font-mono text-[9px] text-gray-500 bg-gray-100 px-1 py-0.5 rounded shrink-0">{m.user_tmid}</span>
+                    )}
+                  </div>
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${m.call_type === 'Incoming' ? 'bg-red-50 text-red-600' : 'bg-rose-50 text-rose-500'}`}>
+                    {m.call_type?.toUpperCase()}
+                  </span>
+                  <span className="text-gray-400 shrink-0">rang {m.ring_durn || '—'}</span>
+                  {m.cause_txt && <span className="text-gray-300 truncate hidden lg:inline">{m.cause_txt}</span>}
+                  <span className="ml-auto text-gray-400 shrink-0">{m.start_time}</span>
+                  {m.user_id ? (
+                    <button
+                      onClick={() => handleMissedCallback(m)}
+                      className="shrink-0 w-7 h-7 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow-sm transition-transform active:scale-95"
+                      title={`Call back ${m.user_name || 'this caller'}`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">call</span>
+                    </button>
+                  ) : (
+                    <span
+                      className="shrink-0 w-7 h-7 rounded-full bg-gray-100 text-gray-300 flex items-center justify-center"
+                      title="Number not found in users — cannot call back from here"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">call</span>
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Gate + Queue Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

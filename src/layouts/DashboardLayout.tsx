@@ -9,6 +9,7 @@ import { useAuth } from '../app/providers/AuthProvider';
 import { Role } from '../shared/constants/roles';
 import { SanCtiProvider, CallControlBar, PostCallDispositionModal, TollFreeNotifier, useSanCti } from '../shared/components/cti';
 import ConversionConfirmationToast from '../shared/components/incentive/ConversionConfirmationToast';
+import FullscreenGuard from '../shared/components/FullscreenGuard';
 
 // Navigates to the active call focus screen when an incoming call rings OR connects.
 // Must be rendered inside SanCtiProvider.
@@ -146,6 +147,11 @@ export const DashboardLayout: React.FC = () => {
 
       {/* Incentive Engine — Global Conversion Toast (all roles) */}
       <ConversionConfirmationToast />
+
+      {/* Strict proctored-exam-style fullscreen enforcement — Driver Welcome
+          callers only. The whole workspace is blocked unless the browser is
+          in fullscreen; exiting (Esc included) re-blocks instantly. */}
+      {user?.role === Role.DW && <FullscreenGuard processLabel="Driver Welcome Calling" />}
     </div>
   );
 

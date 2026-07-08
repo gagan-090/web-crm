@@ -493,6 +493,24 @@ export const DwCallHistory: React.FC = () => {
                     <label className="text-[10.5px] text-gray-400 font-bold block">Connection Channel</label>
                     <span className="text-sm text-gray-800 capitalize font-semibold">{selectedRecord.call_type || '—'} ({selectedRecord.process || '—'})</span>
                   </div>
+                  {selectedRecord.bill_duration && (
+                    <div>
+                      <label className="text-[10.5px] text-gray-400 font-bold block">Actual Call Time (Billable)</label>
+                      <span className="text-sm text-gray-800 font-bold">{selectedRecord.bill_duration}</span>
+                    </div>
+                  )}
+                  {selectedRecord.wrapup_durn && (
+                    <div>
+                      <label className="text-[10.5px] text-gray-400 font-bold block">Wrap-up Duration</label>
+                      <span className="text-sm text-gray-800 font-bold">{selectedRecord.wrapup_durn}</span>
+                    </div>
+                  )}
+                  {selectedRecord.san_agent_name && (
+                    <div className="col-span-2">
+                      <label className="text-[10.5px] text-gray-400 font-bold block">SAN Agent Name</label>
+                      <span className="text-sm text-gray-800 font-semibold">{selectedRecord.san_agent_name}</span>
+                    </div>
+                  )}
                   <div className="col-span-2">
                     <label className="text-[10.5px] text-gray-400 font-bold block">Created Timestamp</label>
                     <span className="text-xs font-mono text-gray-700">{selectedRecord.created_at || '—'} (Shorted Display: {selectedRecord.date_display})</span>

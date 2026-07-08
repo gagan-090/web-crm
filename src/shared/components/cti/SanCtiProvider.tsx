@@ -1,74 +1,12 @@
-import React, { createContext, useContext, useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useAuth } from '../../../app/providers/AuthProvider';
 import { API_BASE_URL } from '../../../shared/constants/config';
+import { SanCtiContext } from './SanCtiContext';
+import type { SanCtiContextType, ConferenceMember, DispositionData } from './SanCtiContext';
 
-export interface DispositionData {
-  disposition: string;
-  notes?: string | null;
-  callback_at?: string | null;
-  reason?: string | null;
-  plan_selected?: string | null;
-  payment_id?: string | null;
-  language_noted?: string | null;
-  disposition_sub?: string | null;
-  callback_sub?: string | null;
-  feedback_stage?: string | null;
-}
-
-export interface ConferenceMember {
-  conf_member: string;
-  conf_exten?: string;
-  [key: string]: any;
-}
-
-export interface SanCtiContextType {
-  agentState: string;
-  callState: string;
-  extension: string;
-  isOnBreak: boolean;
-  breakName: string;
-  isManualMode: boolean;
-  isHeld: boolean;
-  isMuted: boolean;
-  conferenceMembers: ConferenceMember[];
-  conferenceDialingMembers: ConferenceMember[];
-  callDuration: number;
-  currentCallId: number | null;
-  currentLeadId: number | string | null;
-  currentPhoneNumber: string;
-  currentLeadName: string;
-  currentLeadTmid: string;
-  currentLeadLocation: string;
-  currentLeadCallStatus: string;
-  isIncomingCall: boolean;
-  isAcceptingIncoming: boolean;
-  showDispositionForm: boolean;
-  sanDispositionOptions: string[];
-  login: () => void;
-  goReady: () => void;
-  dial: (phoneNumber: string, leadUserId: number | string, name?: string, tmid?: string, leadType?: string) => Promise<void>;
-  hangup: () => void;
-  toggleHold: () => void;
-  toggleMute: () => void;
-  startConference: () => void;
-  addConferenceNumber: (phoneNumber: string) => void;
-  acceptIncoming: () => void;
-  logout: () => void;
-  toggleManualMode: () => void;
-  submitDisposition: (dispositionData: DispositionData) => Promise<any>;
-  setShowDispositionForm: React.Dispatch<React.SetStateAction<boolean>>;
-  startMockCall?: (leadName?: string, phoneNumber?: string, tmid?: string) => void;
-}
-
-export const SanCtiContext = createContext<SanCtiContextType | null>(null);
-
-export function useSanCti() {
-  const context = useContext(SanCtiContext);
-  if (!context) {
-    throw new Error('useSanCti must be used within a SanCtiProvider');
-  }
-  return context;
-}
+// Context, hook (useSanCti), and shared types live in ./SanCtiContext —
+// kept out of this file so it exports only a component and stays
+// Fast-Refresh-safe during development (see comment there).
 
 interface SanCtiProviderProps {
   children: React.ReactNode;
@@ -232,6 +170,22 @@ export default function SanCtiProvider({
   // Ref to hold the active incoming call payload to pass during IncAccept
   const activeIncomingPayloadRef = useRef<any>(null);
 
+  // ── Hold confirmation tracking ──
+  // Incremented on every hold confirmation from SAN (SANAppHoldEvent or
+  // SANAppOutgoingEvent exten_status:'Hold'). toggleHold's revert timer uses
+  // it to detect whether SAN ever acknowledged the request.
+  const holdEventSeqRef = useRef<number>(0);
+  const holdRevertTimerRef = useRef<any>(null);
+
+  // ── Explicit SAN logout coordination (window.__sanCtiLogout) ──
+  // Resolver for an in-flight explicit SAN logout — resolved early by
+  // SANAppLogoutEvent so CRM logout doesn't have to wait the full timeout.
+  const sanLogoutResolveRef = useRef<(() => void) | null>(null);
+  // True once an explicit logout was dispatched — the user→null fallback
+  // effect must not send a second Logout (SAN's logOut() crashes reading
+  // its already-cleared logged_agent on a duplicate call).
+  const sanLogoutDoneRef = useRef<boolean>(false);
+
   // ── Helper: post to SAN iframe ──
   const postToSan = useCallback((data: any) => {
     const iframe = iframeRef.current;
@@ -286,15 +240,20 @@ export default function SanCtiProvider({
     callDurationRef.current = callDuration;
   }, [callDuration]);
 
-  // When CRM user logs out (user → null), send SAN logout so the softphone session is ended.
+  // Fallback: if CRM user disappears (user → null) WITHOUT the explicit
+  // __sanCtiLogout flow having run (e.g. session expiry), still try to end
+  // the SAN session. Note: when logout happens via AuthProvider.logout(),
+  // this provider usually unmounts before this effect can fire — that's why
+  // the explicit awaitable flow below exists.
   const prevUserIdRef = useRef<number | null>(user?.id ?? null);
   useEffect(() => {
     const prevId = prevUserIdRef.current;
     const currId = user?.id ?? null;
-    if (prevId !== null && currId === null) {
+    if (prevId !== null && currId === null && !sanLogoutDoneRef.current) {
       console.log('[SAN CTI] CRM logout detected — logging out SAN session');
       postToSan({ type: 'Logout' });
     }
+    if (currId !== null) sanLogoutDoneRef.current = false;
     prevUserIdRef.current = currId;
   }, [user, postToSan]);
 
@@ -343,7 +302,12 @@ export default function SanCtiProvider({
    */
   const login = useCallback(() => {
     if (!sanUsername) return;
-    freshLoginReloadDoneRef.current = false;
+    // freshLoginReloadDoneRef is NOT reset here: auto-retry logins (watchdog →
+    // iframe reload → re-login) must remember that the once-per-session reload
+    // already happened, otherwise every retry cycle reloads the iframe again
+    // and the "give up" branch below is never reached. It is reset only where
+    // a genuinely new session starts: mount (useRef(false)) and
+    // saveCtiCredentials (new credentials).
     loginPendingRef.current = true;
     if (loginWatchdogRef.current) clearTimeout(loginWatchdogRef.current);
     loginWatchdogRef.current = setTimeout(() => {
@@ -360,20 +324,31 @@ export default function SanCtiProvider({
           if (!freshLoginReloadDoneRef.current) {
             // First occurrence — reload the iframe exactly as SANAppInitEvent does.
             // Keep agentState as 'logged_out' so the auto-login effect re-fires on
-            // the new iframe load and starts a fresh 35s watchdog.
+            // the new iframe load and starts a fresh 35s watchdog. isIframeLoaded
+            // must go false first: the effect keys off it, and the new iframe's
+            // onLoad is what flips it back to true.
             freshLoginReloadDoneRef.current = true;
             console.warn('[SAN CTI] Login watchdog (35s): SANAppInitEvent pending — reloading iframe to force logged_agent init. ManualOn suppressed.');
+            setIsIframeLoaded(false);
             setSanIframeKey(prev => prev + 1);
           } else {
-            // Already reloaded once and still no SANAppInitEvent — mark ready as
-            // last resort so the agent isn't stuck forever. ManualOn still suppressed.
-            console.warn('[SAN CTI] Login watchdog (35s): SANAppInitEvent still pending after reload — marking ready as fallback. ManualOn suppressed.');
-            setAgentState('ready');
-            apiCall('POST', '/cti/status', { status: 'ready' });
+            // Already reloaded once and still no SANAppInitEvent. SAN responded
+            // to the postMessage channel but its login API never succeeded —
+            // in practice this is SAN rejecting the credentials, most often
+            // "You are already login on another machine" (SAN allows ONE live
+            // session per agent account; a session held by another origin —
+            // e.g. a localhost dev tab — blocks this one). SAN only surfaces
+            // that error as a toast inside its own iframe, so un-hide the
+            // panel and stay logged_out instead of faking 'ready' (dialing
+            // would silently do nothing).
+            console.warn('[SAN CTI] Login watchdog (35s): SANAppInitEvent still pending after reload — SAN login was rejected (likely "already login on another machine"). Showing SAN panel.');
+            setAgentState('logged_out');
+            setIsCtiMinimized(false);
           }
         } else {
           console.warn('[SAN CTI] Login watchdog (35s): no SANAppInitEvent and no SAN response — login failed');
           setAgentState('logged_out');
+          setIsCtiMinimized(false);
         }
       }
     }, 35000);
@@ -402,6 +377,9 @@ export default function SanCtiProvider({
       if (!json.status) throw new Error(json.message || 'Save failed');
       setCredOverride({ username, password, extension });
       setShowCtiSettings(false);
+      // New credentials = genuinely new SAN session — allow the once-per-session
+      // iframe reload (and its watchdog retry) to happen again.
+      freshLoginReloadDoneRef.current = false;
       // Small delay so the new credentials are applied before re-login
       setTimeout(() => login(), 300);
     } catch (e: any) {
@@ -587,32 +565,40 @@ export default function SanCtiProvider({
   }, [currentCallId, postToSan, stopTimer]);
 
   /**
-   * Toggle hold.
+   * Toggle hold — REAL channel-level hold.
    *
-   * SAN's own HoldCall/UnholdCall handler calls a function (HoldUnhold)
-   * that's commented out in their hosted script — confirmed by reading
-   * their source directly. There's no message we can send that reaches a
-   * working hold implementation on their end. The closest approximation we
-   * can do entirely from our own UI is the same mechanism Mute already
-   * uses (MuteCall/UnmuteCall, which IS a real, working function on their
-   * side): it silences the agent's outgoing audio. It's not a true two-way
-   * SIP hold (the caller hears silence, not hold music, and still hears
-   * nothing from the agent — same as Mute), so isHeld and isMuted are kept
-   * in lockstep here to avoid the two controls disagreeing about whether
-   * the mic is live.
+   * SAN's current build implements this properly: HoldCall/UnholdCall →
+   * their HoldUnhold → socket emit 'hold' {Channel, set:'1'|'0'} → server
+   * puts the trunk channel on hold (SDP renegotiated to recvonly, caller
+   * hears hold music). Confirmation comes back as SANAppHoldEvent
+   * {set:'1'|'0'} and as SANAppOutgoingEvent {exten_status:'Hold', hold:1|0}
+   * — verified live in the agent console.
+   *
+   * The UI flips optimistically; if NO confirmation event arrives within 5s
+   * (older SAN builds shipped with HoldUnhold commented out, in which case
+   * the HoldCall message is silently dropped), the state reverts so the bar
+   * never claims a hold that didn't happen. holdEventSeqRef counts every
+   * hold confirmation; the revert timer only fires if the count hasn't
+   * moved since the toggle.
    */
   const toggleHold = useCallback(() => {
-    if (isHeld) {
-      postToSan({ type: 'UnmuteCall' });
-    } else {
-      postToSan({ type: 'MuteCall' });
-    }
-    setIsHeld(prev => !prev);
-    setIsMuted(prev => !prev);
+    const next = !isHeld;
+    postToSan({ type: next ? 'HoldCall' : 'UnholdCall' });
+    setIsHeld(next);
+    const seqAtToggle = holdEventSeqRef.current;
+    if (holdRevertTimerRef.current) clearTimeout(holdRevertTimerRef.current);
+    holdRevertTimerRef.current = setTimeout(() => {
+      holdRevertTimerRef.current = null;
+      if (holdEventSeqRef.current === seqAtToggle && callStateRef.current === 'connected') {
+        console.warn('[SAN CTI] Hold/Unhold not confirmed by SAN within 5s — reverting UI state');
+        setIsHeld(!next);
+      }
+    }, 5000);
   }, [isHeld, postToSan]);
 
   /**
-   * Toggle mute. Kept in lockstep with isHeld — see toggleHold comment.
+   * Toggle mute — agent microphone only. Independent of hold now that hold
+   * is a real server-side hold rather than the old mute-based approximation.
    */
   const toggleMute = useCallback(() => {
     if (isMuted) {
@@ -621,7 +607,6 @@ export default function SanCtiProvider({
       postToSan({ type: 'MuteCall' });
     }
     setIsMuted(prev => !prev);
-    setIsHeld(prev => !prev);
   }, [isMuted, postToSan]);
 
   /**
@@ -816,9 +801,30 @@ export default function SanCtiProvider({
     // Reset dial guard so next call starts clean
     hasDialedThisSession.current = false;
 
-    return result;
+    // Include what was submitted and which lead it was for: DashboardLayout
+    // forwards this return value as the 'san-disposition-complete' event
+    // detail, and process-specific listeners (e.g. matchmaking's job-linked
+    // call logs) need the disposition values to sync their own records
+    // without asking the agent twice. Existing consumers only read loadNext
+    // off the merged object, so this is additive.
+    return {
+      ...(result || {}),
+      submitted: dispositionData,
+      // call_history_ivr row id for this call — listeners use it to stamp
+      // extra context (e.g. matchmaking job_id/match_status) onto the same
+      // row. -999 = mock call (no real row).
+      call_id: currentCallId,
+      lead: {
+        id: currentLeadId,
+        tmid: currentLeadTmid,
+        name: currentLeadName,
+        phone: currentPhoneNumber,
+        type: currentLeadTypeRef.current,
+      },
+      call_duration: callDurationRef.current,
+    };
     // callDuration intentionally omitted — use callDurationRef.current instead
-  }, [postToSan, apiCall, currentCallId, currentLeadId, currentPhoneNumber, isIncomingCall, sanDispositionOptions]);
+  }, [postToSan, apiCall, currentCallId, currentLeadId, currentLeadTmid, currentLeadName, currentPhoneNumber, isIncomingCall, sanDispositionOptions]);
 
   // ═══════════════════════════════════════════════════════════
   // SAN EVENT LISTENERS
@@ -856,6 +862,9 @@ export default function SanCtiProvider({
             console.warn('[SAN CTI] Login failed:', evData);
             if (loginWatchdogRef.current) { clearTimeout(loginWatchdogRef.current); loginWatchdogRef.current = null; }
             setAgentState('logged_out');
+            // SAN shows the actual reason (wrong password / "already login on
+            // another machine") only inside its own iframe — make it visible.
+            setIsCtiMinimized(false);
             apiCall('POST', '/cti/status', { status: 'logged_out' });
           }
           break;
@@ -877,6 +886,7 @@ export default function SanCtiProvider({
             freshLoginReloadDoneRef.current = true;
             console.log('[SAN CTI] SANAppInitEvent (first) — reloading iframe so logged_agent initialises from localStorage');
             setAgentState('logged_in');
+            setIsIframeLoaded(false);
             setSanIframeKey(prev => prev + 1);
             break;
           }
@@ -984,6 +994,14 @@ export default function SanCtiProvider({
                 event: 'answered',
               });
             }
+          } else if (extenStatus === 'Hold') {
+            // Server-side hold confirmation — observed live as
+            // {exten_status:'Hold', hold:1, trunk_channel:'SIP/...'}. Fires
+            // for both hold (hold:1) and unhold (hold:0). Redundant with
+            // SANAppHoldEvent but SAN sends both; treat either as authoritative.
+            holdEventSeqRef.current += 1;
+            if (holdRevertTimerRef.current) { clearTimeout(holdRevertTimerRef.current); holdRevertTimerRef.current = null; }
+            setIsHeld(payload?.hold === 1 || payload?.hold === '1' || payload?.hold === true);
           } else if (extenStatus === 'Hangup') {
             stopTimer();
             const finalDuration = callDurationRef.current;
@@ -1111,7 +1129,12 @@ export default function SanCtiProvider({
 
         // ── HOLD ── matches SAN's own reference exactly: `data.set == 1`
         // (their `set` field arrives as either a number or a numeric string).
+        // Payload observed live: {Channel:'SIP/1002-...', set:'1', class:''}.
+        // This is the authoritative hold state — it overrides the optimistic
+        // flip done in toggleHold and cancels its revert timer.
         case 'SANAppHoldEvent':
+          holdEventSeqRef.current += 1;
+          if (holdRevertTimerRef.current) { clearTimeout(holdRevertTimerRef.current); holdRevertTimerRef.current = null; }
           setIsHeld(payload?.set === 1 || payload?.set === '1');
           break;
 
@@ -1190,6 +1213,12 @@ export default function SanCtiProvider({
           setAgentState('logged_out');
           setCallState('idle');
           setExtension(payload?.exten || '');
+          // Unblock an awaiting CRM logout (window.__sanCtiLogout) immediately
+          // instead of letting it run out its fallback timeout.
+          if (sanLogoutResolveRef.current) {
+            sanLogoutResolveRef.current();
+            sanLogoutResolveRef.current = null;
+          }
           break;
 
         // ── SAN SENDS DISPOSITION OPTIONS ──
@@ -1347,6 +1376,33 @@ export default function SanCtiProvider({
       delete (window as any).toggleMute;
     };
   }, [dial, toggleHold, toggleMute]);
+
+  // ── Awaitable SAN logout for the CRM logout flow ──
+  // AuthProvider.logout() awaits this BEFORE clearing the user. Clearing the
+  // user unmounts DashboardLayout — and this iframe with it — which kills
+  // SAN's logout HTTP request mid-flight and leaves the agent session locked
+  // on SAN's server (next login from anywhere then fails with "You are
+  // already login on another machine"). Resolves when SANAppLogoutEvent
+  // arrives, or after 2.5s as a fallback so sign-out can never hang.
+  useEffect(() => {
+    (window as any).__sanCtiLogout = (): Promise<void> => {
+      if (agentStateRef.current === 'logged_out' || !iframeRef.current?.contentWindow) {
+        return Promise.resolve();
+      }
+      console.log('[SAN CTI] CRM logout — sending SAN logout and waiting for confirmation');
+      sanLogoutDoneRef.current = true;
+      postToSan({ type: 'Logout' });
+      apiCall('POST', '/cti/logout');
+      return new Promise<void>((resolve) => {
+        sanLogoutResolveRef.current = resolve;
+        setTimeout(() => {
+          sanLogoutResolveRef.current = null;
+          resolve();
+        }, 2500);
+      });
+    };
+    return () => { delete (window as any).__sanCtiLogout; };
+  }, [postToSan, apiCall]);
 
 
   const value: SanCtiContextType = {

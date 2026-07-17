@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   useGetDriverBankQuery,
+  useGetDriverBankDetailQuery,
   useAddDriverBankMutation,
   useUpdateDriverBankMutation,
   useDeleteDriverBankMutation,
@@ -74,7 +75,9 @@ const JobIdPicker: React.FC<{ value: string; onChange: (v: string) => void }> = 
   const { data: regData } = useGetMmJobListingsQuery({ type: 'regular',   section: 'active', status: 'open', limit: 100 });
   const { data: glData  } = useGetMmJobListingsQuery({ type: 'greenline', section: 'active', status: 'open', limit: 100 });
 
-  const allJobs = [...(regData?.data?.jobs ?? []), ...(glData?.data?.jobs ?? [])];
+  const regJobs = regData?.success && Array.isArray(regData?.data?.jobs) ? regData.data.jobs : [];
+  const glJobs  = glData?.success && Array.isArray(glData?.data?.jobs) ? glData.data.jobs : [];
+  const allJobs = [...regJobs, ...glJobs];
   const filtered = allJobs.filter(j =>
     !q || j.job_id?.toLowerCase().includes(q.toLowerCase()) || j.job_title?.toLowerCase().includes(q.toLowerCase())
   );
@@ -164,6 +167,7 @@ export const DriverForm: React.FC<{
       license_type: u.license_type  ?? f.license_type,
       vehicle_type: u.vehicle_type  ?? f.vehicle_type,
       experience:   u.experience    ?? f.experience,
+      current_income: u.current_income ?? f.current_income,
     }));
     setSearchQ(''); setShowSug(false);
   };
@@ -231,7 +235,7 @@ export const DriverForm: React.FC<{
                     <button type="button" key={u.id} onClick={() => fill(u)}
                       className="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-gray-100 last:border-0 flex items-center gap-2">
                       <span className="font-semibold text-gray-800 text-xs">{u.name}</span>
-                      <span className="text-gray-400 text-[10px] font-mono ml-auto">{u.tmid} · {u.mobile}</span>
+                      <span className="text-gray-400 text-[10px] font-mono ml-auto">{u.tmid} · **********</span>
                     </button>
                   ))}
                 </div>
@@ -253,7 +257,7 @@ export const DriverForm: React.FC<{
               </div>
               <div>
                 <label className="block text-[10px] text-gray-600 font-semibold mb-0.5">Mobile <span className="text-red-500">*</span></label>
-                <input value={form.mobile} onChange={e => set('mobile', e.target.value)} required className={fld} placeholder="10-digit" />
+                <input type="password" value={form.mobile} onChange={e => set('mobile', e.target.value)} required className={fld} placeholder="10-digit" />
               </div>
               <div>
                 <label className="block text-[10px] text-gray-600 font-semibold mb-0.5">TMID</label>
@@ -438,6 +442,7 @@ const MmDriverBank: React.FC = () => {
   const [editDriver, setEditDriver] = useState<any | null>(null);
   const [quickEdit, setQuickEdit]   = useState<any | null>(null);
   const [delId, setDelId]           = useState<number | null>(null);
+  const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
 
   const [deleteDriver, { isLoading: deleting }] = useDeleteDriverBankMutation();
 
@@ -452,18 +457,23 @@ const MmDriverBank: React.FC = () => {
   // The cursor=null branch here already replaces (not appends), so filter changes
   // that cause a new data reference automatically update the list.
   useEffect(() => {
-    const rows = data?.data ?? [];
-    if (cursor === null) setAllRows(rows);
-    else setAllRows(prev => {
-      const ids = new Set(prev.map((r: any) => r.id));
-      return [...prev, ...rows.filter((r: any) => !ids.has(r.id))];
-    });
-  }, [data, cursor]);
+    if (isFetching) return;
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    if (cursor === null) {
+      setAllRows(rows);
+    } else {
+      setAllRows(prev => {
+        const validPrev = Array.isArray(prev) ? prev : [];
+        const ids = new Set(validPrev.filter(Boolean).map((r: any) => r.id));
+        return [...validPrev, ...rows.filter((r: any) => r && !ids.has(r.id))];
+      });
+    }
+  }, [data, cursor, isFetching]);
 
   // Only reset cursor on filter change; data effect handles list refresh when new data arrives.
   useEffect(() => { setCursor(null); }, [search, availFilter, jobFilter]);
 
-  const resetList = () => { setCursor(null); setAllRows([]); refetch(); };
+  const resetList = () => { setCursor(null); refetch(); };
 
   const handleDelete = async (id: number) => {
     await deleteDriver(id).unwrap();
@@ -505,6 +515,10 @@ const MmDriverBank: React.FC = () => {
 
           <div className="ml-auto flex items-center gap-2">
             <span className="text-gray-400 text-[10px]">{total} driver{total !== 1 ? 's' : ''}</span>
+            <button onClick={resetList} title="Refresh list" disabled={isFetching}
+              className="flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-700 w-8 h-8 rounded-lg font-bold shadow-sm transition-all disabled:opacity-50">
+              <span className={`material-symbols-outlined text-sm ${isFetching ? 'animate-spin' : ''}`}>refresh</span>
+            </button>
             <button onClick={() => setShowAdd(true)}
               className="flex items-center gap-1.5 bg-[#8E44AD] hover:bg-[#7D3C98] text-white px-3 py-2 rounded-lg font-bold shadow-sm">
               <span className="material-symbols-outlined text-sm">person_add</span>Add Driver
@@ -542,7 +556,7 @@ const MmDriverBank: React.FC = () => {
                     <div className="font-bold text-gray-850">{row.name}</div>
                     {row.remarks && <div className="text-[9px] text-gray-400 truncate max-w-[120px]" title={row.remarks}>{row.remarks}</div>}
                   </td>
-                  <td className="py-2 px-3 font-mono text-[10px]">{row.mobile}</td>
+                  <td className="py-2 px-3 font-mono text-[10px]">**********</td>
                   <td className="py-2 px-3 font-mono text-[10px] text-gray-500">{row.tmid || '—'}</td>
                   <td className="py-2 px-3 font-mono text-[10px] text-[#8E44AD]">{row.job_id || '—'}</td>
                   <td className="py-2 px-3 text-[10px] text-gray-600">{row.location || '—'}</td>
@@ -568,6 +582,10 @@ const MmDriverBank: React.FC = () => {
                       <button title="Call" onClick={() => triggerCall(row.name, row.mobile, 'Driver Bank', row.tmid || 'DR')}
                         className="w-6 h-6 rounded-full bg-[#1A5276] hover:bg-[#154360] text-white flex items-center justify-center shadow-sm">
                         <span className="material-symbols-outlined text-[11px]">call</span>
+                      </button>
+                      <button title="Details" onClick={() => setSelectedDetailId(row.id)}
+                        className="w-6 h-6 rounded-full bg-[#3498DB] hover:bg-[#2980B9] text-white flex items-center justify-center shadow-sm">
+                        <span className="material-symbols-outlined text-[11px]">info</span>
                       </button>
                       <button title="Quick update" onClick={() => setQuickEdit(row)}
                         className="w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center shadow-sm">
@@ -607,6 +625,9 @@ const MmDriverBank: React.FC = () => {
       {showAdd    && <DriverForm onClose={() => { setShowAdd(false); resetList(); }} />}
       {editDriver && <DriverForm initial={editDriver} onClose={() => { setEditDriver(null); resetList(); }} />}
       {quickEdit  && <QuickEditModal driver={quickEdit} onClose={() => { setQuickEdit(null); resetList(); }} />}
+      {selectedDetailId !== null && (
+        <DriverDetailModal driverId={selectedDetailId} onClose={() => setSelectedDetailId(null)} />
+      )}
 
       {/* Delete confirm */}
       {delId !== null && (
@@ -630,6 +651,216 @@ const MmDriverBank: React.FC = () => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// ── DriverDetailModal ────────────────────────────────────────────────────────
+const DriverDetailModal: React.FC<{ driverId: number; onClose: () => void }> = ({ driverId, onClose }) => {
+  const { data, isLoading, error } = useGetDriverBankDetailQuery(driverId);
+  const { triggerCall } = useClickToCall();
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white p-6 rounded-2xl w-full max-w-lg shadow-2xl border border-gray-200 animate-pulse space-y-4">
+          <div className="h-6 bg-gray-200 rounded w-1/3"></div>
+          <div className="space-y-2">
+            <div className="h-4 bg-gray-200 rounded w-full"></div>
+            <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data?.success) {
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl border border-gray-200 text-center space-y-4">
+          <span className="material-symbols-outlined text-red-500 text-5xl">error</span>
+          <h3 className="text-lg font-bold text-gray-800">Error Loading Details</h3>
+          <p className="text-xs text-gray-500">{String(error) || 'Failed to fetch details'}</p>
+          <button onClick={onClose} className="w-full py-2 bg-gray-900 text-white rounded-xl font-semibold text-xs">Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  const { driver, applications = [], subscription } = data.data;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden border border-gray-200 animate-fadeIn">
+        
+        {/* Title / Hero bar */}
+        <div className="bg-gradient-to-r from-purple-800 to-indigo-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] bg-purple-500 text-white font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider">Driver Profile</span>
+              {driver.tmid && <span className="text-[10px] bg-white/20 text-white font-mono px-2 py-0.5 rounded-md">{driver.tmid}</span>}
+            </div>
+            <h2 className="text-lg font-extrabold mt-1 flex items-center gap-2">{driver.name}</h2>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white font-light text-xl transition-all">×</button>
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+          
+          {/* Identity & Basic Info Card */}
+          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Masked Mobile</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="font-mono text-gray-800 font-bold">**********</span>
+                <button onClick={() => triggerCall(driver.name, driver.mobile, 'Driver Bank', driver.tmid || 'DR')}
+                  className="w-5 h-5 rounded-full bg-green-600 hover:bg-green-700 text-white flex items-center justify-center transition-all">
+                  <span className="material-symbols-outlined text-[10px]">call</span>
+                </button>
+              </div>
+            </div>
+            <div>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Base Location</p>
+              <p className="text-gray-800 font-semibold mt-0.5">{driver.location || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">License Type</p>
+              <p className="text-gray-800 font-semibold mt-0.5">{driver.license_type || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Vehicle Type</p>
+              <p className="text-gray-800 font-semibold mt-0.5">{driver.vehicle_type || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Experience</p>
+              <p className="text-gray-800 font-semibold mt-0.5">{driver.experience || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Current Income</p>
+              <p className="text-gray-800 font-semibold mt-0.5">{driver.current_income || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Availability</p>
+              <div className="mt-0.5">
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${availCls(driver.availability)}`}>
+                  {availLbl(driver.availability)}
+                </span>
+              </div>
+            </div>
+            <div>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Added By</p>
+              <p className="text-gray-800 font-semibold mt-0.5 truncate" title={driver.added_by_admin_name || driver.added_by_name}>
+                {driver.added_by_admin_name || driver.added_by_name || '—'}
+              </p>
+            </div>
+          </div>
+
+          {/* Subscription plan details section */}
+          <div>
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-sm text-amber-500">workspace_premium</span>
+              Subscription plan of that driver
+            </h3>
+            {subscription ? (
+              <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-xl p-4 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-amber-800">{subscription.plan_name || 'Active Subscription'}</h4>
+                  <div className="flex gap-4 mt-1 text-[10px] text-gray-500">
+                    {subscription.sub_id && <span>Sub ID: <strong className="font-mono text-gray-700">{subscription.sub_id}</strong></span>}
+                    {subscription.payment_date && <span>Activated: <strong className="text-gray-700">{new Date(subscription.payment_date).toLocaleDateString()}</strong></span>}
+                  </div>
+                </div>
+                {subscription.payment_amount && (
+                  <div className="text-right">
+                    <span className="text-[10px] text-amber-700 font-bold uppercase block">Amount Paid</span>
+                    <span className="text-sm font-extrabold text-amber-800">₹{subscription.payment_amount}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-gray-100 text-gray-500 rounded-xl p-3 border border-gray-200 text-center italic text-[11px]">
+                No subscription plan details found for this user.
+              </div>
+            )}
+          </div>
+
+          {/* Job Applications section */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm text-indigo-500 font-light">list_alt</span>
+                Applied Jobs Info
+              </h3>
+              <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">
+                {applications.length} Job{applications.length !== 1 ? 's' : ''} Applied
+              </span>
+            </div>
+
+            {applications.length === 0 ? (
+              <div className="bg-gray-50 text-gray-400 rounded-xl p-6 border border-gray-200 border-dashed text-center">
+                <span className="material-symbols-outlined text-3xl mb-1 text-gray-300">work_off</span>
+                <p className="text-[11px] font-semibold">Has not applied to any jobs yet.</p>
+              </div>
+            ) : (
+              <div className="border border-gray-200 rounded-xl overflow-hidden bg-white max-h-56 overflow-y-auto custom-scrollbar">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr className="border-b border-gray-200">
+                      <th className="py-2 px-3 text-[9px] font-bold text-gray-400 uppercase tracking-wider">Job ID</th>
+                      <th className="py-2 px-3 text-[9px] font-bold text-gray-400 uppercase tracking-wider">Job Title</th>
+                      <th className="py-2 px-3 text-[9px] font-bold text-gray-400 uppercase tracking-wider">Salary</th>
+                      <th className="py-2 px-3 text-[9px] font-bold text-gray-400 uppercase tracking-wider">Route</th>
+                      <th className="py-2 px-3 text-[9px] font-bold text-gray-400 uppercase tracking-wider text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {applications.map((app: any) => (
+                      <tr key={app.app_id} className="hover:bg-gray-50 text-[10px]">
+                        <td className="py-2 px-3 font-mono font-bold text-purple-700">{app.job_id}</td>
+                        <td className="py-2 px-3 text-gray-800 font-semibold truncate max-w-[150px]" title={app.job_title}>{app.job_title}</td>
+                        <td className="py-2 px-3 text-gray-600">{app.salary || '—'}</td>
+                        <td className="py-2 px-3 text-gray-600 truncate max-w-[100px]" title={app.route}>{app.route || '—'}</td>
+                        <td className="py-2 px-3 text-center">
+                          <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full border ${
+                            app.app_status === 'accepted' ? 'bg-green-50 text-green-700 border-green-200' :
+                            app.app_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                            'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                            {app.app_status || 'pending'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Feedback & Remarks */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+              <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-1">Driver Feedback</h4>
+              <p className="text-xs text-gray-800 font-medium whitespace-pre-wrap">{driver.feedback || '—'}</p>
+            </div>
+            <div className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+              <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-1">Internal Remarks</h4>
+              <p className="text-xs text-gray-800 font-medium whitespace-pre-wrap">{driver.remarks || '—'}</p>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Action button */}
+        <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-end shrink-0">
+          <button onClick={onClose}
+            className="px-6 py-2 bg-gray-900 hover:bg-gray-850 text-white font-bold rounded-xl text-xs shadow transition-all">
+            Close Panel
+          </button>
+        </div>
+
+      </div>
     </div>
   );
 };

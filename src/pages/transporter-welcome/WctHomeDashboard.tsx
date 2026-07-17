@@ -19,14 +19,23 @@ export const WctHomeDashboard: React.FC = () => {
   const { data: progress } = useGetGateProgressQuery('twc');
   const [triggerMockConversion] = useTriggerMockConversionMutation();
 
-  const [slaList, setSlaList] = useState<SLARow[]>([
-    { id: '1', company: 'Sharma Logistics', tmid: 'TR-12094', registeredMinutesAgo: 107, slaMinutesLeft: 133 },
-    { id: '2', company: 'Anand Transport Co', tmid: 'TR-12098', registeredMinutesAgo: 178, slaMinutesLeft: 62 }
-  ]);
+  // Real KPIs from WctCallerController::dashboard (transporter-retargeted DW shape)
+  const kpis = realData?.data?.kpis;
+  const cdr = realData?.data?.cdr_stats;
+  const subs = realData?.data?.subscriptions;
+  const leaderboard = realData?.data?.leaderboard;
+  const callBreakdown = realData?.data?.call_breakdown ?? [];
+  const callsToday = kpis?.calls_today ?? 0;
+  const connectedToday = kpis?.connected_today ?? 0;
+  const conversionsToday = kpis?.subscriptions_today ?? 0;
+  const todayConvRate = connectedToday > 0 ? Math.round((conversionsToday / connectedToday) * 100) : 0;
+
+  const [slaList, setSlaList] = useState<SLARow[]>([]);
 
   useEffect(() => {
-    if (realData?.data?.overdueCallbacks && realData.data.overdueCallbacks.length > 0) {
-      setSlaList(realData.data.overdueCallbacks.map(c => ({
+    const callbacks = realData?.data?.overdue_callbacks;
+    if (callbacks && callbacks.length > 0) {
+      setSlaList(callbacks.map(c => ({
         id: c.id.toString(),
         company: c.name,
         tmid: c.tmid,
@@ -250,20 +259,20 @@ export const WctHomeDashboard: React.FC = () => {
         <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[150px]">
           <div>
             <span className="text-xs text-gray-500 uppercase font-semibold">Today's Stats</span>
-            <div className="text-2xl font-bold text-gray-850 mt-1">8 <span className="text-xs text-gray-400 font-normal">calls</span></div>
+            <div className="text-2xl font-bold text-gray-850 mt-1">{callsToday} <span className="text-xs text-gray-400 font-normal">calls</span></div>
             <div className="text-xs text-gray-500 mt-2 space-y-0.5">
-              <div>· 2 conversions</div>
-              <div>· 25% conversion rate</div>
+              <div>· {connectedToday} connected</div>
+              <div>· {conversionsToday} conversions</div>
             </div>
           </div>
         </div>
 
-        {/* Card 4 — Conversion Rate (Monthly) */}
+        {/* Card 4 — Conversion Rate (Today) */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm min-h-[150px]">
           <div>
             <span className="text-xs text-gray-500 uppercase font-semibold">Conversion Rate</span>
-            <div className="text-2xl font-bold text-[#27AE60] mt-1">13.8%</div>
-            <div className="text-xs text-[#27AE60] font-semibold mt-1">✓ Met ≥12% target</div>
+            <div className="text-2xl font-bold text-[#27AE60] mt-1">{todayConvRate}%</div>
+            <div className="text-xs text-gray-500 font-semibold mt-1">Conversions per connected call today</div>
           </div>
         </div>
 
@@ -271,6 +280,81 @@ export const WctHomeDashboard: React.FC = () => {
 
       {/* Incentive Gate Progress Widget */}
       <GateProgressWidget />
+
+      {/* ── Wide-range Call Data (DWC parity) ── */}
+      <section className="space-y-4">
+        <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Call Performance</h3>
+
+        {/* Assignment & Today's Funnel */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          {[
+            { label: 'Assigned', value: kpis?.assigned_total ?? 0, color: 'text-gray-800' },
+            { label: 'Pending', value: kpis?.calls_pending ?? 0, color: 'text-[#FB641B]' },
+            { label: 'Calls Today', value: callsToday, color: 'text-gray-800' },
+            { label: 'Connected', value: connectedToday, color: 'text-[#27AE60]' },
+            { label: 'Conversions', value: conversionsToday, color: 'text-[#27AE60]' },
+            { label: 'Feedback Due', value: kpis?.feedback_missing ?? 0, color: 'text-red-500' },
+            { label: 'Missed Calls', value: kpis?.missed_calls ?? 0, color: 'text-red-500' },
+            { label: 'Talk Time', value: kpis?.call_time ?? '0h 0m', color: 'text-gray-800', isText: true },
+          ].map((s, i) => (
+            <div key={i} className="bg-white border border-gray-200 rounded-lg p-3 text-center shadow-sm">
+              <div className={`font-bold ${s.isText ? 'text-base' : 'text-xl'} ${s.color}`}>{s.value}</div>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* CDR panel */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[16px]">call</span> CDR Summary (Today)
+            </h4>
+            <div className="grid grid-cols-2 gap-y-2 text-xs">
+              <span className="text-gray-500">Total Calls</span><span className="font-bold text-gray-800 text-right">{cdr?.total_calls ?? 0}</span>
+              <span className="text-gray-500">Connected</span><span className="font-bold text-[#27AE60] text-right">{cdr?.connected ?? 0}</span>
+              <span className="text-gray-500">Missed</span><span className="font-bold text-red-500 text-right">{cdr?.missed_calls ?? 0}</span>
+              <span className="text-gray-500">Incoming (missed)</span><span className="font-bold text-gray-800 text-right">{cdr?.incoming_total ?? 0} ({cdr?.incoming_missed ?? 0})</span>
+              <span className="text-gray-500">Outgoing (missed)</span><span className="font-bold text-gray-800 text-right">{cdr?.outgoing_total ?? 0} ({cdr?.outgoing_missed ?? 0})</span>
+              <span className="text-gray-500">Talk Time</span><span className="font-bold text-gray-800 text-right">{cdr?.talk_time ?? '0'}</span>
+              <span className="text-gray-500">Avg Ring</span><span className="font-bold text-gray-800 text-right">{cdr?.avg_ring_seconds ?? 0}s</span>
+            </div>
+          </div>
+
+          {/* Subscriptions panel */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[16px]">payments</span> Subscriptions
+            </h4>
+            <div className="grid grid-cols-2 gap-y-2 text-xs">
+              <span className="text-gray-500">Today count</span><span className="font-bold text-gray-800 text-right">{subs?.today_count ?? 0}</span>
+              <span className="text-gray-500">Today revenue</span><span className="font-bold text-[#27AE60] text-right">₹{(subs?.today_amount ?? 0).toLocaleString()}</span>
+              <span className="text-gray-500">Month count</span><span className="font-bold text-gray-800 text-right">{subs?.month_count ?? 0}</span>
+              <span className="text-gray-500">Month revenue</span><span className="font-bold text-[#27AE60] text-right">₹{(subs?.month_amount ?? 0).toLocaleString()}</span>
+              <span className="text-gray-500">Monthly (KPI)</span><span className="font-bold text-gray-800 text-right">₹{(kpis?.monthly_revenue ?? 0).toLocaleString()}</span>
+            </div>
+          </div>
+
+          {/* Leaderboard + breakdown */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[16px]">leaderboard</span> Rank & Mix
+            </h4>
+            <div className="text-center mb-3">
+              <div className="text-2xl font-bold text-[#FB641B]">#{leaderboard?.my_rank ?? '—'}</div>
+              <div className="text-[10px] text-gray-400 uppercase">of {leaderboard?.total_peers ?? 0} peers today</div>
+            </div>
+            <div className="space-y-1 text-xs max-h-[120px] overflow-y-auto">
+              {callBreakdown.length > 0 ? callBreakdown.map((b, i) => (
+                <div key={i} className="flex justify-between border-t border-gray-100 pt-1">
+                  <span className="text-gray-500 truncate">{b.process || 'Other'}</span>
+                  <span className="font-bold text-gray-800">{b.total}</span>
+                </div>
+              )) : <p className="text-gray-400 italic text-center">No calls logged yet.</p>}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Secondary Dashboard Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">

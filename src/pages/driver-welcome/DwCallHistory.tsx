@@ -42,14 +42,17 @@ export const DwCallHistory: React.FC = () => {
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [feedbackFilter, setFeedbackFilter] = useState<string>('all');
 
-  const { data: response, isLoading, isFetching } = useGetDwCallHistoryQuery({
+  const { data: response, isLoading, isFetching, refetch } = useGetDwCallHistoryQuery({
     page: currentPage,
     search: searchQuery || undefined,
+    feedback: feedbackFilter !== 'all' ? feedbackFilter : undefined,
     per_page: 15
   });
 
   const records = response?.data || [];
+  const feedbackOptions = response?.feedback_options || [];
   const pagination = response?.pagination || { total: 0, per_page: 15, current_page: 1, last_page: 1 };
 
   const filteredRecords = useMemo(() => {
@@ -73,12 +76,13 @@ export const DwCallHistory: React.FC = () => {
     });
   }, [records, directionFilter, statusFilter, dateFilter]);
 
-  const hasActiveFilters = directionFilter !== 'all' || statusFilter !== 'all' || dateFilter !== 'all' || searchQuery !== '';
+  const hasActiveFilters = directionFilter !== 'all' || statusFilter !== 'all' || dateFilter !== 'all' || feedbackFilter !== 'all' || searchQuery !== '';
 
   const resetFilters = () => {
     setDirectionFilter('all');
     setStatusFilter('all');
     setDateFilter('all');
+    setFeedbackFilter('all');
     setSearchQuery('');
     setCurrentPage(1);
   };
@@ -123,15 +127,26 @@ export const DwCallHistory: React.FC = () => {
             <p className="text-[#666666] text-xs font-semibold uppercase tracking-widest">Call History</p>
             <h2 className="text-2xl font-bold text-gray-800">Completed Call Logs & Feedback</h2>
           </div>
-          {hasActiveFilters && (
+          <div className="flex items-center gap-2 self-start md:self-auto">
             <button
-              onClick={resetFilters}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors self-start md:self-auto"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#27AE60] border border-[#27AE60]/30 bg-[#EAFAF1] hover:bg-[#d7f5e5] rounded-lg transition-colors disabled:opacity-60"
+              title="Refresh call history"
             >
-              <span className="material-symbols-outlined text-[14px]">filter_list_off</span>
-              Clear all filters
+              <span className={`material-symbols-outlined text-[14px] ${isFetching ? 'animate-spin' : ''}`}>refresh</span>
+              Refresh
             </button>
-          )}
+            {hasActiveFilters && (
+              <button
+                onClick={resetFilters}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
+              >
+                <span className="material-symbols-outlined text-[14px]">filter_list_off</span>
+                Clear all filters
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filter Row 1: Search + Direction + Status */}
@@ -200,6 +215,21 @@ export const DwCallHistory: React.FC = () => {
               <option value="this_month">This Month</option>
             </select>
           </div>
+
+          {/* Feedback Filter (distinct call_feedback values) */}
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-gray-400 text-[16px] pointer-events-none">reviews</span>
+            <select
+              value={feedbackFilter}
+              onChange={(e) => { setFeedbackFilter(e.target.value); setCurrentPage(1); }}
+              className={`pl-8 pr-3 py-2 text-sm border rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all font-semibold appearance-none max-w-[220px] ${feedbackFilter !== 'all' ? 'bg-teal-50 border-teal-300 text-teal-700' : 'bg-white border-gray-300 text-gray-700'}`}
+            >
+              <option value="all">All Feedbacks</option>
+              {feedbackOptions.map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Active filter pills */}
@@ -229,6 +259,12 @@ export const DwCallHistory: React.FC = () => {
               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-semibold rounded-full border border-violet-200">
                 {dateFilter.replace('_', ' ')}
                 <button onClick={() => setDateFilter('all')} className="ml-0.5 text-violet-400 hover:text-violet-600"><span className="material-symbols-outlined text-[11px]">close</span></button>
+              </span>
+            )}
+            {feedbackFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-100 text-teal-700 text-xs font-semibold rounded-full border border-teal-200">
+                {feedbackFilter}
+                <button onClick={() => setFeedbackFilter('all')} className="ml-0.5 text-teal-400 hover:text-teal-600"><span className="material-symbols-outlined text-[11px]">close</span></button>
               </span>
             )}
             <span className="text-[10px] text-gray-400 font-semibold ml-1">

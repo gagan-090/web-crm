@@ -1,6 +1,58 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useGetWctQueueQuery } from '../../services/api/webCrmApi';
+import { useGetWctLeadDetailQuery, useGetDwLeadDetailQuery } from '../../services/api/webCrmApi';
+import type { DwLead } from '../../services/api/webCrmApi';
+import { useQueueCache, useQueueCountsCache, invalidateQueueCache } from '../../shared/hooks/useQueueCache';
+import type { QueueType } from '../../shared/hooks/useQueueCache';
+import { useSanCti } from '../../shared/components/cti/SanCtiContext';
+import CrossRoleLeadDetail from '../shared/CrossRoleLeadDetail';
+
+type LeadRole = 'driver' | 'transporter';
+
+// Minutes since an ISO/SQL timestamp (best-effort; 0 when unparseable).
+const minutesSince = (ts?: string | null): number => {
+  if (!ts) return 0;
+  const t = new Date(ts.replace(' ', 'T')).getTime();
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, Math.floor((Date.now() - t) / 60000));
+};
+
+// Map the real transporter queue row (DwLead shape, retargeted) to the
+// display model this two-pane screen renders.
+const mapLead = (l: DwLead): TransporterLead => {
+  const regMins = minutesSince(l.registered_at);
+  const subscribed = (l.last_payment && l.last_payment > 0) || !!l.current_plan;
+  const status = (l.last_status || '').toLowerCase();
+  const history: CallHistory[] = l.last_call_at
+    ? [{
+        date: l.last_call_at,
+        duration: l.bill_duration || 'Call logged',
+        status: status === 'connected' ? 'Connected' : status === 'callback_later' ? 'Callback' : status ? 'NR' : 'NEW',
+        caller: 'You',
+      }]
+    : [];
+  return {
+    id: String(l.id),
+    tmid: l.tmid || `TR-${l.id}`,
+    companyName: l.name || `Transporter ${l.id}`,
+    contactName: l.name || 'Contact POC',
+    phone: l.mobile || '',
+    city: l.city || '',
+    state: l.state || '',
+    registeredMinutesAgo: regMins,
+    slaMinutesLeft: 240 - regMins, // 4-business-hour first-call SLA (approx)
+    fleetSize: 0,
+    segment: l.vehicle_type || '—',
+    avgKmMonth: '—',
+    preferredRoutes: '—',
+    subscribedStatus: subscribed ? 'premium' : 'none',
+    subscribedDate: l.subscription_date || undefined,
+    jobsPosted: 0,
+    jobsFilled: 0,
+    whatsapp: !!l.mobile,
+    notes: l.last_remarks || '',
+    history,
+  };
+};
 
 interface CallHistory {
   date: string;
@@ -33,104 +85,38 @@ interface TransporterLead {
 }
 
 export const WctCallQueue: React.FC = () => {
-  const navigate = useNavigate();
+  const { dial, callState, agentState } = useSanCti();
 
-  // Mock Transporter Leads conforming to Spec
-  const [leads, setLeads] = useState<TransporterLead[]>([
-    {
-      id: 'TR1',
-      tmid: 'TR-12094',
-      companyName: 'Sharma Logistics',
-      contactName: 'Rajeev Sharma',
-      phone: '+91-98765-43210',
-      city: 'Delhi',
-      state: 'NCR',
-      registeredMinutesAgo: 107, // 1h 47m
-      slaMinutesLeft: 133, // 2h 13m
-      fleetSize: 8, // >=6 -> Recommend Super Premium
-      segment: 'Long-haul, FMCG',
-      avgKmMonth: '12,000',
-      preferredRoutes: 'NCR–Mumbai corridor',
-      subscribedStatus: 'none',
-      jobsPosted: 0,
-      jobsFilled: 0,
-      whatsapp: true,
-      notes: 'Owner is very interested in driver placement. Call to pitch Super Premium.',
-      history: []
-    },
-    {
-      id: 'TR2',
-      tmid: 'TR-12098',
-      companyName: 'Anand Transport Co',
-      contactName: 'Karan Anand',
-      phone: '+91-98123-45678',
-      city: 'Bhiwandi',
-      state: 'Maharashtra',
-      registeredMinutesAgo: 178, // 2h 58m
-      slaMinutesLeft: 62, // 1h 02m -> Orange alert (<2h)
-      fleetSize: 4, // 1-5 -> Recommend Premium
-      segment: 'Intra-city, Retail',
-      avgKmMonth: '5,000',
-      preferredRoutes: 'Mumbai-Pune',
-      subscribedStatus: 'free',
-      subscribedDate: '12 Jun 2026',
-      jobsPosted: 2,
-      jobsFilled: 0,
-      whatsapp: true,
-      notes: 'Currently on Free Plan. Ready for D+7 upsell call.',
-      history: [
-        { date: '12 Jun, 11:30 AM', duration: '5m 12s', status: 'Connected', caller: 'You' }
-      ]
-    },
-    {
-      id: 'TR3',
-      tmid: 'TR-12099',
-      companyName: 'Grover Logistics',
-      contactName: 'Sanjay Grover',
-      phone: '+91-88888-88888',
-      city: 'Indore',
-      state: 'Madhya Pradesh',
-      registeredMinutesAgo: 320, // 5h 20m
-      slaMinutesLeft: -80, // -1h 20m -> Red alert (Breached)
-      fleetSize: 12,
-      segment: 'Industrial, Heavy Load',
-      avgKmMonth: '15,000',
-      preferredRoutes: 'Indore-Guwahati',
-      subscribedStatus: 'none',
-      jobsPosted: 0,
-      jobsFilled: 0,
-      whatsapp: false,
-      notes: 'Urgent call required. Registration breached the 4h SLA.',
-      history: [
-        { date: '19 Jun, 9:00 AM', duration: '0m 0s', status: 'NR', caller: 'You' }
-      ]
-    }
-  ]);
+  // DWC-style queue: server-side tabs (Fresh / All / Old / Uncalled / Callbacks
+  // / Called) with live counts, powered by the WCT queue cache.
+  const [activeTab, setActiveTab] = useState<QueueType>('all');
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  // Mixed-desk toggle: a TWC caller can also work driver leads (and vice versa).
+  // 'transporter' is this desk's native role. The queue endpoints already filter
+  // assigned_to = this caller + role, so switching queueRole reuses them 1:1.
+  const [leadRole, setLeadRole] = useState<LeadRole>('transporter');
+  const queueRole = leadRole === 'transporter' ? 'wct' : 'dw';
 
-  const { data: realData } = useGetWctQueueQuery();
+  const { data: queueData, isLoading: queueLoading, isFetching: queueFetching, refetch: refetchQueue, removeLead } =
+    useQueueCache(activeTab, { page, search, per_page: 50 }, undefined, queueRole);
+  const { counts, refetch: refetchCounts } = useQueueCountsCache(queueRole);
 
-  const [selectedId, setSelectedId] = useState<string>('TR1');
+  useEffect(() => { setPage(1); }, [activeTab, search, leadRole]);
+
+  const leads: TransporterLead[] = (queueData?.leads || []).map(mapLead);
+
+  const [selectedId, setSelectedId] = useState<string>('');
 
   useEffect(() => {
-    if (realData?.leads && realData.leads.length > 0) {
-      setLeads(realData.leads.map(l => ({
-        ...l,
-        companyName: l.name,
-        contactName: (l as any).contactName || 'POC Name',
-        registeredMinutesAgo: 60,
-        slaMinutesLeft: 180,
-        preferredRoutes: (l as any).preferredRoutes || 'Local',
-        subscribedStatus: (l as any).subscribedStatus || 'none',
-        jobsPosted: 0,
-        jobsFilled: 0
-      })) as any);
-      if (realData.leads[0]) {
-        setSelectedId(realData.leads[0].id);
-      }
+    if (leads.length > 0) {
+      setSelectedId(prev => (prev && leads.some(m => m.id === prev)) ? prev : leads[0].id);
+    } else {
+      setSelectedId('');
     }
-  }, [realData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueData]);
 
-  const [activeTab, setActiveTab] = useState<'all' | 'sla' | 'callbacks' | 'nr' | 'upsell' | 'free'>('all');
   const [sortBy, setSortBy] = useState<'sla' | 'reg' | 'callbacks'>('sla');
   const [toast, setToast] = useState<string | null>(null);
 
@@ -140,6 +126,23 @@ export const WctCallQueue: React.FC = () => {
   const saveTimerRef = useRef<any | null>(null);
 
   const selectedLead = leads.find(l => l.id === selectedId) || leads[0];
+
+  // Full transporter detail (profile, subscription, posted jobs, real call
+  // history) for the selected lead — the same depth the Driver Welcome screen
+  // shows, retargeted to transporters via WctCallerController::leadDetail.
+  const { data: detailData, isFetching: detailLoading } = useGetWctLeadDetailQuery(
+    selectedLead ? Number(selectedLead.id) : 0,
+    { skip: !selectedLead || leadRole !== 'transporter' }
+  );
+  const detail = detailData?.data;
+
+  // Cross-desk (driver) detail — fetched from the DW leadDetail endpoint when
+  // the toggle is on 'Driver'. Same response shape, rendered via the shared
+  // universal panel below.
+  const { data: driverDetailData, isFetching: driverDetailLoading } = useGetDwLeadDetailQuery(
+    selectedLead ? Number(selectedLead.id) : 0,
+    { skip: !selectedLead || leadRole !== 'driver' }
+  );
 
   useEffect(() => {
     if (selectedLead) {
@@ -154,9 +157,6 @@ export const WctCallQueue: React.FC = () => {
       clearTimeout(saveTimerRef.current);
     }
     saveTimerRef.current = setTimeout(() => {
-      setLeads(prevLeads =>
-        prevLeads.map(l => (l.id === selectedLead.id ? { ...l, notes: val } : l))
-      );
       const now = new Date();
       setSaveTimestamp(`Saved at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`);
     }, 5000);
@@ -168,20 +168,26 @@ export const WctCallQueue: React.FC = () => {
     };
   }, []);
 
+  // When a call dialed from this screen completes its disposition (via the
+  // global PostCallDispositionModal in DashboardLayout), auto-refresh the list
+  // and tab counts and drop the just-called transporter — the next lead is then
+  // auto-selected by the selection effect above, which reloads the right-hand
+  // profile/notes form. No manual refresh needed.
+  useEffect(() => {
+    const onDispositionComplete = () => {
+      invalidateQueueCache(queueRole);
+      refetchCounts();
+      refetchQueue();
+      if (selectedId) removeLead(Number(selectedId));
+    };
+    window.addEventListener('san-disposition-complete', onDispositionComplete);
+    return () => window.removeEventListener('san-disposition-complete', onDispositionComplete);
+  }, [selectedId, removeLead, refetchCounts, refetchQueue, queueRole]);
+
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
-
-  // Live ticking SLA left minutes
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setLeads(prevLeads =>
-        prevLeads.map(l => ({ ...l, slaMinutesLeft: l.slaMinutesLeft - 1 }))
-      );
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   const getBorderColorClass = (l: TransporterLead) => {
     if (l.slaMinutesLeft < 0) return 'border-red-600 bg-red-50/10'; // SLA Breached
@@ -213,55 +219,32 @@ export const WctCallQueue: React.FC = () => {
     return null;
   };
 
-  // Sort & Filter
-  const getFilteredLeads = () => {
-    let result = [...leads];
+  // Server already filters by the active tab; apply only the client-side sort.
+  const filteredLeads = [...leads].sort((a, b) => {
+    if (sortBy === 'reg') return b.registeredMinutesAgo - a.registeredMinutesAgo;
+    return a.slaMinutesLeft - b.slaMinutesLeft; // SLA urgency (default)
+  });
 
-    // Filter
-    if (activeTab === 'sla') {
-      result = result.filter(l => l.slaMinutesLeft <= 120); // <2h
-    } else if (activeTab === 'nr') {
-      result = result.filter(l => l.history.some(h => h.status === 'NR'));
-    } else if (activeTab === 'upsell') {
-      result = result.filter(l => l.subscribedStatus === 'free');
-    } else if (activeTab === 'free') {
-      result = result.filter(l => l.subscribedStatus === 'free');
-    }
-
-    // Sort
-    if (sortBy === 'sla') {
-      // Urgent SLA first (lowest minutes left)
-      result.sort((a, b) => a.slaMinutesLeft - b.slaMinutesLeft);
-    } else if (sortBy === 'reg') {
-      result.sort((a, b) => b.registeredMinutesAgo - a.registeredMinutesAgo);
-    }
-
-    return result;
-  };
-
-  const filteredLeads = getFilteredLeads();
-
-  // Active call trigger
+  // Active call trigger — places a real SAN CTI call. SanCtiProvider logs the
+  // call into call_history_ivr and the global PostCallDispositionModal captures
+  // the disposition, exactly like the Driver Welcome flow.
   const handleCallNow = (lead: TransporterLead) => {
-    navigate('/wct/wct-active-call-focus', {
-      state: {
-        leadId: lead.id,
-        tmid: lead.tmid,
-        name: lead.companyName,
-        contactName: lead.contactName,
-        phone: lead.phone,
-        location: `${lead.city}, ${lead.state}`,
-        fleetSize: lead.fleetSize,
-        segment: lead.segment,
-        avgKmMonth: lead.avgKmMonth,
-        preferredRoutes: lead.preferredRoutes,
-        subscribedStatus: lead.subscribedStatus,
-        whatsapp: lead.whatsapp,
-        history: lead.history,
-        notes: lead.notes,
-        slaMinutesLeft: lead.slaMinutesLeft
-      }
-    });
+    if (agentState !== 'ready') {
+      triggerToast(agentState === 'logged_out'
+        ? 'CTI login failed — check the SAN softphone panel (bottom-left) for the reason.'
+        : 'CTI agent is not ready yet — please wait a moment and try again.');
+      return;
+    }
+    if (callState !== 'idle') {
+      triggerToast('Finish or hang up the current call before dialing another transporter.');
+      return;
+    }
+    if (!lead.phone) {
+      triggerToast('This transporter has no phone number on record.');
+      return;
+    }
+    dial(lead.phone, Number(lead.id), lead.companyName, lead.tmid, leadRole);
+    triggerToast(`Dialing ${lead.companyName}…`);
   };
 
   return (
@@ -281,11 +264,18 @@ export const WctCallQueue: React.FC = () => {
         {/* Tab Filter Header */}
         <div className="p-3 border-b border-gray-200 shrink-0 bg-white">
           <div className="flex justify-between items-center mb-3">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Transporter Queue</span>
-            <div className="flex items-center gap-1">
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">{leadRole === 'transporter' ? 'Transporter Queue' : 'Driver Queue'}</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { refetchQueue(); refetchCounts(); }}
+                className="text-gray-400 hover:text-[#FB641B] transition-colors"
+                title="Refresh queue"
+              >
+                <span className={`material-symbols-outlined text-[16px] ${queueFetching ? 'animate-spin' : ''}`}>refresh</span>
+              </button>
               <span className="text-[10px] text-gray-400">Sort:</span>
-              <select 
-                value={sortBy} 
+              <select
+                value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
                 className="bg-transparent text-[11px] font-semibold text-gray-700 border-none outline-none cursor-pointer focus:ring-0 p-0"
               >
@@ -295,25 +285,56 @@ export const WctCallQueue: React.FC = () => {
             </div>
           </div>
 
-          {/* Filter Tab Row */}
+          {/* Driver / Transporter toggle — mixed-desk leads */}
+          <div className="flex items-center gap-1 mb-2 p-0.5 bg-gray-100 rounded-lg">
+            {(['transporter', 'driver'] as LeadRole[]).map(r => (
+              <button
+                key={r}
+                onClick={() => { setLeadRole(r); setSelectedId(''); }}
+                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-1 ${
+                  leadRole === r ? 'bg-[#FB641B] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">{r === 'transporter' ? 'local_shipping' : 'person'}</span>
+                {r === 'transporter' ? 'Transporter' : 'Driver'}
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="relative mb-2">
+            <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">search</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, TMID, mobile…"
+              className="pl-7 pr-2 h-8 w-full border border-gray-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#FB641B]"
+            />
+          </div>
+
+          {/* Filter Tab Row — same tabs as Driver Welcome, real counts */}
           <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
             {[
-              { id: 'all', label: `All (${leads.length})` },
-              { id: 'sla', label: 'SLA Urgent (2)', badgeColor: 'bg-red-500 text-white animate-pulse' },
-              { id: 'nr', label: 'NR' },
-              { id: 'upsell', label: 'D+7 Upsell' },
-              { id: 'free', label: 'Free Plan' }
+              { id: 'fresh', label: `Fresh (${counts?.fresh ?? 0})` },
+              { id: 'all', label: `All (${counts?.total ?? 0})` },
+              { id: 'old', label: `Old (${counts?.old ?? 0})` },
+              { id: 'uncalled', label: `Uncalled (${counts?.uncalled ?? 0})` },
+              { id: 'callbacks', label: `CB (${counts?.callbacks ?? 0})` },
+              { id: 'called', label: `Called (${counts?.called_today ?? 0})` },
             ].map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap border transition-colors ${
+                onClick={() => setActiveTab(tab.id as QueueType)}
+                className={`px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap border transition-colors flex items-center gap-1 ${
                   activeTab === tab.id
                     ? 'bg-[#FB641B] text-white border-[#FB641B]'
                     : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
                 }`}
               >
                 {tab.label}
+                {tab.id === 'callbacks' && (counts?.overdue_callbacks ?? 0) > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" title={`${counts?.overdue_callbacks} overdue`}></span>
+                )}
               </button>
             ))}
           </div>
@@ -321,7 +342,9 @@ export const WctCallQueue: React.FC = () => {
 
         {/* Lead List Area */}
         <div className="flex-grow overflow-y-auto min-h-0 divide-y divide-gray-100">
-          {filteredLeads.length > 0 ? (
+          {queueLoading ? (
+            <div className="p-8 text-center text-gray-400 text-xs italic">Loading transporters…</div>
+          ) : filteredLeads.length > 0 ? (
             filteredLeads.map(l => {
               const recommendation = getPlanRecommendation(l.fleetSize);
               return (
@@ -379,20 +402,53 @@ export const WctCallQueue: React.FC = () => {
 
       {/* Right Detail Pane */}
       <section className="flex-1 flex flex-col bg-white overflow-hidden min-w-0">
-        
+        {!selectedLead ? (
+          <div className="flex-grow flex items-center justify-center text-gray-400 text-sm italic p-8 text-center">
+            Select a {leadRole} from the queue to view details, or wait for new assignments to arrive.
+          </div>
+        ) : leadRole === 'driver' ? (
+          <CrossRoleLeadDetail
+            role="driver"
+            detail={driverDetailData?.data}
+            loading={driverDetailLoading}
+            accent="#FB641B"
+            canCall={agentState === 'ready' && callState === 'idle'}
+            onCall={() => handleCallNow(selectedLead)}
+            notesText={notesText}
+            onNotesChange={handleNotesChange}
+            saveTimestamp={saveTimestamp}
+          />
+        ) : (
+        <>
         <div className="flex-grow overflow-y-auto p-6 space-y-6">
           
           {/* Header block */}
           <div className="flex justify-between items-start gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-bold text-gray-900">{selectedLead.companyName}</h1>
-                <span className="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{selectedLead.tmid}</span>
-                <span className="border border-[#FB641B] text-[#FB641B] text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                  TRANSPORTER
-                </span>
+            <div className="flex items-start gap-3 min-w-0">
+              {/* Profile photo */}
+              {detail?.profile?.profile_image ? (
+                <img src={detail.profile.profile_image} alt={selectedLead.companyName} className="w-14 h-14 rounded-full object-cover border border-gray-200 shrink-0" />
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-orange-50 border border-orange-100 flex items-center justify-center text-[#FB641B] font-bold text-lg shrink-0">
+                  {(selectedLead.companyName || 'T').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-bold text-gray-900">{detail?.profile?.transport_name || selectedLead.companyName}</h1>
+                  <span className="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{selectedLead.tmid}</span>
+                  <span className="border border-[#FB641B] text-[#FB641B] text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                    TRANSPORTER
+                  </span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${(detail?.profile?.profile_completion ?? 0) >= 70 ? 'bg-[#EAFAF1] text-[#27AE60]' : 'bg-amber-50 text-amber-600'}`}>
+                    {detail?.profile?.profile_completion ?? 0}% complete
+                  </span>
+                </div>
+                <div className="text-sm text-gray-500 mt-1">
+                  Contact: {detail?.profile?.name || selectedLead.contactName}
+                  {(detail?.profile?.city || selectedLead.city) ? ` · ${[detail?.profile?.city || selectedLead.city, detail?.profile?.state || selectedLead.state].filter(Boolean).join(', ')}` : ''}
+                </div>
               </div>
-              <div className="text-sm text-gray-500 mt-1">Contact Person: {selectedLead.contactName} · {selectedLead.city}, {selectedLead.state}</div>
             </div>
 
             {/* WhatsApp chip */}
@@ -409,91 +465,138 @@ export const WctCallQueue: React.FC = () => {
             </div>
           </div>
 
-          {/* Subscription Status Badge */}
+          {/* Subscription Status (real plan_card / revenue) */}
           <div className="w-full">
-            {selectedLead.subscribedStatus === 'none' && (
+            {detail?.plan_card?.has_plan ? (
+              <div className="bg-[#EAFAF1] border border-[#27AE60]/20 text-[#27AE60] p-3 rounded-lg flex items-center justify-between text-xs font-bold shadow-sm">
+                <span>SUBSCRIBED — {detail.plan_card.plan_label}{detail.plan_card.amount ? ` (₹${detail.plan_card.amount.toLocaleString()})` : ''}</span>
+                <span>{detail.plan_card.expires_at ? `Expires ${detail.plan_card.expires_at}` : ''}</span>
+              </div>
+            ) : (detail && detail.total_revenue > 0) ? (
+              <div className="bg-orange-50 border border-orange-200 text-[#FB641B] p-3 rounded-lg flex items-center justify-between text-xs font-bold shadow-sm">
+                <span>PAST SUBSCRIBER · ₹{detail.total_revenue.toLocaleString()} lifetime</span>
+                <span className="uppercase text-[9px] bg-orange-100 px-1.5 py-0.5 rounded">Renewal Due</span>
+              </div>
+            ) : (
               <div className="bg-[#FDEDEC] border border-red-100 text-[#C0392B] p-3 rounded-lg flex items-center justify-between text-xs font-bold shadow-sm">
                 <span>NOT SUBSCRIBED</span>
                 <span className="uppercase text-[9px] bg-red-100 px-1.5 py-0.5 rounded">Conversion Pending</span>
               </div>
             )}
-            {selectedLead.subscribedStatus === 'free' && (
-              <div className="bg-orange-50 border border-orange-200 text-[#FB641B] p-3 rounded-lg flex items-center justify-between text-xs font-bold shadow-sm">
-                <span>FREE PLAN</span>
-                <span>Active since {selectedLead.subscribedDate || '12 Jun 2026'}</span>
-              </div>
-            )}
-            {selectedLead.subscribedStatus === 'premium' && (
-              <div className="bg-[#EAFAF1] border border-[#27AE60]/20 text-[#27AE60] p-3 rounded-lg flex items-center justify-between text-xs font-bold shadow-sm">
-                <span>PREMIUM SUBSCRIBED (₹1,999)</span>
-                <span>Expires 12 Sep 2026</span>
-              </div>
-            )}
-            {selectedLead.subscribedStatus === 'super' && (
-              <div className="bg-[#EAFAF1] border border-[#27AE60]/20 text-[#27AE60] p-3 rounded-lg flex items-center justify-between text-xs font-bold shadow-sm">
-                <span>SUPER PREMIUM SUBSCRIBED (₹2,999)</span>
-                <span>Expires 12 Sep 2026</span>
-              </div>
-            )}
           </div>
 
-          {/* Fleet Profile grid */}
+          {/* Transporter Profile grid (real detail) */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Fleet Profile</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-              <div>
-                <span className="text-gray-400 block uppercase text-[10px]">Fleet Size</span>
-                <span className="font-bold text-gray-800 mt-0.5 block">{selectedLead.fleetSize} trucks</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block uppercase text-[10px]">Segment</span>
-                <span className="font-bold text-gray-800 mt-0.5 block">{selectedLead.segment}</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block uppercase text-[10px]">Avg KM/Month</span>
-                <span className="font-bold text-gray-800 mt-0.5 block">{selectedLead.avgKmMonth} KM</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block uppercase text-[10px]">Preferred Routes</span>
-                <span className="font-bold text-gray-800 mt-0.5 block">{selectedLead.preferredRoutes}</span>
-              </div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Transporter Profile</h3>
+              {detailLoading && <span className="text-[10px] text-gray-400 italic">Loading…</span>}
             </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+              <div><span className="text-gray-400 block uppercase text-[10px]">Mobile</span><span className="font-bold text-gray-800 mt-0.5 block">{detail?.profile?.mobile || selectedLead.phone || '—'}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Email</span><span className="font-bold text-gray-800 mt-0.5 block truncate" title={detail?.profile?.email || ''}>{detail?.profile?.email || '—'}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Location</span><span className="font-bold text-gray-800 mt-0.5 block">{[detail?.profile?.city, detail?.profile?.state].filter(Boolean).join(', ') || '—'}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Pincode</span><span className="font-bold text-gray-800 mt-0.5 block">{detail?.profile?.pincode || '—'}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Registered</span><span className="font-bold text-gray-800 mt-0.5 block">{detail?.profile?.registered_at ? new Date(detail.profile.registered_at).toLocaleDateString() : '—'}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Language</span><span className="font-bold text-gray-800 mt-0.5 block uppercase">{detail?.profile?.language || '—'}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Lifetime Revenue</span><span className="font-bold text-[#27AE60] mt-0.5 block">₹{(detail?.total_revenue || 0).toLocaleString()}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Total Calls</span><span className="font-bold text-gray-800 mt-0.5 block">{detail?.total_calls ?? 0}</span></div>
+            </div>
+            {detail?.profile?.address && (
+              <div className="mt-3 pt-3 border-t border-gray-200 text-xs">
+                <span className="text-gray-400 uppercase text-[10px]">Address</span>
+                <p className="text-gray-700 mt-0.5">{detail.profile.address}</p>
+              </div>
+            )}
           </div>
 
-          {/* Active Job Postings */}
-          <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm text-xs">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Active Job Postings</h3>
-            <div className="flex justify-between items-center bg-gray-50/50 p-2.5 rounded border border-gray-150">
-              <span className="font-semibold text-gray-600">{selectedLead.jobsPosted} jobs posted · {selectedLead.jobsFilled} filled</span>
-              <button 
-                onClick={() => triggerToast('Redirecting to Matchmaking view...')}
-                className="text-[#FB641B] font-bold hover:underline"
-              >
-                View Jobs Board
-              </button>
+          {/* Business & KYC (real users-table fields) */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Business & KYC</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+              <div><span className="text-gray-400 block uppercase text-[10px]">Transport Name</span><span className="font-bold text-gray-800 mt-0.5 block">{detail?.profile?.transport_name || '—'}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Fleet Size</span><span className="font-bold text-gray-800 mt-0.5 block">{detail?.profile?.fleet_size || '—'}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Company Type</span><span className="font-bold text-gray-800 mt-0.5 block">{detail?.profile?.company_registration_type || '—'}</span></div>
+              <div><span className="text-gray-400 block uppercase text-[10px]">Referral</span><span className="font-bold text-gray-800 mt-0.5 block">{detail?.profile?.referral_code || '—'}</span></div>
+              <div>
+                <span className="text-gray-400 block uppercase text-[10px]">PAN Number</span>
+                <span className="font-bold text-gray-800 mt-0.5 block font-mono">{detail?.profile?.pan_number || '—'}</span>
+              </div>
+              <div className="md:col-span-2">
+                <span className="text-gray-400 block uppercase text-[10px]">GST Number</span>
+                <span className="font-bold text-gray-800 mt-0.5 block font-mono">{detail?.profile?.gst_number || '—'}</span>
+              </div>
             </div>
+
+            {/* Document thumbnails */}
+            {detail?.documents && detail.documents.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-3">
+                {detail.documents.map((doc) => (
+                  <div key={doc.key} className="flex flex-col items-center gap-1">
+                    {doc.uploaded && doc.url ? (
+                      <a href={doc.url} target="_blank" rel="noreferrer" className="block">
+                        <img src={doc.url} alt={doc.label} className="w-16 h-16 object-cover rounded border border-gray-200 hover:border-[#FB641B]" />
+                      </a>
+                    ) : (
+                      <div className="w-16 h-16 rounded border border-dashed border-gray-200 flex items-center justify-center text-gray-300">
+                        <span className="material-symbols-outlined text-[20px]">description</span>
+                      </div>
+                    )}
+                    <span className={`text-[9px] ${doc.uploaded ? 'text-[#27AE60] font-semibold' : 'text-gray-400'}`}>{doc.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Posted Jobs (real) */}
+          <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm text-xs">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Posted Jobs</h3>
+              <span className="text-[10px] text-gray-500 font-semibold">{detail?.jobs_posted_count ?? 0} jobs · {detail?.total_applicants ?? 0} applicants</span>
+            </div>
+            {detail?.posted_jobs && detail.posted_jobs.length > 0 ? (
+              <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                {detail.posted_jobs.map(job => (
+                  <div key={job.job_id} className="flex justify-between items-start gap-2 bg-gray-50/50 p-2.5 rounded border border-gray-150">
+                    <div className="min-w-0">
+                      <div className="font-bold text-gray-800 truncate">{job.title || 'Job posting'}</div>
+                      <div className="text-[10px] text-gray-500 truncate">{[job.location, job.vehicle_type, job.salary].filter(Boolean).join(' · ') || '—'}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold text-[#FB641B]">{job.applicants} applied</div>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-bold ${job.is_closed ? 'bg-gray-100 text-gray-500' : 'bg-[#EAFAF1] text-[#27AE60]'}`}>{job.is_closed ? 'Closed' : 'Active'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-gray-50/50 p-2.5 rounded border border-gray-150 text-gray-400 italic">No jobs posted by this transporter yet.</div>
+            )}
           </div>
 
           {/* Call history and Notes */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-            
-            {/* Timeline */}
+
+            {/* Timeline (real ivr_history) */}
             <div className="space-y-3">
               <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1">
                 <span className="material-symbols-outlined text-[16px]">history</span> Call History Timeline
               </h3>
-              
-              <div className="border border-gray-200 rounded-xl p-4 bg-white max-h-[200px] overflow-y-auto divide-y divide-gray-100">
-                {selectedLead.history.length > 0 ? (
-                  selectedLead.history.map((hist, idx) => (
-                    <div key={idx} className="py-2 first:pt-0 last:pb-0 text-xs">
+
+              <div className="border border-gray-200 rounded-xl p-4 bg-white max-h-[220px] overflow-y-auto divide-y divide-gray-100">
+                {detail?.ivr_history && detail.ivr_history.length > 0 ? (
+                  detail.ivr_history.map((h) => (
+                    <div key={h.id} className="py-2 first:pt-0 last:pb-0 text-xs">
                       <div className="flex justify-between items-center mb-1 font-semibold">
-                        <span className="text-gray-800">{hist.date} — {hist.duration}</span>
-                        <span className="px-1.5 py-0.5 bg-orange-50 text-[#FB641B] rounded text-[10px]">
-                          {hist.status}
+                        <span className="text-gray-800">{new Date(h.created_at).toLocaleString()}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${(h.call_status || '').toLowerCase() === 'connected' ? 'bg-[#EAFAF1] text-[#27AE60]' : 'bg-orange-50 text-[#FB641B]'}`}>
+                          {h.call_status || 'pending'}
                         </span>
                       </div>
-                      <p className="text-gray-500">Caller: {hist.caller}</p>
+                      <p className="text-gray-500">{h.call_feedback || '—'}{h.assigned_name ? ` · ${h.assigned_name}` : ''}</p>
+                      {((h as any).recording_url || h.call_recording) && (
+                        <audio controls src={(h as any).recording_url || h.call_recording || undefined} className="h-7 mt-1 max-w-full" />
+                      )}
                     </div>
                   ))
                 ) : (
@@ -573,7 +676,8 @@ export const WctCallQueue: React.FC = () => {
             </select>
           </div>
         </div>
-
+        </>
+        )}
       </section>
 
     </main>

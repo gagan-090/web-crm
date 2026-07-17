@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useInitiateIvrCallMutation, useSubmitCtiFeedbackMutation } from '../../services/api/ctiApi';
+import { useSubmitWctFeedbackMutation } from '../../services/api/webCrmApi';
+import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 
 interface Objection {
   key: string;
@@ -12,18 +13,18 @@ export const WctActiveCallFocus: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [initiateIvrCall] = useInitiateIvrCallMutation();
-  const [submitCtiFeedback] = useSubmitCtiFeedbackMutation();
-  const [ivrCallId, setIvrCallId] = useState<number | null>(null);
+  const [submitWctFeedback] = useSubmitWctFeedbackMutation();
+  const { currentLeadId, currentCallId, currentLeadName, currentLeadTmid, currentPhoneNumber, currentLeadLocation } = useSanCti();
 
-  // Load state from routing if available
+  // Prefer the live SAN CTI call context (set when the Call Queue dialed this
+  // transporter); fall back to any routing state, then to neutral placeholders.
   const stateLead = location.state || {};
-  const leadName = stateLead.name || 'Sharma Logistics';
-  const leadTmid = stateLead.tmid || 'TR-12094';
-  const leadContact = stateLead.contactName || 'Rajeev Sharma';
-  const leadPhone = stateLead.phone || '+91-98765-43210';
-  const leadLocation = stateLead.location || 'Delhi, NCR';
-  const fleetSize = stateLead.fleetSize || 8;
+  const leadName = currentLeadName || stateLead.name || 'Transporter';
+  const leadTmid = currentLeadTmid || stateLead.tmid || '';
+  const leadContact = stateLead.contactName || currentLeadName || 'Contact POC';
+  const leadPhone = currentPhoneNumber || stateLead.phone || '';
+  const leadLocation = currentLeadLocation || stateLead.location || '';
+  const fleetSize = stateLead.fleetSize || 0;
   const isFirstAttempt = stateLead.history ? stateLead.history.length === 0 : true;
 
   const isCampaign = stateLead.isCampaign || false;
@@ -85,31 +86,9 @@ export const WctActiveCallFocus: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Log CTI Call start on backend
-  useEffect(() => {
-    const numericLeadId = parseInt(leadTmid.replace(/\D/g, ''), 10) || null;
-    initiateIvrCall({
-      user_id: numericLeadId,
-      user_name: leadName,
-      user_mobile: leadPhone,
-      user_tm_id: leadTmid,
-      assigned_to: 1, // overwritten on backend
-      assigned_name: 'Demo Agent',
-      assigned_number: '178',
-      did_number: '4310735',
-      process: 'wct',
-      call_type: 'web-ivr'
-    }).unwrap()
-      .then((res) => {
-        if (res.success && res.data) {
-          console.log('[CTI] WCT Call initiated logged with ID:', res.data.id);
-          setIvrCallId(res.data.id);
-        }
-      })
-      .catch((err) => {
-        console.warn('[CTI] Failed to log Call initiation:', err);
-      });
-  }, []);
+  // The call itself is placed via SAN CTI from the Call Queue (SanCtiProvider
+  // logs it into call_history_ivr). This screen is the live script/objection
+  // companion — it must NOT initiate its own call.
 
   const formatTimer = (secCount: number) => {
     const mins = Math.floor(secCount / 60);
@@ -175,35 +154,40 @@ export const WctActiveCallFocus: React.FC = () => {
   const sortedObjections = getSortedObjections();
 
   const handleDispositionSubmit = async () => {
-    // Map UI outcomes to CTI validation outcomes
-    let ctiStatus = 'FAILED';
-    if (outcome === 'connected') ctiStatus = 'ANSWER';
-    else if (outcome === 'nr') ctiStatus = 'NO_ANSWER';
-    else if (outcome === 'busy') ctiStatus = 'BUSY';
-    else if (outcome === 'off') ctiStatus = 'SWITCH_OFF';
-    else if (outcome === 'wrong') ctiStatus = 'FAILED';
+    // Map UI outcomes to the call_history_ivr statuses used by the DW/WCT flow.
+    const statusMap: Record<string, string> = {
+      connected: 'connected',
+      nr: 'not_connected',
+      busy: 'not_connected',
+      off: 'not_connected',
+      wrong: 'not_connected',
+    };
+    const call_status = statusMap[outcome] || 'not_connected';
 
-    let ctiFeedback = 'Not Interested';
-    if (connectedSubStatus === 'interested') ctiFeedback = 'Interested';
-    else if (connectedSubStatus === 'callback') ctiFeedback = 'Callback Requested';
-    else if (connectedSubStatus === 'subscribed') ctiFeedback = 'Already Placed';
+    let call_feedback = 'Not Interested';
+    if (connectedSubStatus === 'interested') call_feedback = 'Interested';
+    else if (connectedSubStatus === 'callback') call_feedback = 'Callback Requested';
+    else if (connectedSubStatus === 'subscribed') call_feedback = 'Already Subscribed';
+    else if (outcome && outcome !== 'connected') call_feedback = outcome.toUpperCase();
 
-    const recordId = ivrCallId || parseInt(leadTmid.replace(/\D/g, ''), 10) || 1;
+    const userId = Number(currentLeadId) || parseInt(leadTmid.replace(/\D/g, ''), 10) || 0;
 
     try {
-      await submitCtiFeedback({
-        id: recordId,
-        call_status: ctiStatus,
-        call_feedback: ctiFeedback,
-        call_remarks: dispositionNotes || 'WCT Disposition logged from Active Call screen'
-      }).unwrap();
-      
-      triggerToast('CTI Call feedback saved successfully ✓');
+      if (userId) {
+        await submitWctFeedback({
+          user_id: userId,
+          call_status,
+          call_feedback,
+          call_remarks: dispositionNotes || 'WCT disposition logged from Active Call screen',
+          call_id: currentCallId || undefined,
+        }).unwrap();
+      }
+      triggerToast('Disposition saved ✓');
     } catch (err: any) {
-      console.error('[CTI] Failed to save CTI disposition feedback:', err);
+      console.error('[WCT] Failed to save disposition feedback:', err);
+      triggerToast('Failed to save disposition');
     }
 
-    triggerToast('Disposition logged successfully');
     setTimeout(() => {
       navigate(isCampaign ? '/wct/wct-campaign-leads' : '/wct/wct-call-queue');
     }, 800);

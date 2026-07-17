@@ -4,6 +4,7 @@ import { useGetDwDashboardQuery } from '../../services/api/webCrmApi';
 import { useGetGateProgressQuery } from '../../services/api/incentiveApi';
 import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
+import { DriverForm } from '../matchmaking/MmDriverBank';
 
 type Period = 'today' | 'yesterday' | 'last_7_days' | 'this_week' | 'this_month' | 'all';
 
@@ -46,6 +47,7 @@ export const DwHomeDashboard: React.FC = () => {
   const [period, setPeriod] = useState<Period>('today');
   const { agentState, callState, dial } = useSanCti();
   const [toast, setToast] = useState<string | null>(null);
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -157,6 +159,12 @@ export const DwHomeDashboard: React.FC = () => {
           </h2>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsBankModalOpen(true)}
+            className="bg-[#8E44AD] hover:bg-[#7D3C98] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors active:scale-95 shrink-0"
+          >
+            <span className="material-symbols-outlined text-[16px]">account_box</span> Add Driver to Bank
+          </button>
           {isFetching && (
             <span className="text-[11px] text-gray-400 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse"></span>Updating...
@@ -579,6 +587,15 @@ export const DwHomeDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {isBankModalOpen && (
+        <DriverForm
+          onClose={() => {
+            setIsBankModalOpen(false);
+            triggerToast('Driver added to Matchmaking Driver Bank successfully!');
+          }}
+        />
+      )}
 
     </div>
   );

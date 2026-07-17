@@ -511,6 +511,15 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/dw/dw-driver-bank',
+    name: 'Driver Bank',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'account_box',
+    showInMenu: true
+  },
+  {
     path: '/dw/dw-call-history',
     name: 'Call History',
     role: 'Driver Welcome',
@@ -526,6 +535,15 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'campaign',
+    showInMenu: true
+  },
+  {
+    path: '/dw/dw-job-search',
+    name: 'Job Search',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'work',
     showInMenu: true
   },
   {
@@ -628,6 +646,24 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'queue',
+    showInMenu: true
+  },
+  {
+    path: '/wct/wct-call-history',
+    name: 'Call History',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'history',
+    showInMenu: true
+  },
+  {
+    path: '/wct/wct-jobs',
+    name: 'Transporter Jobs',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'work',
     showInMenu: true
   },
   {

@@ -81,6 +81,8 @@ import DwActiveCallFocus from '../pages/driver-welcome/DwActiveCallFocus';
 import DwWhatsappPanel from '../pages/driver-welcome/DwWhatsappPanel';
 import DwPerformanceStats from '../pages/driver-welcome/DwPerformanceStats';
 import DwCampaignLeads from '../pages/driver-welcome/DwCampaignLeads';
+import DwJobSearch from '../pages/driver-welcome/DwJobSearch';
+import DwDriverBank from '../pages/driver-welcome/DwDriverBank';
 import WctCallbackCalendar from '../pages/transporter-welcome/WctCallbackCalendar';
 import WctHomeDashboard from '../pages/transporter-welcome/WctHomeDashboard';
 import WctActiveCallFocus from '../pages/transporter-welcome/WctActiveCallFocus';
@@ -91,6 +93,8 @@ import WctPerformanceStats from '../pages/transporter-welcome/WctPerformanceStat
 import WctDispositionGate from '../pages/transporter-welcome/WctDispositionGate';
 import WctD7UpsellQueue from '../pages/transporter-welcome/WctD7UpsellQueue';
 import WctCampaignLeads from '../pages/transporter-welcome/WctCampaignLeads';
+import WctCallHistory from '../pages/transporter-welcome/WctCallHistory';
+import WctJobs from '../pages/transporter-welcome/WctJobs';
 import HrAnalyticsSummary from '../pages/matchmaking/HrAnalyticsSummary';
 import MmDriverBank from '../pages/matchmaking/MmDriverBank';
 import TlOverviewTrMatchmaking from '../pages/matchmaking/TlOverviewTrMatchmaking';
@@ -233,12 +237,14 @@ export const AppRoutes: React.FC = () => {
           <Route path="dw/dw-training-hub" element={<RoleGuard permission="calls:dial"><DwTrainingHub /></RoleGuard>} />
           <Route path="dw/dw-script-library" element={<RoleGuard permission="calls:dial"><DwScriptLibrary /></RoleGuard>} />
           <Route path="dw/dw-call-queue" element={<RoleGuard permission="calls:dial"><DwCallQueue /></RoleGuard>} />
+          <Route path="dw/dw-driver-bank" element={<RoleGuard permission="calls:dial"><DwDriverBank /></RoleGuard>} />
           <Route path="dw/dw-call-history" element={<RoleGuard permission="calls:dial"><DwCallHistory /></RoleGuard>} />
           <Route path="dw/dw-callback-calendar" element={<RoleGuard permission="calls:dial"><DwCallbackCalendar /></RoleGuard>} />
           <Route path="dw/dw-whatsapp-panel" element={<RoleGuard permission="calls:dial"><DwWhatsappPanel /></RoleGuard>} />
           <Route path="dw/dw-performance-stats" element={<RoleGuard permission="calls:dial"><DwPerformanceStats /></RoleGuard>} />
           <Route path="dw/dw-active-call-focus" element={<RoleGuard permission="calls:dial"><DwActiveCallFocus /></RoleGuard>} />
           <Route path="dw/dw-campaign-leads" element={<RoleGuard permission="calls:dial"><DwCampaignLeads /></RoleGuard>} />
+          <Route path="dw/dw-job-search" element={<RoleGuard permission="calls:dial"><DwJobSearch /></RoleGuard>} />
           <Route path="wct/wct-active-call-focus" element={<RoleGuard permission="calls:dial"><WctActiveCallFocus /></RoleGuard>} />
           <Route path="wct/wct-callback-calendar" element={<RoleGuard permission="calls:dial"><WctCallbackCalendar /></RoleGuard>} />
           <Route path="wct/wct-home-dashboard" element={<RoleGuard permission="calls:dial"><WctHomeDashboard /></RoleGuard>} />
@@ -249,6 +255,8 @@ export const AppRoutes: React.FC = () => {
           <Route path="wct/wct-disposition-gate" element={<RoleGuard permission="calls:dial"><WctDispositionGate /></RoleGuard>} />
           <Route path="wct/wct-d7-upsell-queue" element={<RoleGuard permission="calls:dial"><WctD7UpsellQueue /></RoleGuard>} />
           <Route path="wct/wct-campaign-leads" element={<RoleGuard permission="calls:dial"><WctCampaignLeads /></RoleGuard>} />
+          <Route path="wct/wct-call-history" element={<RoleGuard permission="calls:dial"><WctCallHistory /></RoleGuard>} />
+          <Route path="wct/wct-jobs" element={<RoleGuard permission="calls:dial"><WctJobs /></RoleGuard>} />
           <Route path="mm/hr-analytics-summary" element={<RoleGuard permission="calls:dial"><HrAnalyticsSummary /></RoleGuard>} />
           <Route path="mm/mm-driver-bank" element={<RoleGuard permission="calls:dial"><MmDriverBank /></RoleGuard>} />
           <Route path="mm/tl-overview-tr-matchmaking" element={<RoleGuard permission="calls:dial"><TlOverviewTrMatchmaking /></RoleGuard>} />

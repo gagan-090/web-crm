@@ -6,6 +6,13 @@ export const baseApi = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({
     baseUrl: API_BASE_URL,
+    // Never serve API responses from the browser's HTTP disk cache. Without
+    // this, a GET whose URL previously returned something cacheable (e.g. the
+    // SPA index.html a server sent before an endpoint existed) can be replayed
+    // "200 OK (from disk cache)" — RTK Query then receives HTML instead of
+    // JSON and the screen renders empty. no-store forces every request to the
+    // network, which is what you want for an authenticated, always-fresh API.
+    cache: 'no-store',
     prepareHeaders: (headers) => {
       // Pull auth token from localStorage if present
       const storedUser = localStorage.getItem('tm_connect_user');

@@ -17,6 +17,9 @@ export interface DwLead {
   last_payment: number | null;
   current_plan: string | null;
   call_count: number;
+  subscription_date?: string | null;
+  recording_url?: string | null;
+  bill_duration?: string | null;
 }
 
 export interface DwCdrStats {
@@ -149,6 +152,8 @@ export interface DwLeadDetailResponse {
       license_expiry: string | null;
       experience: string | null;
       profile_complete: boolean;
+      profile_completion: number;
+      profile_image: string | null;
       registered_at: string;
       language: string;
       referral_code: string | null;
@@ -168,7 +173,22 @@ export interface DwLeadDetailResponse {
       routes: string | null;
       previous_employer: string | null;
       assigned_to: number | null;
+      // Transporter business fields (users table, transporter role)
+      transport_name?: string | null;
+      pan_number?: string | null;
+      pan_image?: string | null;
+      gst_number?: string | null;
+      gst_certificate?: string | null;
+      fleet_size?: number | string | null;
+      company_registration_type?: string | null;
+      driver_profile_completion?: number;
     };
+    documents?: Array<{
+      key: string;
+      label: string;
+      uploaded: boolean;
+      url: string | null;
+    }>;
     plan_card: {
       has_plan: boolean;
       plan_label: string;
@@ -207,6 +227,23 @@ export interface DwLeadDetailResponse {
     }>;
     mm_history?: Array<any>;
     applied_jobs?: Array<any>;
+    // Transporter-specific: the transporter's own posted jobs (WCT leadDetail)
+    posted_jobs?: Array<{
+      job_id: number;
+      ref: string | null;
+      title: string;
+      location: string | null;
+      route: string | null;
+      vehicle_type: string | null;
+      salary: string | null;
+      drivers_required: number | null;
+      status: string;
+      is_closed: boolean;
+      applicants: number;
+      posted_at: string;
+    }>;
+    jobs_posted_count?: number;
+    total_applicants?: number;
     payments: Array<{
       id: number;
       subscription_plan_id: string | null;
@@ -311,6 +348,7 @@ export interface DwCallHistoryResponse {
     date_display: string;
     recording_url: string | null;
   }>;
+  feedback_options?: string[];
   pagination: {
     total: number;
     per_page: number;
@@ -380,6 +418,101 @@ export interface WctQueueResponse {
       caller: string;
     }>;
   }>;
+}
+
+export interface WctJob {
+  job_id: number;
+  ref: string | null;
+  title: string;
+  location: string | null;
+  route: string | null;
+  vehicle_type: string | null;
+  salary: string | null;
+  drivers_required: number | null;
+  is_closed: boolean;
+  plan_type: string;
+  plan_label: string;
+  applicants: number;
+  posted_at: string;
+  transporter: {
+    id: number;
+    name: string;
+    tmid: string;
+    mobile: string;
+    city: string | null;
+    state: string | null;
+  };
+}
+
+export interface WctJobsResponse {
+  status: boolean;
+  data: {
+    jobs: WctJob[];
+    pagination: { total: number; per_page: number; current_page: number; last_page: number };
+  };
+}
+
+export interface WctJobApplicant {
+  apply_id: number;
+  driver_id: number | null;
+  name: string;
+  tmid: string | null;
+  mobile: string | null;
+  city: string | null;
+  registered_at: string | null;
+  applied_at: string;
+  status: string;
+  subscription: string;
+  subscription_amount: number;
+}
+
+export interface WctJobApplicantsResponse {
+  status: boolean;
+  data: {
+    job: {
+      job_id: number;
+      ref: string | null;
+      title: string;
+      location: string | null;
+      route: string | null;
+      vehicle_type: string | null;
+      salary: string | null;
+      experience: string | null;
+      license_type: string | null;
+      drivers_required: number | null;
+      description: string | null;
+      posted_at: string;
+      is_closed: boolean;
+      plan_type: string;
+      plan_label: string;
+      transporter: { id: number; name: string; tmid: string; mobile: string; city: string | null; state: string | null };
+    };
+    applicants: WctJobApplicant[];
+    applicant_count: number;
+  };
+}
+
+export interface WctD7UpsellLead {
+  id: number;
+  tmid: string;
+  company_name: string;
+  contact_name: string;
+  phone: string;
+  location: string;
+  free_plan_date: string;
+  days_since_free: number;
+  fleet_size: string | null;
+  segment: string;
+  last_call_note: string;
+  registered_at: string | null;
+}
+
+export interface WctD7UpsellResponse {
+  status: boolean;
+  data: {
+    leads: WctD7UpsellLead[];
+    pagination: { total: number; per_page: number; current_page: number; last_page: number };
+  };
 }
 
 export interface MmDashboardResponse {
@@ -840,6 +973,55 @@ export interface DwQueueParams {
   profile_complete?: string;
 }
 
+export interface DwJobSearchParams {
+  page?: number;
+  per_page?: number;
+  status?: 'open' | 'all';
+  search?: string;
+  state_id?: number | string;
+  salary?: string;
+  experience?: string;
+}
+
+export interface DwJob {
+  id: number;
+  job_id: string | null;
+  job_title: string | null;
+  job_location: string | null;
+  salary_range: string | null;
+  experience: string | null;
+  license_type: string | null;
+  vehicle_type: string | null;
+  vehicle_type_label: string;
+  drivers_required: number | string | null;
+  status: string | null;
+  is_open: boolean;
+  application_deadline: string | null;
+  created_at: string | null;
+  transporter_id: number | null;
+  transporter_name: string | null;
+  transporter_tmid: string | null;
+  transporter_mobile: string | null;
+  transporter_city: string | null;
+  state_name: string | null;
+  assigned_telecaller: string | null;
+  applicants_count: number;
+  placed_driver: { id: number; name: string; tmid: string } | null;
+}
+
+export interface DwJobSearchResponse {
+  status: boolean;
+  data: {
+    jobs: DwJob[];
+    pagination: { total: number; per_page: number; current_page: number; last_page: number };
+    filters: {
+      states: Array<{ id: number; name: string }>;
+      salary_ranges: string[];
+      experiences: string[];
+    };
+  };
+}
+
 export const webCrmApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // DW Endpoints
@@ -942,7 +1124,7 @@ export const webCrmApi = baseApi.injectEndpoints({
         body,
       }),
     }),
-    getDwCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number; page?: number; search?: string } | void>({
+    getDwCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number; page?: number; search?: string; feedback?: string } | void>({
       query: (params) => ({
         url: '/web-crm/dw/call-history',
         params: params || undefined,
@@ -952,12 +1134,162 @@ export const webCrmApi = baseApi.injectEndpoints({
       query: () => '/web-crm/dw/break-status',
     }),
 
-    // WCT Endpoint
-    getWctDashboard: builder.query<WctDashboardResponse, void>({
-      query: () => '/web-crm/wct/dashboard',
+    // WCT Endpoints — Transporter Welcome Caller. The backend (WctCallerController)
+    // returns shapes identical to the DW controller, retargeted to transporters,
+    // so these reuse the Dw* response types.
+    getWctDashboard: builder.query<DwDashboardResponse, { period?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/dashboard',
+        params: params || undefined,
+      }),
     }),
-    getWctQueue: builder.query<WctQueueResponse, void>({
-      query: () => '/web-crm/wct/queue',
+    getWctQueue: builder.query<DwQueueResponse, { per_page?: number; page?: number; filter?: string; search?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/queue',
+        params: params || undefined,
+      }),
+    }),
+    getWctQueueCounts: builder.query<any, void>({
+      query: () => '/web-crm/wct/queue/counts',
+    }),
+    getWctQueueFresh: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/queue/fresh',
+        params: params || undefined,
+      }),
+    }),
+    getWctQueueOld: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/queue/old',
+        params: params || undefined,
+      }),
+    }),
+    getWctQueueUncalled: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/queue/uncalled',
+        params: params || undefined,
+      }),
+    }),
+    getWctQueueCallbacks: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/queue/callbacks',
+        params: params || undefined,
+      }),
+    }),
+    getWctQueueCalled: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/queue/called',
+        params: params || undefined,
+      }),
+    }),
+    getWctNextLead: builder.query<DwNextLeadResponse, void>({
+      query: () => '/web-crm/wct/queue/next',
+    }),
+    skipWctLead: builder.mutation<any, { user_id: number; reason: string }>({
+      query: (body) => ({
+        url: '/web-crm/wct/queue/skip',
+        method: 'POST',
+        body,
+      }),
+    }),
+    getWctLeadDetail: builder.query<DwLeadDetailResponse, number | string>({
+      query: (userId) => `/web-crm/wct/lead/${userId}`,
+    }),
+    getWctDispositionOptions: builder.query<DwDispositionOptionsResponse, void>({
+      query: () => '/web-crm/wct/disposition-options',
+    }),
+    submitWctFeedback: builder.mutation<any, {
+      user_id: number;
+      call_status: string;
+      call_feedback: string;
+      call_remarks?: string;
+      call_recording?: string;
+      call_duration?: number;
+      call_id?: number;
+      disposition_sub?: string | null;
+      callback_sub?: string | null;
+      callback_at?: string | null;
+      feedback_stage?: string | null;
+      plan_selected?: string | null;
+      payment_id?: string | null;
+      language_noted?: string | null;
+    }>({
+      query: (body) => ({
+        url: '/web-crm/wct/feedback',
+        method: 'POST',
+        body,
+      }),
+    }),
+    getWctPerformance: builder.query<DwPerformanceResponse, { period?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/performance',
+        params: params || undefined,
+      }),
+    }),
+    getWctCallbacks: builder.query<DwCallbacksResponse, void>({
+      query: () => '/web-crm/wct/callbacks',
+    }),
+    scheduleWctCallback: builder.mutation<any, { user_id: number; reason: string }>({
+      query: (body) => ({
+        url: '/web-crm/wct/callbacks/schedule',
+        method: 'POST',
+        body,
+      }),
+    }),
+    getWctCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number; page?: number; search?: string; feedback?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/call-history',
+        params: params || undefined,
+      }),
+    }),
+    getWctBreakStatus: builder.query<DwBreakStatusResponse, void>({
+      query: () => '/web-crm/wct/break-status',
+    }),
+    getWctCampaignLeads: builder.query<any, { source?: string; search?: string; tab?: string; sort_by?: string; page?: number; per_page?: number } | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/campaign-leads',
+        params: params || undefined,
+      }),
+      providesTags: ['Leads'],
+    }),
+    updateWctCampaignLeadNotes: builder.mutation<any, { id: string | number; notes: string }>({
+      query: ({ id, notes }) => ({
+        url: `/web-crm/wct/campaign-leads/${id}/notes`,
+        method: 'POST',
+        body: { notes },
+      }),
+    }),
+    getWctGlobalSearch: builder.query<any, string>({
+      query: (searchStr) => `/web-crm/wct/global-search?q=${searchStr}`,
+    }),
+    getWctJobSearch: builder.query<DwJobSearchResponse, DwJobSearchParams | void>({
+      query: (params) => {
+        const p = new URLSearchParams();
+        if (params?.page) p.set('page', String(params.page));
+        if (params?.per_page) p.set('per_page', String(params.per_page));
+        if (params?.status) p.set('status', params.status);
+        if (params?.search) p.set('search', params.search);
+        if (params?.state_id) p.set('state_id', String(params.state_id));
+        if (params?.salary) p.set('salary', params.salary);
+        if (params?.experience) p.set('experience', params.experience);
+        const qs = p.toString();
+        return `/web-crm/wct/job-search${qs ? `?${qs}` : ''}`;
+      },
+    }),
+    getWctJobs: builder.query<WctJobsResponse, { per_page?: number; page?: number; search?: string; status?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/jobs',
+        params: params || undefined,
+      }),
+    }),
+    getWctJobApplicants: builder.query<WctJobApplicantsResponse, number | string>({
+      query: (jobId) => `/web-crm/wct/job/${jobId}/applicants`,
+    }),
+    getWctD7Upsell: builder.query<WctD7UpsellResponse, { per_page?: number; page?: number; search?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/d7-upsell-queue',
+        params: params || undefined,
+      }),
     }),
 
     // MM Endpoint
@@ -1042,6 +1374,10 @@ export const webCrmApi = baseApi.injectEndpoints({
         url: '/web-crm/match-making/driver-bank',
         params: Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')),
       }),
+      providesTags: ['DriverBank'],
+    }),
+    getDriverBankDetail: builder.query<any, number | string>({
+      query: (id) => `/web-crm/match-making/driver-bank/${id}`,
       providesTags: ['DriverBank'],
     }),
     addDriverBank: builder.mutation<any, {
@@ -1161,6 +1497,20 @@ export const webCrmApi = baseApi.injectEndpoints({
     getDwGlobalSearch: builder.query<any, string>({
       query: (searchStr) => `/web-crm/dw/global-search?q=${searchStr}`,
     }),
+    getDwJobSearch: builder.query<DwJobSearchResponse, DwJobSearchParams | void>({
+      query: (params) => {
+        const p = new URLSearchParams();
+        if (params?.page) p.set('page', String(params.page));
+        if (params?.per_page) p.set('per_page', String(params.per_page));
+        if (params?.status) p.set('status', params.status);
+        if (params?.search) p.set('search', params.search);
+        if (params?.state_id) p.set('state_id', String(params.state_id));
+        if (params?.salary) p.set('salary', params.salary);
+        if (params?.experience) p.set('experience', params.experience);
+        const qs = p.toString();
+        return `/web-crm/dw/job-search${qs ? `?${qs}` : ''}`;
+      },
+    }),
   }),
 });
 
@@ -1193,6 +1543,40 @@ export const {
   useGetDwBreakStatusQuery,
   useGetWctDashboardQuery,
   useGetWctQueueQuery,
+  useLazyGetWctQueueQuery,
+  useGetWctQueueCountsQuery,
+  useGetWctQueueFreshQuery,
+  useGetWctQueueOldQuery,
+  useGetWctQueueUncalledQuery,
+  useGetWctQueueCallbacksQuery,
+  useGetWctQueueCalledQuery,
+  useGetWctNextLeadQuery,
+  useLazyGetWctNextLeadQuery,
+  useLazyGetWctQueueFreshQuery,
+  useLazyGetWctQueueOldQuery,
+  useLazyGetWctQueueUncalledQuery,
+  useLazyGetWctQueueCallbacksQuery,
+  useLazyGetWctQueueCalledQuery,
+  useLazyGetWctQueueCountsQuery,
+  useSkipWctLeadMutation,
+  useGetWctLeadDetailQuery,
+  useGetWctDispositionOptionsQuery,
+  useSubmitWctFeedbackMutation,
+  useGetWctPerformanceQuery,
+  useGetWctCallbacksQuery,
+  useScheduleWctCallbackMutation,
+  useGetWctCallHistoryQuery,
+  useGetWctBreakStatusQuery,
+  useGetWctCampaignLeadsQuery,
+  useLazyGetWctCampaignLeadsQuery,
+  useUpdateWctCampaignLeadNotesMutation,
+  useGetWctGlobalSearchQuery,
+  useLazyGetWctGlobalSearchQuery,
+  useGetWctJobSearchQuery,
+  useLazyGetWctJobSearchQuery,
+  useGetWctJobsQuery,
+  useGetWctJobApplicantsQuery,
+  useGetWctD7UpsellQuery,
   useGetMmDashboardQuery,
   useGetMmJobsQuery,
   useGetMmDriversQuery,
@@ -1206,6 +1590,7 @@ export const {
   useGetMmApplicantsFullQuery,
   useTagMmCallMutation,
   useGetDriverBankQuery,
+  useGetDriverBankDetailQuery,
   useAddDriverBankMutation,
   useUpdateDriverBankMutation,
   useDeleteDriverBankMutation,
@@ -1230,5 +1615,7 @@ export const {
   useUpdateDwCampaignLeadNotesMutation,
   useGetDwGlobalSearchQuery,
   useLazyGetDwGlobalSearchQuery,
+  useGetDwJobSearchQuery,
+  useLazyGetDwJobSearchQuery,
 } = webCrmApi;
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   useGetDwLeadDetailQuery,
+  useGetWctLeadDetailQuery,
   useSubmitDwFeedbackMutation,
   useLazyGetDwGlobalSearchQuery
 } from '../../services/api/webCrmApi';
@@ -8,6 +9,10 @@ import { useQueueCache, useQueueCountsCache, invalidateQueueCache } from '../../
 import type { QueueType } from '../../shared/hooks/useQueueCache';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import { useAuth } from '../../app/providers/AuthProvider';
+import { DriverForm } from '../matchmaking/MmDriverBank';
+import CrossRoleLeadDetail from '../shared/CrossRoleLeadDetail';
+
+type LeadRole = 'driver' | 'transporter';
 
 const SkeletonCard = () => (
   <div className="p-3 border-l-4 border-gray-200 bg-white animate-pulse space-y-2">
@@ -39,6 +44,11 @@ export const DwCallQueue: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
+  const [playingQueueId, setPlayingQueueId] = useState<string | number | null>(null);
+  const [playingHistoryIdx, setPlayingHistoryIdx] = useState<number | null>(null);
+  const [viewerDoc, setViewerDoc] = useState<{ url: string; label: string } | null>(null);
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
+  const [bankPrefill, setBankPrefill] = useState<any>(null);
 
   // Global Search State
   const [globalSearchInput, setGlobalSearchInput] = useState('');
@@ -109,6 +119,12 @@ export const DwCallQueue: React.FC = () => {
     setCurrentPage(1);
   };
 
+  // Mixed-desk toggle: a DWC caller can also work transporter leads (and vice
+  // versa). 'driver' is this desk's native role. The queue endpoints already
+  // filter assigned_to = this caller + role, so switching queueRole reuses them.
+  const [leadRole, setLeadRole] = useState<LeadRole>('driver');
+  const queueRole = leadRole === 'transporter' ? 'wct' : 'dw';
+
   // Integrate SWR caching hooks
   const {
     data: queueData,
@@ -120,9 +136,9 @@ export const DwCallQueue: React.FC = () => {
     page: currentPage,
     search: searchQuery,
     per_page: 20
-  }, activeFilters);
+  }, activeFilters, queueRole);
 
-  const { counts, isFetching: isCountsFetching, refetch: refetchCounts } = useQueueCountsCache();
+  const { counts, isFetching: isCountsFetching, refetch: refetchCounts } = useQueueCountsCache(queueRole);
 
   const handleRefresh = () => {
     refetchQueue();
@@ -162,7 +178,15 @@ export const DwCallQueue: React.FC = () => {
   // default cache would otherwise serve a result from before the latest call
   // history row was written.
   const { data: detailResponse, isLoading: isDetailLoading, refetch: refetchDetail } = useGetDwLeadDetailQuery(selectedId, {
-    skip: !selectedId,
+    skip: !selectedId || leadRole !== 'driver',
+    refetchOnMountOrArgChange: true
+  });
+
+  // Cross-desk (transporter) detail — fetched from the WCT leadDetail endpoint
+  // when the toggle is on 'Transporter'. Same response shape, rendered via the
+  // shared universal panel below.
+  const { data: transporterDetailData, isFetching: isTransporterDetailLoading } = useGetWctLeadDetailQuery(selectedId, {
+    skip: !selectedId || leadRole !== 'transporter',
     refetchOnMountOrArgChange: true
   });
 
@@ -196,6 +220,9 @@ export const DwCallQueue: React.FC = () => {
   const ivrHistory = detailResponse?.data?.ivr_history || [];
   const mmHistory = detailResponse?.data?.mm_history || [];
   const appliedJobs = detailResponse?.data?.applied_jobs || [];
+  const documents = detailResponse?.data?.documents || [];
+  const completionPct = Math.max(0, Math.min(100, Number(driverProfile?.profile_completion ?? 0)));
+  const completionColor = completionPct >= 80 ? '#27AE60' : completionPct >= 50 ? '#F39C12' : '#E74C3C';
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -231,7 +258,7 @@ export const DwCallQueue: React.FC = () => {
     setSelectedId(lead.id);
     const isSocial = String(lead.id).startsWith('sm-');
     const cleanId = isSocial ? parseInt(String(lead.id).replace(/\D/g, ''), 10) : lead.id;
-    dial(lead.mobile, cleanId, lead.name, lead.tmid, isSocial ? 'social_media' : 'driver');
+    dial(lead.mobile, cleanId, lead.name, lead.tmid, isSocial ? 'social_media' : leadRole);
   };
 
   const handleQuickAction = async (action: string) => {
@@ -289,6 +316,7 @@ export const DwCallQueue: React.FC = () => {
       feedback: h.call_feedback || '',
       remarks: h.call_remarks || '',
       source: h._source,
+      recording_url: (h as any).recording_url || null,
     }));
 
   const getStatusBadge = (status: string) => {
@@ -306,6 +334,48 @@ export const DwCallQueue: React.FC = () => {
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
           <span className="w-2 h-2 rounded-full bg-[#27AE60]"></span>
           {toast}
+        </div>
+      )}
+
+      {/* Document image viewer — opens in-place, no new tab */}
+      {viewerDoc && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          onClick={() => setViewerDoc(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
+              <h4 className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[18px] text-[#27AE60]">image</span>
+                {viewerDoc.label}
+              </h4>
+              <button
+                onClick={() => setViewerDoc(null)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors"
+                title="Close"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-gray-50 flex items-center justify-center p-4">
+              <img
+                src={viewerDoc.url}
+                alt={viewerDoc.label}
+                className="max-w-full max-h-[65vh] object-contain rounded-lg"
+                onError={(e) => {
+                  const el = e.target as HTMLImageElement;
+                  el.style.display = 'none';
+                  el.insertAdjacentHTML(
+                    'afterend',
+                    '<div class="text-xs text-gray-400 italic py-10">Unable to load this document image.</div>'
+                  );
+                }}
+              />
+            </div>
+          </div>
         </div>
       )}
 
@@ -403,6 +473,22 @@ export const DwCallQueue: React.FC = () => {
                 <span className="material-symbols-outlined text-[16px]">filter_alt</span>
               </button>
             </div>
+          </div>
+
+          {/* Driver / Transporter toggle — mixed-desk leads */}
+          <div className="flex items-center gap-1 mb-3 p-0.5 bg-gray-100 rounded-lg">
+            {(['driver', 'transporter'] as LeadRole[]).map(r => (
+              <button
+                key={r}
+                onClick={() => { setLeadRole(r); setSelectedId(''); setCurrentPage(1); }}
+                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-1 ${
+                  leadRole === r ? 'bg-[#27AE60] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">{r === 'transporter' ? 'local_shipping' : 'person'}</span>
+                {r === 'transporter' ? 'Transporter' : 'Driver'}
+              </button>
+            ))}
           </div>
 
           {/* Advanced Filters Panel */}
@@ -611,6 +697,32 @@ export const DwCallQueue: React.FC = () => {
                       </span>
                     )}
                   </div>
+
+                  {l.recording_url && (
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                      {playingQueueId === l.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <audio src={l.recording_url} autoPlay controls className="h-7 max-w-[190px]" />
+                          <button
+                            onClick={() => setPlayingQueueId(null)}
+                            className="text-gray-400 hover:text-red-500"
+                            title="Close player"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">close</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setPlayingQueueId(l.id)}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-[#27AE60] hover:text-[#219653]"
+                          title="Play last call recording"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">play_circle</span>
+                          Recording
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col justify-center">
@@ -657,8 +769,23 @@ export const DwCallQueue: React.FC = () => {
 
       {/* Right Panel - Lead details profile cockpit */}
       <section className="flex-1 flex flex-col bg-white overflow-hidden min-w-0">
-        
-        {isDetailLoading ? (
+
+        {leadRole === 'transporter' ? (
+          !selectedId ? (
+            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm italic p-8 text-center">
+              Select a transporter from the queue to view details.
+            </div>
+          ) : (
+            <CrossRoleLeadDetail
+              role="transporter"
+              detail={transporterDetailData?.data}
+              loading={isTransporterDetailLoading}
+              accent="#27AE60"
+              canCall={agentState === 'ready' && callState === 'idle'}
+              onCall={() => { const l = leads.find((x: any) => String(x.id) === String(selectedId)); if (l) handleCallNow(l); }}
+            />
+          )
+        ) : isDetailLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-sm text-outline font-semibold">Loading details...</p>
           </div>
@@ -667,17 +794,49 @@ export const DwCallQueue: React.FC = () => {
             
             {/* Header block */}
             <div className="flex justify-between items-start gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-xl font-bold text-gray-900">{driverProfile.name}</h1>
-                  <span className="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{driverProfile.tmid}</span>
-                  <span className="border border-[#27AE60] text-[#27AE60] text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                    DRIVER
-                  </span>
+              <div className="flex items-start gap-4">
+                {/* Profile avatar */}
+                <div className="relative shrink-0">
+                  {driverProfile.profile_image ? (
+                    <img
+                      src={driverProfile.profile_image}
+                      alt={driverProfile.name}
+                      className="w-16 h-16 rounded-xl object-cover border-2 border-white shadow-md ring-1 ring-gray-200"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl bg-[#EAFAF1] border-2 border-white shadow-md ring-1 ring-gray-200 flex items-center justify-center text-2xl font-bold text-[#27AE60]">
+                      {(driverProfile.name || '?').trim().charAt(0).toUpperCase()}
+                    </div>
+                  )}
                 </div>
-                <div className="text-sm text-gray-500 mt-1">{driverProfile.city}, {driverProfile.state}</div>
+
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-xl font-bold text-gray-900">{driverProfile.name}</h1>
+                    <span className="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{driverProfile.tmid}</span>
+                    <span className="border border-[#27AE60] text-[#27AE60] text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                      DRIVER
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-500 mt-1">{driverProfile.city}, {driverProfile.state}</div>
+
+                  {/* Profile completion */}
+                  <div className="flex items-center gap-2 mt-2 max-w-[240px]">
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${completionPct}%`, backgroundColor: completionColor }}
+                      />
+                    </div>
+                    <span className="text-xs font-bold" style={{ color: completionColor }}>
+                      {completionPct}%
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Profile</span>
+                  </div>
+                </div>
               </div>
-              
+
               <div className="flex items-center gap-3">
                 {!isAssignedToOther && (
                   <button
@@ -703,6 +862,22 @@ export const DwCallQueue: React.FC = () => {
                   </button>
                 )}
 
+                <button
+                  onClick={() => {
+                    setBankPrefill({
+                      user_id: driverProfile.id ? Number(driverProfile.id) : undefined,
+                      tmid: driverProfile.tmid || '',
+                      name: driverProfile.name || '',
+                      mobile: driverProfile.mobile || '',
+                    });
+                    setIsBankModalOpen(true);
+                  }}
+                  className="bg-[#8E44AD] hover:bg-[#7D3C98] text-white text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 shadow-sm transition-colors active:scale-95"
+                  title="Add to matchmaking driver bank"
+                >
+                  <span className="material-symbols-outlined text-[16px]">account_box</span> Add to Bank
+                </button>
+
                 <span className="bg-[#EAFAF1] text-[#27AE60] text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border border-[#27AE60]/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60]"></span> Language: {driverProfile.language.toUpperCase()}
                 </span>
@@ -722,6 +897,44 @@ export const DwCallQueue: React.FC = () => {
                   <span className="uppercase text-[10px] bg-red-100 px-1.5 py-0.5 rounded">Conversion Target Pending</span>
                 </div>
               )}
+            </div>
+
+            {/* KYC / Documents */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px]">folder_shared</span>
+                Documents / KYC
+                <span className="ml-1 text-[10px] font-bold text-gray-400 normal-case tracking-normal">
+                  ({documents.filter((d: any) => d.uploaded).length}/{documents.length} uploaded)
+                </span>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {documents.map((doc: any) => (
+                  <div
+                    key={doc.key}
+                    className={`border rounded-lg p-3 flex flex-col items-center text-center gap-1.5 ${doc.uploaded ? 'border-[#27AE60]/30 bg-[#EAFAF1]' : 'border-gray-200 bg-gray-50'}`}
+                  >
+                    <span className={`material-symbols-outlined text-[22px] ${doc.uploaded ? 'text-[#27AE60]' : 'text-gray-300'}`}>
+                      {doc.uploaded ? 'task_alt' : 'block'}
+                    </span>
+                    <span className="text-[11px] font-bold text-gray-700">{doc.label}</span>
+                    {doc.uploaded && doc.url ? (
+                      <button
+                        type="button"
+                        onClick={() => setViewerDoc({ url: doc.url, label: doc.label })}
+                        className="text-[10px] font-bold text-[#27AE60] hover:underline flex items-center gap-0.5"
+                      >
+                        <span className="material-symbols-outlined text-[12px]">visibility</span> View
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-gray-400 font-medium">Not uploaded</span>
+                    )}
+                  </div>
+                ))}
+                {documents.length === 0 && (
+                  <div className="col-span-full text-center text-xs text-gray-400 italic py-3">No document data available.</div>
+                )}
+              </div>
             </div>
 
             {/* Profile Card key-value grid */}
@@ -916,6 +1129,31 @@ export const DwCallQueue: React.FC = () => {
                           <p className="text-gray-500">Caller: {hist.caller}</p>
                           {hist.feedback && <p className="text-gray-600 mt-0.5 font-medium">Feedback: {hist.feedback}</p>}
                           {hist.remarks && <p className="text-gray-400 mt-0.5 italic">Remarks: {hist.remarks}</p>}
+                          {hist.recording_url && (
+                            <div className="mt-1.5">
+                              {playingHistoryIdx === idx ? (
+                                <div className="flex items-center gap-1.5">
+                                  <audio src={hist.recording_url} autoPlay controls className="h-7 max-w-[220px]" />
+                                  <button
+                                    onClick={() => setPlayingHistoryIdx(null)}
+                                    className="text-gray-400 hover:text-red-500"
+                                    title="Close player"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">close</span>
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setPlayingHistoryIdx(idx)}
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-[#27AE60] hover:text-[#219653]"
+                                  title="Play call recording"
+                                >
+                                  <span className="material-symbols-outlined text-[15px]">play_circle</span>
+                                  Recording
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })
@@ -957,12 +1195,29 @@ export const DwCallQueue: React.FC = () => {
           <div className="border-t border-gray-200 bg-white p-4 flex flex-wrap justify-between items-center gap-2 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] shrink-0 z-10">
             <div className="flex items-center gap-2 flex-grow md:flex-grow-0">
               {!isAssignedToOther ? (
-                <button 
-                  onClick={() => handleCallNow(driverProfile)}
-                  className="bg-[#27AE60] hover:bg-[#219653] text-white h-11 px-6 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-sm flex-1 md:flex-none justify-center active:scale-[0.98]"
-                >
-                  <span className="material-symbols-outlined text-[18px]">phone</span> Call Now
-                </button>
+                <>
+                  <button 
+                    onClick={() => handleCallNow(driverProfile)}
+                    className="bg-[#27AE60] hover:bg-[#219653] text-white h-11 px-6 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-sm flex-1 md:flex-none justify-center active:scale-[0.98]"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">phone</span> Call Now
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setBankPrefill({
+                        user_id: driverProfile.id ? Number(driverProfile.id) : undefined,
+                        tmid: driverProfile.tmid || '',
+                        name: driverProfile.name || '',
+                        mobile: driverProfile.mobile || '',
+                      });
+                      setIsBankModalOpen(true);
+                    }}
+                    className="bg-[#8E44AD] hover:bg-[#7D3C98] text-white h-11 px-4 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-sm flex-1 md:flex-none justify-center active:scale-[0.98]"
+                    title="Add to matchmaking driver bank"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">account_box</span> Add to Bank
+                  </button>
+                </>
               ) : (
                 <div className="bg-red-50 text-red-700 border border-red-100 text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center gap-1.5 shadow-sm">
                   <span className="material-symbols-outlined text-[16px]">lock</span> Assigned to Another Agent
@@ -990,6 +1245,17 @@ export const DwCallQueue: React.FC = () => {
         )}
 
       </section>
+
+      {isBankModalOpen && bankPrefill && (
+        <DriverForm
+          prefill={bankPrefill}
+          onClose={() => {
+            setIsBankModalOpen(false);
+            setBankPrefill(null);
+            triggerToast('Driver added to Matchmaking Driver Bank successfully!');
+          }}
+        />
+      )}
 
     </main>
   );

@@ -408,10 +408,11 @@ export const incentiveApi = baseApi.injectEndpoints({
       async queryFn(role, _queryApi, _extraOptions, fetchWithBQ) {
         const key = getRoleKey(role);
 
-        // Driver Welcome is backed by the real incentive engine — every other
-        // role still reads from the in-memory mock store below.
-        if (key === 'dwc') {
-          const result = await fetchWithBQ('/web-crm/dw/incentive/gate-progress');
+        // Driver + Transporter Welcome are backed by the real incentive engine —
+        // every other role still reads from the in-memory mock store below.
+        const realBase = key === 'dwc' ? '/web-crm/dw' : key === 'twc' ? '/web-crm/wct' : null;
+        if (realBase) {
+          const result = await fetchWithBQ(`${realBase}/incentive/gate-progress`);
           if (result.error) return { error: result.error as any };
           return { data: (result.data as any).data as GateProgress };
         }
@@ -441,9 +442,10 @@ export const incentiveApi = baseApi.injectEndpoints({
       },
       keepUnusedDataFor: 60,
       async onCacheEntryAdded(arg, { updateCachedData, cacheEntryRemoved }) {
-        // Real dwc data doesn't live in the mock store, so there's nothing to
-        // subscribe to — just wait out the cache entry's lifetime.
-        if (getRoleKey(arg) === 'dwc') {
+        // Real dwc/twc data doesn't live in the mock store, so there's nothing
+        // to subscribe to — just wait out the cache entry's lifetime.
+        const liveKey = getRoleKey(arg);
+        if (liveKey === 'dwc' || liveKey === 'twc') {
           await cacheEntryRemoved;
           return;
         }
@@ -479,8 +481,9 @@ export const incentiveApi = baseApi.injectEndpoints({
       async queryFn({ role, period = 'this_month' }, _queryApi, _extraOptions, fetchWithBQ) {
         const key = getRoleKey(role);
 
-        if (key === 'dwc') {
-          const result = await fetchWithBQ(`/web-crm/dw/incentive/month?period=${period}`);
+        const realBase = key === 'dwc' ? '/web-crm/dw' : key === 'twc' ? '/web-crm/wct' : null;
+        if (realBase) {
+          const result = await fetchWithBQ(`${realBase}/incentive/month?period=${period}`);
           if (result.error) return { error: result.error as any };
           return { data: (result.data as any).data as MonthlyIncentive };
         }
@@ -566,7 +569,8 @@ export const incentiveApi = baseApi.injectEndpoints({
       },
       keepUnusedDataFor: 60,
       async onCacheEntryAdded(arg, { updateCachedData, cacheEntryRemoved }) {
-        if (getRoleKey(arg.role) === 'dwc') {
+        const liveKey = getRoleKey(arg.role);
+        if (liveKey === 'dwc' || liveKey === 'twc') {
           await cacheEntryRemoved;
           return;
         }

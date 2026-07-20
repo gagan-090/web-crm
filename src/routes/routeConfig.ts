@@ -602,11 +602,20 @@ export const dynamicRoutes: RouteItem[] = [
   },
   {
     path: '/dw/dw-script-library',
-    name: 'Script Library',
+    name: 'Driver Script',
     role: 'Driver Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'menu_book',
+    showInMenu: true
+  },
+  {
+    path: '/dw/dw-knowledge',
+    name: 'Knowledge',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'local_shipping',
     showInMenu: true
   },
   {
@@ -731,11 +740,20 @@ export const dynamicRoutes: RouteItem[] = [
   },
   {
     path: '/wct/wct-script-library',
-    name: 'Script Library',
+    name: 'Transporter Script',
     role: 'Transporter Welcome',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'menu_book',
+    showInMenu: true
+  },
+  {
+    path: '/wct/wct-knowledge',
+    name: 'Knowledge',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'local_shipping',
     showInMenu: true
   },
   {
@@ -815,7 +833,7 @@ export const dynamicRoutes: RouteItem[] = [
   },
   {
     path: '/mm/mm-script-library',
-    name: 'Script Library',
+    name: 'Greenline SOP',
     role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',

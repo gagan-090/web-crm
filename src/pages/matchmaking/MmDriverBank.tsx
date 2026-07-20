@@ -497,7 +497,7 @@ const MmDriverBank: React.FC = () => {
           <div className="relative flex-1 max-w-xs">
             <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Name, mobile, TMID..."
+              placeholder="Name or TMID..."
               className="w-full pl-8 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#8E44AD]" />
             {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400">
               <span className="material-symbols-outlined text-sm">close</span></button>}

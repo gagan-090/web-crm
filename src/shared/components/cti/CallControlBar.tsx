@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { useSanCti } from './SanCtiContext';
 import { useAuth } from '../../../app/providers/AuthProvider';
+import {
+  readPendingMmContext,
+  recordMmConferenceParty,
+  emitMmConferenceAdd,
+  emitMmOpenAddToCall,
+} from './mmCallContext';
 
 interface CallControlBarProps {
   driverName?: string;
@@ -44,6 +50,41 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
 
   const activeName = driverName || currentLeadName || currentPhoneNumber || 'Unknown';
 
+  // ── Matchmaking conference target ──
+  // On an applicant call the job's transporter travels along in the MM call
+  // context, so "Add Call" can offer them BY NAME. Their mobile number is used
+  // to place the conference leg but is never rendered anywhere in the UI, and
+  // the extension / agent-DID inputs are not offered for this flow at all.
+  const mmCtx = readPendingMmContext();
+  const mmConferenceParty = mmCtx?.conferenceParty;
+  // On a TRANSPORTER call the counterpart isn't known up front — the agent
+  // searches the job's applicants by name/TMID in the matchmaking screen's
+  // picker, which the call bar can only ask for (it has no applicant data).
+  const mmCanSearchApplicants = mmCtx?.kind === 'transporter';
+  const mmAlreadyAdded = !!mmConferenceParty
+    && (mmCtx?.conferenced || []).some(p => p.id === mmConferenceParty.id);
+
+  /**
+   * SAN reports conference members by phone number. For matchmaking parties we
+   * substitute the name so the transporter's number is never rendered — match
+   * on the last 10 digits since SAN may prefix a 0 / +91.
+   */
+  const mmMemberLabel = (raw?: string): string => {
+    const digits = (raw || '').replace(/\D/g, '').slice(-10);
+    if (!digits) return raw || '';
+    const known = [...(mmCtx?.conferenced || []), ...(mmConferenceParty ? [mmConferenceParty] : [])];
+    const hit = known.find(p => p.mobile.replace(/\D/g, '').slice(-10) === digits);
+    return hit ? hit.name : (raw || '');
+  };
+
+  const addMmPartyToCall = () => {
+    if (!mmConferenceParty || !mmCtx) return;
+    startConference();
+    addConferenceNumber(mmConferenceParty.mobile);
+    recordMmConferenceParty(mmConferenceParty);
+    emitMmConferenceAdd({ ...mmConferenceParty, jobId: mmCtx.jobId });
+  };
+
   if (callState === 'idle' || callState === 'disposition_pending') return null;
 
   const formatTime = (seconds: number) => {
@@ -86,40 +127,84 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
         }}>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Add to Call</div>
 
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input
-              type="text"
-              value={conferenceInput}
-              onChange={(e) => setConferenceInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && conferenceInput.trim()) {
+          {mmConferenceParty ? (
+            /* Matchmaking: the counterpart is already known, so the agent picks
+               a NAME — no number, extension or agent-DID entry at all. */
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 6 }}>
+                {mmConferenceParty.role === 'transporter' ? 'Transporter for this job' : 'Applicant'}
+              </div>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                backgroundColor: '#111827', borderRadius: 8, padding: '8px 10px',
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {mmConferenceParty.name}
+                </span>
+                <button
+                  onClick={addMmPartyToCall}
+                  disabled={mmAlreadyAdded}
+                  style={{
+                    ...btnStyle,
+                    backgroundColor: mmAlreadyAdded ? '#374151' : '#4F46E5',
+                    cursor: mmAlreadyAdded ? 'default' : 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  {mmAlreadyAdded ? 'Added' : 'Add'}
+                </button>
+              </div>
+            </div>
+          ) : mmCanSearchApplicants ? (
+            /* Transporter call: find the applicant by name or TMID. */
+            <button
+              onClick={emitMmOpenAddToCall}
+              style={{
+                ...btnStyle,
+                backgroundColor: '#4F46E5',
+                width: '100%',
+                marginBottom: 12,
+                padding: '8px 14px',
+              }}
+            >
+              Search applicant by name / TMID
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <input
+                type="text"
+                value={conferenceInput}
+                onChange={(e) => setConferenceInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && conferenceInput.trim()) {
+                    addConferenceNumber(conferenceInput.trim());
+                    setConferenceInput('');
+                  }
+                }}
+                placeholder="Enter phone number"
+                style={{
+                  flex: 1,
+                  borderRadius: 8,
+                  border: '1px solid #374151',
+                  backgroundColor: '#111827',
+                  color: '#fff',
+                  padding: '6px 10px',
+                  fontSize: 13,
+                  outline: 'none',
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (!conferenceInput.trim()) return;
                   addConferenceNumber(conferenceInput.trim());
                   setConferenceInput('');
-                }
-              }}
-              placeholder="Enter phone number"
-              style={{
-                flex: 1,
-                borderRadius: 8,
-                border: '1px solid #374151',
-                backgroundColor: '#111827',
-                color: '#fff',
-                padding: '6px 10px',
-                fontSize: 13,
-                outline: 'none',
-              }}
-            />
-            <button
-              onClick={() => {
-                if (!conferenceInput.trim()) return;
-                addConferenceNumber(conferenceInput.trim());
-                setConferenceInput('');
-              }}
-              style={{ ...btnStyle, backgroundColor: '#4F46E5' }}
-            >
-              Add
-            </button>
-          </div>
+                }}
+                style={{ ...btnStyle, backgroundColor: '#4F46E5' }}
+              >
+                Add
+              </button>
+            </div>
+          )}
 
           {conferenceDialingMembers.length === 0 && conferenceMembers.length === 0 ? (
             <div style={{ fontSize: 12, color: '#9CA3AF' }}>No one else on this call yet.</div>
@@ -130,7 +215,7 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   backgroundColor: '#111827', borderRadius: 8, padding: '6px 10px', fontSize: 13,
                 }}>
-                  <span>{m.conf_member || m.caller_id}</span>
+                  <span>{mmMemberLabel(m.conf_member || m.caller_id)}</span>
                   <span style={{ fontSize: 11, color: '#FCD34D' }}>Dialing...</span>
                 </div>
               ))}
@@ -139,7 +224,7 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   backgroundColor: '#111827', borderRadius: 8, padding: '6px 10px', fontSize: 13,
                 }}>
-                  <span>{m.conf_member}</span>
+                  <span>{mmMemberLabel(m.conf_member)}</span>
                   <span style={{ fontSize: 11, color: '#22C55E' }}>On call</span>
                 </div>
               ))}

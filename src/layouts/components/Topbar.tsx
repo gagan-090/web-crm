@@ -4,7 +4,12 @@ import { useAuth } from '../../app/providers/AuthProvider';
 import { ROLE_LABELS } from '../../shared/constants/roles';
 import { routeConfig } from '../../routes/routeConfig';
 
-export const Topbar: React.FC = () => {
+interface TopbarProps {
+  sidebarHidden?: boolean;
+  onToggleSidebar?: () => void;
+}
+
+export const Topbar: React.FC<TopbarProps> = ({ sidebarHidden = false, onToggleSidebar }) => {
   const { user } = useAuth();
   const location = useLocation();
 
@@ -13,9 +18,20 @@ export const Topbar: React.FC = () => {
   const screenName = currentRoute ? currentRoute.name : 'Dashboard';
 
   return (
-    <header className="fixed top-0 left-[240px] w-[calc(100%-240px)] h-[56px] bg-white border-b border-outline-variant flex items-center justify-between px-md z-40">
-      {/* Left side: Screen Name */}
-      <div className="flex items-center">
+    <header
+      className={`fixed top-0 h-[56px] bg-white border-b border-outline-variant flex items-center justify-between px-md z-40 transition-all duration-300 ${
+        sidebarHidden ? 'left-0 w-full' : 'left-[240px] w-[calc(100%-240px)]'
+      }`}
+    >
+      {/* Left side: sidebar toggle + Screen Name */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onToggleSidebar}
+          title={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+          className="w-8 h-8 -ml-1 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors"
+        >
+          <span className="material-symbols-outlined text-[20px]">{sidebarHidden ? 'menu' : 'menu_open'}</span>
+        </button>
         <h1 className="text-sm font-bold text-on-surface tracking-tight">
           {screenName}
         </h1>

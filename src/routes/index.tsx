@@ -88,6 +88,7 @@ import WctHomeDashboard from '../pages/transporter-welcome/WctHomeDashboard';
 import WctActiveCallFocus from '../pages/transporter-welcome/WctActiveCallFocus';
 import WctTrainingHub from '../pages/transporter-welcome/WctTrainingHub';
 import WctScriptLibrary from '../pages/transporter-welcome/WctScriptLibrary';
+import TruckKnowledgeHub from '../pages/shared/TruckKnowledgeHub';
 import WctCallQueue from '../pages/transporter-welcome/WctCallQueue';
 import WctPerformanceStats from '../pages/transporter-welcome/WctPerformanceStats';
 import WctDispositionGate from '../pages/transporter-welcome/WctDispositionGate';
@@ -245,11 +246,13 @@ export const AppRoutes: React.FC = () => {
           <Route path="dw/dw-active-call-focus" element={<RoleGuard permission="calls:dial"><DwActiveCallFocus /></RoleGuard>} />
           <Route path="dw/dw-campaign-leads" element={<RoleGuard permission="calls:dial"><DwCampaignLeads /></RoleGuard>} />
           <Route path="dw/dw-job-search" element={<RoleGuard permission="calls:dial"><DwJobSearch /></RoleGuard>} />
+          <Route path="dw/dw-knowledge" element={<RoleGuard permission="calls:dial"><TruckKnowledgeHub accent="#2563EB" /></RoleGuard>} />
           <Route path="wct/wct-active-call-focus" element={<RoleGuard permission="calls:dial"><WctActiveCallFocus /></RoleGuard>} />
           <Route path="wct/wct-callback-calendar" element={<RoleGuard permission="calls:dial"><WctCallbackCalendar /></RoleGuard>} />
           <Route path="wct/wct-home-dashboard" element={<RoleGuard permission="calls:dial"><WctHomeDashboard /></RoleGuard>} />
           <Route path="wct/wct-training-hub" element={<RoleGuard permission="calls:dial"><WctTrainingHub /></RoleGuard>} />
           <Route path="wct/wct-script-library" element={<RoleGuard permission="calls:dial"><WctScriptLibrary /></RoleGuard>} />
+          <Route path="wct/wct-knowledge" element={<RoleGuard permission="calls:dial"><TruckKnowledgeHub accent="#2563EB" /></RoleGuard>} />
           <Route path="wct/wct-call-queue" element={<RoleGuard permission="calls:dial"><WctCallQueue /></RoleGuard>} />
           <Route path="wct/wct-performance-stats" element={<RoleGuard permission="calls:dial"><WctPerformanceStats /></RoleGuard>} />
           <Route path="wct/wct-disposition-gate" element={<RoleGuard permission="calls:dial"><WctDispositionGate /></RoleGuard>} />

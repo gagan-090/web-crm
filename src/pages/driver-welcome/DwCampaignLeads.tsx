@@ -65,6 +65,11 @@ export const DwCampaignLeads: React.FC = () => {
     sort_by: sortBy,
     page: page,
     per_page: 10,
+  }, {
+    // Called leads are excluded server-side (present in call_history_ivr), so
+    // refetch when returning to this screen after a call — the lead disappears,
+    // same as the queue.
+    refetchOnMountOrArgChange: true,
   });
 
   // Reset page when filters change

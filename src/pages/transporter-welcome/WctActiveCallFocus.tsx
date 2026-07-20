@@ -14,7 +14,11 @@ export const WctActiveCallFocus: React.FC = () => {
   const navigate = useNavigate();
 
   const [submitWctFeedback] = useSubmitWctFeedbackMutation();
-  const { currentLeadId, currentCallId, currentLeadName, currentLeadTmid, currentPhoneNumber, currentLeadLocation } = useSanCti();
+  const {
+    currentLeadId, currentCallId, currentLeadName, currentLeadTmid, currentPhoneNumber, currentLeadLocation,
+    callState, callDuration, agentState, isMuted, isHeld,
+    dial, hangup, toggleMute, toggleHold,
+  } = useSanCti();
 
   // Prefer the live SAN CTI call context (set when the Call Queue dialed this
   // transporter); fall back to any routing state, then to neutral placeholders.
@@ -30,10 +34,6 @@ export const WctActiveCallFocus: React.FC = () => {
   const isCampaign = stateLead.isCampaign || false;
   const campaignContext = stateLead.campaignContext || null;
 
-  // Live timer states
-  const [seconds, setSeconds] = useState(192); // starts at 03:12
-  const [isMuted, setIsMuted] = useState(false);
-  const [isSpeaker, setIsSpeaker] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('opening');
 
   // Campaign specific feedback states
@@ -79,16 +79,32 @@ export const WctActiveCallFocus: React.FC = () => {
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // If navigated here WITH a lead and the agent is idle & ready, place the call
+  // now (like the Driver Welcome active-call screen). When reached mid-call
+  // (dialed from the queue), the live SAN CTI context already drives everything.
+  const dialedRef = React.useRef(false);
   useEffect(() => {
-    const interval = setInterval(() => {
-      setSeconds(prev => prev + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    if (dialedRef.current) return;
+    if (stateLead.phone && stateLead.userId && agentState === 'ready' && callState === 'idle') {
+      dialedRef.current = true;
+      dial(
+        stateLead.phone,
+        Number(stateLead.userId) || stateLead.userId,
+        stateLead.name || stateLead.companyName || 'Transporter',
+        stateLead.tmid || '',
+        isCampaign ? 'social_media' : 'transporter',
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentState, callState]);
 
-  // The call itself is placed via SAN CTI from the Call Queue (SanCtiProvider
-  // logs it into call_history_ivr). This screen is the live script/objection
-  // companion — it must NOT initiate its own call.
+  // When the disposition for this call is submitted (global PostCallDisposition
+  // modal), return to the queue / campaign list so the next lead can be worked.
+  useEffect(() => {
+    const onDone = () => navigate(isCampaign ? '/wct/wct-campaign-leads' : '/wct/wct-call-queue');
+    window.addEventListener('san-disposition-complete', onDone);
+    return () => window.removeEventListener('san-disposition-complete', onDone);
+  }, [navigate, isCampaign]);
 
   const formatTimer = (secCount: number) => {
     const mins = Math.floor(secCount / 60);
@@ -218,23 +234,34 @@ export const WctActiveCallFocus: React.FC = () => {
         <div className="bg-white border border-gray-200 p-3 rounded-xl shadow-sm mb-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#FB641B] animate-ping"></span>
-              <span className="font-mono text-xl font-bold text-gray-800">{formatTimer(seconds)}</span>
+              <span className={`w-2 h-2 rounded-full ${callState === 'connected' ? 'bg-[#27AE60] animate-ping' : callState === 'idle' ? 'bg-gray-300' : 'bg-[#FB641B] animate-ping'}`}></span>
+              <span className="font-mono text-xl font-bold text-gray-800">{formatTimer(callDuration)}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                {callState === 'idle' ? 'No active call' :
+                 callState === 'dialing' ? 'Dialing…' :
+                 callState === 'ringing' ? 'Ringing…' :
+                 callState === 'connected' ? 'Connected' :
+                 callState === 'disposition_pending' ? 'Wrap-up' : callState}
+              </span>
             </div>
-            
-            {/* Audio Toggles */}
+
+            {/* Real SAN CTI controls */}
             <div className="flex items-center gap-1">
-              <button 
-                onClick={() => { setIsMuted(!isMuted); triggerToast(isMuted ? 'Microphone active' : 'Microphone muted'); }}
-                className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${isMuted ? 'bg-red-50 border-red-200 text-red-600 font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
+              <button
+                onClick={toggleMute}
+                disabled={callState !== 'connected'}
+                title={isMuted ? 'Unmute' : 'Mute'}
+                className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all disabled:opacity-40 ${isMuted ? 'bg-red-50 border-red-200 text-red-600 font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
               >
                 <span className="material-symbols-outlined text-[18px]">{isMuted ? 'mic_off' : 'mic'}</span>
               </button>
-              <button 
-                onClick={() => { setIsSpeaker(!isSpeaker); triggerToast(isSpeaker ? 'Speaker off' : 'Speaker on'); }}
-                className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${isSpeaker ? 'bg-orange-50 border-[#FB641B] text-[#FB641B] font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
+              <button
+                onClick={toggleHold}
+                disabled={callState !== 'connected'}
+                title={isHeld ? 'Resume' : 'Hold'}
+                className={`p-1.5 rounded-lg border text-xs flex items-center justify-center transition-all disabled:opacity-40 ${isHeld ? 'bg-orange-50 border-[#FB641B] text-[#FB641B] font-bold' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
               >
-                <span className="material-symbols-outlined text-[18px]">volume_up</span>
+                <span className="material-symbols-outlined text-[18px]">{isHeld ? 'play_circle' : 'pause_circle'}</span>
               </button>
             </div>
           </div>
@@ -322,9 +349,9 @@ export const WctActiveCallFocus: React.FC = () => {
           <span>For {fleetSize} trucks → Super Premium recommended</span>
         </div>
 
-        {/* Quick Connection Pre-dispositions */}
+        {/* Quick Connection Pre-dispositions — open the manual disposition log */}
         <div className="mb-4">
-          <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2">Live Connection pre-disposition</div>
+          <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2">Manual disposition log</div>
           <div className="grid grid-cols-2 gap-2">
             {[
               { id: 'connected', label: 'Connected', icon: 'check_circle' },
@@ -332,11 +359,11 @@ export const WctActiveCallFocus: React.FC = () => {
               { id: 'busy', label: 'Busy', icon: 'timer' },
               { id: 'off', label: 'Switch Off', icon: 'power_off' }
             ].map(disp => (
-              <button 
+              <button
                 key={disp.id}
                 onClick={() => {
-                  triggerToast(`Pre-logged WCT status: ${disp.label}`);
                   setOutcome(disp.id as any);
+                  setShowPostCallModal(true);
                 }}
                 className="h-14 border border-gray-200 bg-white rounded-lg hover:bg-gray-100 flex flex-col items-center justify-center transition-all"
               >
@@ -374,15 +401,25 @@ export const WctActiveCallFocus: React.FC = () => {
           />
         </div>
 
-        {/* End Call Button */}
+        {/* End Call Button — real SAN hangup; the global disposition modal opens */}
         <div className="mt-auto pt-4 border-t border-gray-200">
-          <button 
-            onClick={() => setShowPostCallModal(true)}
-            className="w-full bg-red-500 hover:bg-red-600 text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md"
-          >
-            <span className="material-symbols-outlined text-[18px]">call_end</span>
-            End Call & Log Disposition
-          </button>
+          {callState === 'idle' ? (
+            <button
+              onClick={() => navigate(isCampaign ? '/wct/wct-campaign-leads' : '/wct/wct-call-queue')}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+              Back to {isCampaign ? 'Campaign Leads' : 'Queue'}
+            </button>
+          ) : (
+            <button
+              onClick={() => hangup()}
+              className="w-full bg-red-500 hover:bg-red-600 text-white h-11 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md"
+            >
+              <span className="material-symbols-outlined text-[18px]">call_end</span>
+              End Call &amp; Log Disposition
+            </button>
+          )}
         </div>
 
       </section>
@@ -595,7 +632,7 @@ export const WctActiveCallFocus: React.FC = () => {
                 <span className="font-mono text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{leadTmid}</span>
               </h2>
               <div className="text-[11px] text-gray-400 mt-1">
-                19 Jun 2026, 11:06 AM · Duration: {formatTimer(seconds)}
+                {leadName} · Duration: {formatTimer(callDuration)}
               </div>
             </div>
 

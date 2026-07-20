@@ -7,6 +7,19 @@ import {
   type MmApplicant,
 } from '../../services/api/webCrmApi';
 import { useMmCallFlow } from './useMmCallFlow';
+import GreenlineScreeningModal from './GreenlineScreeningModal';
+import DriverDetailsModal from './DriverDetailsModal';
+import GreenlineApplicantList from './GreenlineApplicantList';
+import MmJobBriefModal from './MmJobBriefModal';
+import MmConferenceDispositionModal from './MmConferenceDispositionModal';
+import MmAddToCallModal from './MmAddToCallModal';
+import { useSanCti } from '../../shared/components/cti/SanCtiContext';
+import {
+  readPendingMmContext,
+  MM_OPEN_ADD_TO_CALL_EVENT,
+} from '../../shared/components/cti/mmCallContext';
+
+type DriverRef = { driver_id: number; name: string; mobile: string; unique_id: string };
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 const pipelineBadge = (status: string) => {
@@ -47,10 +60,16 @@ const ErrorPanel: React.FC<{ label: string; onRetry: () => void }> = ({ label, o
 // ── Applicant Card ────────────────────────────────────────────────────────────
 interface ApplicantCardProps {
   driver: MmApplicant;
+  isGreenline: boolean;
+  /** True while a transporter call for THIS job is live — enables "Add Call". */
+  canConference: boolean;
   onCall: (driver: MmApplicant) => void;
+  onAddToCall: (driver: MmApplicant) => void;
+  onScreen: (driver: MmApplicant, mode: 'conduct' | 'view') => void;
+  onViewDetails: (driver: MmApplicant) => void;
 }
 
-const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, onCall }) => {
+const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canConference, onCall, onAddToCall, onScreen, onViewDetails }) => {
   const [expanded, setExpanded] = useState(false);
   const timeline = driver.call_timeline ?? [];
 
@@ -85,12 +104,40 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, onCall }) => {
             {driver.pipeline_status}
           </span>
           <button
-            onClick={e => { e.stopPropagation(); onCall(driver); }}
-            className="bg-[#1A5276] hover:bg-[#154360] text-white px-3 py-1.5 rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1"
-            title="Call this applicant via CTI — feedback opens automatically after the call"
+            onClick={e => { e.stopPropagation(); onViewDetails(driver); }}
+            className="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:text-[#8E44AD] hover:border-[#8E44AD] flex items-center justify-center transition-colors"
+            title="View complete driver details (documents, DL/PAN/Aadhaar)"
           >
-            <span className="material-symbols-outlined text-xs">call</span>Call
+            <span className="material-symbols-outlined text-[18px]">visibility</span>
           </button>
+          {isGreenline && (
+            <button
+              onClick={e => { e.stopPropagation(); onScreen(driver, 'conduct'); }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1"
+              title="Conduct the Greenline screening questionnaire for this driver"
+            >
+              <span className="material-symbols-outlined text-xs">fact_check</span>Screen
+            </button>
+          )}
+          {/* Transporter call in progress → conference this applicant in
+              instead of starting a separate call (mobile's con-call flow). */}
+          {canConference ? (
+            <button
+              onClick={e => { e.stopPropagation(); onAddToCall(driver); }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1"
+              title="Add this applicant to the live transporter call"
+            >
+              <span className="material-symbols-outlined text-xs">group_add</span>Add Call
+            </button>
+          ) : (
+            <button
+              onClick={e => { e.stopPropagation(); onCall(driver); }}
+              className="bg-[#1A5276] hover:bg-[#154360] text-white px-3 py-1.5 rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1"
+              title="Call this applicant via CTI — feedback opens automatically after the call"
+            >
+              <span className="material-symbols-outlined text-xs">call</span>Call
+            </button>
+          )}
           <span className={`material-symbols-outlined text-gray-400 text-sm transition-transform ${expanded ? 'rotate-180' : ''}`}>
             expand_more
           </span>
@@ -103,7 +150,8 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, onCall }) => {
           {/* Profile details */}
           <div className="grid grid-cols-3 gap-2">
             {[
-              ['Mobile', driver.mobile],
+              // Mobile numbers are never surfaced on matchmaking screens —
+              // the agent dials through the CTI, which needs no number on show.
               ['Age', driver.age ? `${driver.age} yrs` : null],
               ['Experience', driver.experience],
               ['Income', driver.income],
@@ -211,16 +259,32 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, onCall }) => {
           ) : null}
 
           {/* Screening */}
-          {driver.screening && (
+          {driver.screening ? (
             <div className="bg-blue-50 rounded-lg p-2 border border-blue-100">
-              <p className="text-[9px] text-blue-600 uppercase font-bold mb-1">Screening</p>
-              <p className="text-[10px] text-blue-800 font-semibold">{driver.screening.result} · {driver.screening.status}</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] text-blue-600 uppercase font-bold">Screening</p>
+                <button
+                  onClick={() => onScreen(driver, 'view')}
+                  className="text-[9px] font-bold text-[#8E44AD] hover:underline flex items-center gap-0.5"
+                >
+                  <span className="material-symbols-outlined text-[12px]">visibility</span>View answers
+                </button>
+              </div>
+              <p className="text-[10px] text-blue-800 font-semibold">{driver.screening.result} · {driver.screening.telecaller_status || driver.screening.status}</p>
               {driver.screening.telecaller_remarks && (
                 <p className="text-[10px] text-blue-600 mt-0.5">{driver.screening.telecaller_remarks}</p>
               )}
               <p className="text-[9px] text-blue-400">{driver.screening.screened_at}</p>
             </div>
-          )}
+          ) : isGreenline ? (
+            <button
+              onClick={() => onScreen(driver, 'conduct')}
+              className="w-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-lg py-2 text-[11px] font-bold flex items-center justify-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-sm">fact_check</span>
+              Conduct Greenline Screening
+            </button>
+          ) : null}
 
           {/* Interview */}
           {driver.interview && (
@@ -262,13 +326,26 @@ const MmJobDetail: React.FC = () => {
   const [applicantPage, setApplicantPage] = useState<number | null>(null);
   const [allApplicants, setAllApplicants] = useState<MmApplicant[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [screenTarget, setScreenTarget] = useState<{ driver: DriverRef; mode: 'conduct' | 'view' } | null>(null);
+  const [detailsDriver, setDetailsDriver] = useState<DriverRef | null>(null);
+  const [showAddToCall, setShowAddToCall] = useState(false);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   };
 
-  const { callTransporter, callApplicant } = useMmCallFlow({
+  const { callState } = useSanCti();
+  const {
+    callTransporter,
+    callApplicant,
+    addApplicantToConference,
+    jobBriefTarget,
+    openJobBrief,
+    closeJobBrief,
+    conferenceDisposition,
+    clearConferenceDisposition,
+  } = useMmCallFlow({
     onToast: triggerToast,
     // Lists refetch through tag invalidation; reset the cursor so the
     // accumulated pages rebuild from page 1 instead of mixing stale pages.
@@ -329,21 +406,70 @@ const MmJobDetail: React.FC = () => {
     const q = search.toLowerCase();
     return allApplicants.filter(a =>
       a.name.toLowerCase().includes(q) ||
-      a.unique_id.toLowerCase().includes(q) ||
-      a.mobile?.includes(q)
+      a.unique_id.toLowerCase().includes(q)
     );
   }, [allApplicants, search]);
+
+  const isGreenline = !!job?.is_greenline;
+
+  // A transporter call for THIS job is live → applicants can be conferenced in
+  // rather than called separately (Task 3's transporter-first direction).
+  const mmCtx = readPendingMmContext();
+  const canConference =
+    callState === 'connected' && mmCtx?.kind === 'transporter' && mmCtx.jobId === jobId;
 
   const handleCallApplicant = (driver: MmApplicant) => {
     callApplicant({
       jobId,
       transporterName: job?.transporter_name || '',
+      // Travels along so the CTI bar's "Add Call" can offer the transporter by
+      // NAME — their number is used to dial but never displayed.
+      transporter: tx
+        ? { id: tx.id, name: tx.name, mobile: tx.mobile, unique_id: tx.unique_id }
+        : undefined,
       driver: {
         driver_id: driver.driver_id,
         name: driver.name,
         mobile: driver.mobile,
         unique_id: driver.unique_id,
       },
+      isGreenline,
+    });
+  };
+
+  const handleAddApplicantToCall = (driver: MmApplicant) => {
+    addApplicantToConference({
+      driver_id: driver.driver_id,
+      name: driver.name,
+      mobile: driver.mobile,
+      unique_id: driver.unique_id,
+    });
+  };
+
+  // The global call bar asks for the searchable picker (it has no applicant data).
+  useEffect(() => {
+    const open = () => setShowAddToCall(true);
+    window.addEventListener(MM_OPEN_ADD_TO_CALL_EVENT, open);
+    return () => window.removeEventListener(MM_OPEN_ADD_TO_CALL_EVENT, open);
+  }, []);
+
+  const handleScreen = (driver: DriverRef, mode: 'conduct' | 'view') => {
+    setScreenTarget({ driver, mode });
+  };
+
+  const handleViewDetails = (driver: DriverRef) => {
+    setDetailsDriver(driver);
+  };
+
+  const handleGreenlineCall = (driver: DriverRef) => {
+    callApplicant({
+      jobId,
+      transporterName: job?.transporter_name || '',
+      transporter: tx
+        ? { id: tx.id, name: tx.name, mobile: tx.mobile, unique_id: tx.unique_id }
+        : undefined,
+      driver,
+      isGreenline: true,
     });
   };
 
@@ -475,7 +601,6 @@ const MmJobDetail: React.FC = () => {
                   </div>
                 </div>
                 {[
-                  ['Mobile', tx.mobile],
                   ['TMID', tx.unique_id],
                   ['Email', tx.email],
                   ['GST', tx.gst_number],
@@ -499,12 +624,24 @@ const MmJobDetail: React.FC = () => {
                   onClick={() => callTransporter({
                     jobId,
                     transporter: { id: tx.id, name: tx.name, mobile: tx.mobile, unique_id: tx.unique_id },
+                    isGreenline,
                   })}
                   className="w-full bg-[#8E44AD] hover:bg-[#7D3C98] text-white py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm"
                   title="Dial via CTI — the job feedback form opens automatically when the call ends"
                 >
                   <span className="material-symbols-outlined text-sm">call</span>
                   Call Transporter
+                </button>
+                {/* The brief opens automatically when the transporter confirms
+                    job details; this is the manual route the mobile screen also
+                    offers from every other connected option. */}
+                <button
+                  onClick={() => openJobBrief(jobId, tx.name)}
+                  className="w-full border border-[#8E44AD] text-[#8E44AD] py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 hover:bg-purple-50"
+                  title="Record the job details collected from the transporter"
+                >
+                  <span className="material-symbols-outlined text-sm">description</span>
+                  Job Brief
                 </button>
               </div>
             ) : (
@@ -536,6 +673,15 @@ const MmJobDetail: React.FC = () => {
 
         {/* ── RIGHT PANEL: Applicants ──────────────────────────────────── */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {isGreenline ? (
+            <GreenlineApplicantList
+              jobId={jobId}
+              onCall={handleGreenlineCall}
+              onScreen={handleScreen}
+              onViewDetails={handleViewDetails}
+            />
+          ) : (
+          <>
           {/* Applicant filter bar */}
           <div className="px-4 py-2.5 bg-white border-b border-gray-200 flex items-center gap-3 shrink-0">
             <div className="flex-1 relative">
@@ -543,7 +689,7 @@ const MmJobDetail: React.FC = () => {
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search driver name, TMID, mobile..."
+                placeholder="Search driver name or TMID..."
                 className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#8E44AD]"
               />
               {search && (
@@ -595,7 +741,12 @@ const MmJobDetail: React.FC = () => {
                   <ApplicantCard
                     key={driver.application_id}
                     driver={driver}
+                    isGreenline={isGreenline}
+                    canConference={canConference}
                     onCall={handleCallApplicant}
+                    onAddToCall={handleAddApplicantToCall}
+                    onScreen={handleScreen}
+                    onViewDetails={handleViewDetails}
                   />
                 ))}
                 {pagination?.has_more && (
@@ -610,8 +761,95 @@ const MmJobDetail: React.FC = () => {
               </>
             )}
           </div>
+          </>
+          )}
         </div>
       </div>
+
+      {/* Complete driver details — classic modal (eye icon) */}
+      {detailsDriver && (
+        <DriverDetailsModal
+          open
+          driverId={detailsDriver.driver_id}
+          driverName={detailsDriver.name}
+          uniqueId={detailsDriver.unique_id}
+          onClose={() => setDetailsDriver(null)}
+        />
+      )}
+
+      {/* Searchable applicant picker for the conference (name / TMID) */}
+      {showAddToCall && (
+        <MmAddToCallModal
+          open
+          jobId={jobId}
+          addedIds={(mmCtx?.conferenced || []).map(p => p.id)}
+          onClose={() => setShowAddToCall(false)}
+          onAdd={(driver) => {
+            handleAddApplicantToCall(driver);
+            setShowAddToCall(false);
+          }}
+        />
+      )}
+
+      {/* Transporter job brief → saved onto the `jobs` row */}
+      {jobBriefTarget && (
+        <MmJobBriefModal
+          open
+          jobId={jobBriefTarget.jobId}
+          prefillName={jobBriefTarget.name}
+          jobData={job ? {
+            transporter_name: job.transporter_name,
+            job_location: job.job_location,
+            route: job.route,
+            number_of_drivers_required: job.number_of_drivers_required,
+            vehicle_type: job.vehicle_type,
+            license_type: job.license_type,
+            required_experience: job.required_experience,
+            salary_range: job.salary_range,
+            benefits: job.benefits,
+          } : null}
+          onClose={closeJobBrief}
+          onSaved={() => {
+            triggerToast('Job brief saved ✓');
+            refetchJob();
+          }}
+        />
+      )}
+
+      {/* Disposition owed by a party conferenced into the call */}
+      {conferenceDisposition && (
+        <MmConferenceDispositionModal
+          open
+          party={conferenceDisposition.party}
+          callId={conferenceDisposition.callId}
+          onClose={clearConferenceDisposition}
+          onSubmitted={(res) => {
+            triggerToast(`Feedback saved for ${conferenceDisposition.party.name} ✓`);
+            // Same rule as a directly-dialled transporter: confirming the job
+            // details leads straight into the job brief.
+            if (res.disposition_sub === 'tr_confirmed_job') {
+              openJobBrief(conferenceDisposition.jobId, conferenceDisposition.party.name);
+            }
+            setApplicantPage(null);
+          }}
+        />
+      )}
+
+      {/* Greenline screening — conduct / view */}
+      {screenTarget && (
+        <GreenlineScreeningModal
+          open
+          mode={screenTarget.mode}
+          driverId={screenTarget.driver.driver_id}
+          uniqueId={screenTarget.driver.unique_id}
+          driverName={screenTarget.driver.name}
+          onClose={() => setScreenTarget(null)}
+          onSubmitted={(res) => {
+            triggerToast(`Screening saved: ${res.score} pts (${res.decision})`);
+            setApplicantPage(null);
+          }}
+        />
+      )}
     </div>
   );
 };

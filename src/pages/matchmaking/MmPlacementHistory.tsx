@@ -292,7 +292,6 @@ export const MmPlacementHistory: React.FC = () => {
                   <th className="p-3">Job ID</th>
                   <th className="p-3">Transporter</th>
                   <th className="p-3">Driver Name</th>
-                  <th className="p-3">Mobile</th>
                   <th className="p-3 text-right pr-4">Status</th>
                 </tr>
               </thead>
@@ -304,7 +303,6 @@ export const MmPlacementHistory: React.FC = () => {
                       <td className="p-3 font-mono">JD-{p.job_id}</td>
                       <td className="p-3">{p.transporter_name || 'N/A'}</td>
                       <td className="p-3 font-bold text-gray-850">{p.driver_name || 'N/A'}</td>
-                      <td className="p-3 font-mono">{p.driver_mobile || 'N/A'}</td>
                       <td className="p-3 text-right pr-4">
                         <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-200 text-[10px] font-extrabold uppercase">
                           {p.match_status}
@@ -314,7 +312,7 @@ export const MmPlacementHistory: React.FC = () => {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-400 italic">No live placement records recorded yet.</td>
+                    <td colSpan={5} className="p-6 text-center text-gray-400 italic">No live placement records recorded yet.</td>
                   </tr>
                 )}
               </tbody>

@@ -5,17 +5,24 @@ import { usePermissions } from '../../shared/hooks/usePermissions';
 import { routeConfig } from '../../routes/routeConfig';
 import type { RouteItem } from '../../routes/routeConfig';
 import { ROLE_LABELS } from '../../shared/constants/roles';
-import { useGetDwQueueCountsQuery } from '../../services/api/webCrmApi';
+import { useGetDwQueueCountsQuery, useGetWctQueueCountsQuery } from '../../services/api/webCrmApi';
 
-export const Sidebar: React.FC = () => {
+export const Sidebar: React.FC<{ hidden?: boolean }> = ({ hidden = false }) => {
   const location = useLocation();
   const { logout } = useAuth();
   const { role, can } = usePermissions();
 
-  const isDwAgent = role?.includes('DW') || role?.includes('Welcome');
+  // 'Transporter Welcome' also contains 'Welcome', so detect WCT first and
+  // exclude it from the DW check.
+  const isWctAgent = !!role && (role.includes('WCT') || role.includes('Transporter'));
+  const isDwAgent = !!role && (role.includes('DW') || role.includes('Welcome')) && !isWctAgent;
 
-  const { data: queueCounts } = useGetDwQueueCountsQuery(undefined, {
+  const { data: dwQueueCounts } = useGetDwQueueCountsQuery(undefined, {
     skip: !isDwAgent,
+    refetchOnMountOrArgChange: true,
+  });
+  const { data: wctQueueCounts } = useGetWctQueueCountsQuery(undefined, {
+    skip: !isWctAgent,
     refetchOnMountOrArgChange: true,
   });
 
@@ -27,10 +34,11 @@ export const Sidebar: React.FC = () => {
     return roleName.slice(0, 2).toUpperCase();
   };
 
-  const freshCountVal = queueCounts?.data?.fresh ?? 0;
+  const dwFreshCount = dwQueueCounts?.data?.fresh ?? 0;
+  const wctFreshCount = wctQueueCounts?.data?.fresh ?? 0;
 
   return (
-    <aside className="w-[240px] h-screen fixed left-0 top-0 border-r border-outline-variant bg-white flex flex-col py-md px-sm z-50">
+    <aside className={`w-[240px] h-screen fixed left-0 top-0 border-r border-outline-variant bg-white flex flex-col py-md px-sm z-50 transition-transform duration-300 ${hidden ? '-translate-x-full' : 'translate-x-0'}`}>
       {/* Brand Header */}
       <div className="mb-lg px-sm">
         <h1 className="font-headline-md text-headline-md font-extrabold text-primary">TruckMitr</h1>
@@ -48,14 +56,14 @@ export const Sidebar: React.FC = () => {
             displayName = 'My Queue';
             badge = (
               <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-full">
-                {isDwAgent ? freshCountVal : 18}
+                {dwFreshCount}
               </span>
             );
           } else if (item.path === '/wct/wct-call-queue') {
             displayName = 'My Queue';
             badge = (
               <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-full">
-                15
+                {wctFreshCount}
               </span>
             );
           } else if (item.path === '/dw/dw-campaign-leads' || item.path === '/wct/wct-campaign-leads') {

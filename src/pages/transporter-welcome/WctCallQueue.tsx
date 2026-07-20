@@ -41,6 +41,7 @@ const mapLead = (l: DwLead): TransporterLead => {
     registeredMinutesAgo: regMins,
     slaMinutesLeft: 240 - regMins, // 4-business-hour first-call SLA (approx)
     fleetSize: 0,
+    callAttempts: Number(l.call_count) || 0,
     segment: l.vehicle_type || '—',
     avgKmMonth: '—',
     preferredRoutes: '—',
@@ -72,6 +73,7 @@ interface TransporterLead {
   registeredMinutesAgo: number;
   slaMinutesLeft: number;
   fleetSize: number;
+  callAttempts: number;
   segment: string;
   avgKmMonth: string;
   preferredRoutes: string;
@@ -364,7 +366,10 @@ export const WctCallQueue: React.FC = () => {
                     <div className="text-[12px] text-gray-500">Contact: {l.contactName}</div>
                     
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-gray-600 font-semibold">Fleet: {l.fleetSize} trucks</span>
+                      <span className="text-[11px] text-gray-600 font-semibold flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[13px] text-gray-400">call</span>
+                        {l.callAttempts === 0 ? 'Not called yet' : `${l.callAttempts} call attempt${l.callAttempts === 1 ? '' : 's'}`}
+                      </span>
                       {recommendation && (
                         <span className="bg-gray-150 text-gray-700 text-[9px] px-1 rounded font-bold uppercase">
                           {recommendation.split(': ')[1]}

@@ -334,6 +334,7 @@ export interface DwCallHistoryResponse {
   status: boolean;
   data: Array<{
     id: number;
+    user_id: number | null;
     tmid: string;
     name: string;
     mobile: string;
@@ -558,21 +559,121 @@ export interface MmJobsResponse {
   }>;
 }
 
+export interface MmDriver {
+  id: number;
+  tmid: string;
+  name: string;
+  phone: string;
+  license: string;
+  licenseExpiry: string | null;
+  licenseStatus: 'valid' | 'expiring' | 'expired' | 'unknown';
+  endorsements: string[];
+  experienceBucket: string | null;
+  experienceYears: number | null;
+  expectedSalary: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  currentSalary: string | null;
+  city: string;
+  state: string;
+  preferredState: string | null;
+  truckTypes: string[];
+  truckOwnership: string | null;
+  education: string | null;
+  jobPlacement: string | null;
+  profileComplete: boolean;
+  planKey: string;
+  planLabel: string;
+  planAmount: number;
+  applicationsTotal: number;
+  applicationsAccepted: number;
+  applicationsPending: number;
+  registeredAt: string | null;
+  lastCallAt: string | null;
+  experience: string;
+  routes: string;
+  matchScore: number | null;
+  lastCall: string;
+}
+
 export interface MmDriversResponse {
   status: boolean;
-  drivers: Array<{
-    id: number;
-    tmid: string;
-    name: string;
-    phone: string;
-    license: string;
-    experience: string;
-    city: string;
-    state: string;
-    routes: string;
-    matchScore: number;
-    lastCall: string;
-  }>;
+  drivers: MmDriver[];
+  pagination: { total: number; per_page: number; current_page: number; last_page: number };
+}
+
+/** Every filter accepted by GET /web-crm/mm/drivers. Lists are sent as CSV. */
+export interface MmDriverSearchParams {
+  search?: string;
+  state_id?: number | string;
+  preferred_state_id?: number | string;
+  city?: string;
+  license?: string[];
+  license_status?: string[];
+  endorsement?: string[];
+  vehicle_type?: Array<number | string>;
+  truck_ownership?: string;
+  experience?: string[];
+  min_experience?: number;
+  max_experience?: number;
+  salary_min?: number;
+  salary_max?: number;
+  salary_band?: string[];
+  plan?: string[];
+  applied_status?: string;
+  applied_job_id?: string;
+  min_applications?: number;
+  education?: string[];
+  job_placement?: string;
+  profile_complete?: string;
+  gender?: string;
+  registered_within_days?: number;
+  call_status?: string;
+  sort?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export interface MmDriverFiltersResponse {
+  status: boolean;
+  filters: {
+    states: Array<{ id: number; name: string }>;
+    vehicle_types: Array<{ id: number; name: string }>;
+    licenses: Array<{ value: string; count: number }>;
+    license_statuses: Array<{ value: string; label: string }>;
+    endorsements: Array<{ value: string; count: number }>;
+    experiences: Array<{ value: string; label: string }>;
+    salary_bands: Array<{ value: string; count: number }>;
+    plans: Array<{ value: string; label: string }>;
+    educations: Array<{ value: string; count: number }>;
+    ownerships: Array<{ value: string; label: string }>;
+    application_statuses: Array<{ value: string; label: string }>;
+  };
+}
+
+/**
+ * Transporter job brief — identical field set and naming to the mobile
+ * JobBriefFeedbackModal payload (src/screens/matchmaking-telecalling/
+ * components/JobBriefFeedbackModal.tsx) so both clients stay in step.
+ */
+export interface MmJobBriefPayload {
+  job_id: string;
+  name: string;
+  job_location: string;
+  route?: string;
+  required_drivers?: string;
+  vehicle_type?: string;
+  license_type?: string;
+  experience?: string;
+  salary_fixed?: string;
+  salary_variable?: number;
+  esi_pf?: 'Yes' | 'No';
+  food_allowance?: number;
+  trip_incentive?: number;
+  rehne_ki_suvidha?: 'Yes' | 'No';
+  mileage?: string;
+  fast_tag_road_kharcha?: 'Company' | 'Driver';
+  closed_job?: number;
 }
 
 export interface MmJobApplicantsResponse {
@@ -685,7 +786,29 @@ export interface MmJobDetailResponse {
     closed_job: number;
     status: string | null;
     created_at: string | null;
+    is_greenline?: boolean;
   };
+}
+
+export interface MmScreeningResultsResponse {
+  status: boolean;
+  message?: string;
+  data: {
+    user_id: number;
+    unique_id: string;
+    result: number | string | null;
+    status: string | null;
+    final_status: string | null;
+    telecaller_status: string | null;
+    telecaller_remarks: string | null;
+    screened_by: number | null;
+    screener: { name: string | null };
+    approved_by: string | null;
+    screened_at: string | null;
+    updated_at: string | null;
+    telecaller_status_updated_at: string | null;
+    answers: Record<string, string | null>;
+  } | null;
 }
 
 export interface MmJobTransporterResponse {
@@ -746,6 +869,58 @@ export interface MmApplicant {
     called_by: string | null;
     called_at: string;
   }>;
+}
+
+export interface MmDriverProfileResponse {
+  status: boolean;
+  message?: string;
+  data: {
+    profile: Record<string, string | number | null>;
+    address: Record<string, string | null>;
+    driving: Record<string, string | string[] | null>;
+    employment: Record<string, string | null>;
+    documents_available: { profile_image: boolean; dl: boolean; pan: boolean };
+    documents: {
+      pan_number: string | null; voter_id: string | null;
+      profile_image: string | null; dl_front: string | null; dl_back: string | null; pan_image: string | null;
+    };
+    dl_verification: Record<string, string | null> | null;
+    pan_verification: Record<string, string | null> | null;
+    aadhaar_verification: Record<string, string | null> | null;
+    verification_summary: Record<string, string | null> | null;
+  } | null;
+}
+
+export interface MmGreenlineApplicant {
+  application_id: number;
+  driver_id: number;
+  name: string;
+  unique_id: string;
+  mobile: string;
+  state: string | null;
+  experience: string | null;
+  license_type: string | null;
+  license_number: string | null;
+  income: string | null;
+  vehicle_types: string[];
+  applied_at: string | null;
+  pipeline_stage: string;
+  documents_available: { profile_image: boolean; dl: boolean; pan: boolean };
+  call: { called: boolean; connected: boolean; status: string | null; feedback: string | null; match_status: string | null; at: string | null };
+  screening: { done: boolean; score?: number | string; status?: string; decision?: string; at?: string };
+  interview: {
+    online_status: string | null; online_timing: string | null;
+    physical_status: string | null; physical_start: string | null; physical_end: string | null;
+  } | null;
+}
+
+export interface MmGreenlineApplicantsResponse {
+  status: boolean;
+  job_info: { job_id: string; job_title: string };
+  data: MmGreenlineApplicant[];
+  counts: Record<string, number>;
+  total: number;
+  pagination: { next_cursor: number | null; has_more: boolean; per_page: number };
 }
 
 export interface MmApplicantsFullResponse {
@@ -1236,7 +1411,7 @@ export const webCrmApi = baseApi.injectEndpoints({
         body,
       }),
     }),
-    getWctCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number; page?: number; search?: string; feedback?: string } | void>({
+    getWctCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number; page?: number; search?: string; feedback?: string; date_from?: string; date_to?: string } | void>({
       query: (params) => ({
         url: '/web-crm/wct/call-history',
         params: params || undefined,
@@ -1299,11 +1474,24 @@ export const webCrmApi = baseApi.injectEndpoints({
     getMmJobs: builder.query<MmJobsResponse, void>({
       query: () => '/web-crm/mm/jobs',
     }),
-    getMmDrivers: builder.query<MmDriversResponse, { origin?: string; destination?: string; license?: string }>({
-      query: (params) => ({
-        url: '/web-crm/mm/drivers',
-        params,
-      }),
+    getMmDrivers: builder.query<MmDriversResponse, MmDriverSearchParams | void>({
+      query: (params) => {
+        const p = new URLSearchParams();
+        Object.entries(params || {}).forEach(([key, value]) => {
+          if (value === undefined || value === null || value === '') return;
+          if (Array.isArray(value)) {
+            if (value.length === 0) return;
+            p.set(key, value.join(','));
+          } else {
+            p.set(key, String(value));
+          }
+        });
+        const qs = p.toString();
+        return `/web-crm/mm/drivers${qs ? `?${qs}` : ''}`;
+      },
+    }),
+    getMmDriverFilters: builder.query<MmDriverFiltersResponse, void>({
+      query: () => '/web-crm/mm/driver-filters',
     }),
     placeMmDriver: builder.mutation<any, { job_id: number; driver_id: number; transporter_id: number }>({
       query: (body) => ({
@@ -1366,6 +1554,78 @@ export const webCrmApi = baseApi.injectEndpoints({
     }>({
       query: (body) => ({ url: '/web-crm/match-making/ivr-call-tag-job', method: 'POST', body }),
       invalidatesTags: ['MmApplicants', 'MmTransporter', 'MmJobs'],
+    }),
+
+    // Transporter job brief captured during the matchmaking call. Field names
+    // mirror the mobile JobBriefFeedbackModal payload 1:1; the backend maps
+    // them onto the `jobs` columns.
+    submitMmJobBrief: builder.mutation<
+      { success: boolean; message: string; data?: { job_id: string; updated: string[] } },
+      MmJobBriefPayload
+    >({
+      query: (body) => ({ url: '/web-crm/match-making/job-brief', method: 'POST', body }),
+      invalidatesTags: ['MmJobs', 'MmTransporter'],
+    }),
+
+    // Logs the second leg of a conference (con call) as its own
+    // call_history_ivr row — the SAN widget does the actual bridging.
+    logMmConferenceCall: builder.mutation<
+      { success: boolean; message: string; data: { call_id: number; name: string; role: string } },
+      { user_id: number; phone_number: string; job_id: string; did_number?: string }
+    >({
+      query: (body) => ({ url: '/web-crm/match-making/conference-call', method: 'POST', body }),
+      invalidatesTags: ['MmApplicants', 'MmTransporter'],
+    }),
+
+    // Disposition for a CONFERENCE leg. Reuses the shared, unmodified
+    // /web-crm/call/disposition endpoint against the leg's own call_id — the
+    // primary call is dispositioned by the CTI provider as usual.
+    submitMmConferenceDisposition: builder.mutation<
+      { status: boolean; message?: string },
+      {
+        call_id: number;
+        user_id: number;
+        disposition: string;
+        disposition_sub?: string | null;
+        notes?: string | null;
+        callback_at?: string | null;
+        callback_sub?: string | null;
+        reason?: string | null;
+        call_duration?: number;
+      }
+    >({
+      query: (body) => ({ url: '/web-crm/call/disposition', method: 'POST', body }),
+      invalidatesTags: ['MmApplicants', 'MmTransporter', 'MmJobs'],
+    }),
+
+    // Greenline driver screening — native Web CRM, writes to the shared
+    // driver_screening_questions table. `answers` is an ordered Yes/No array
+    // (index 0 → answer1). `status` is the telecaller decision derived from the
+    // GREEN/AMBER/RED result.
+    submitMmScreening: builder.mutation<
+      { status: boolean; message: string; score: number; decision: string; screening_status: string; data: any },
+      { user_id: number; unique_id: string; status: string; answers: string[]; telecaller_remarks?: string }
+    >({
+      query: (body) => ({ url: '/web-crm/match-making/driver-screening-submit', method: 'POST', body }),
+      invalidatesTags: ['MmApplicants', 'MmJobs'],
+    }),
+    getMmDriverScreening: builder.query<MmScreeningResultsResponse, number | string>({
+      query: (driverId) => `/web-crm/match-making/driver/${driverId}/screening`,
+      providesTags: ['MmApplicants'],
+    }),
+    // Complete driver profile (all users fields + DL/PAN/Aadhaar verification).
+    getMmDriverProfile: builder.query<MmDriverProfileResponse, number | string>({
+      query: (driverId) => `/web-crm/match-making/driver/${driverId}/profile`,
+    }),
+    // Greenline applicant pipeline (rich cards + per-filter counts).
+    getMmGreenlineApplicants: builder.query<MmGreenlineApplicantsResponse, {
+      jobId: string; filter?: string; search?: string; cursor?: number | null; per_page?: number;
+    }>({
+      query: ({ jobId, ...params }) => ({
+        url: `/web-crm/match-making/job/${jobId}/greenline-applicants`,
+        params: Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')),
+      }),
+      providesTags: ['MmApplicants'],
     }),
 
     // Driver Bank endpoints
@@ -1580,6 +1840,7 @@ export const {
   useGetMmDashboardQuery,
   useGetMmJobsQuery,
   useGetMmDriversQuery,
+  useGetMmDriverFiltersQuery,
   usePlaceMmDriverMutation,
   useGetMmJobApplicantsQuery,
   useGetMmJobCallLogsQuery,
@@ -1589,6 +1850,14 @@ export const {
   useGetMmJobTransporterDetailQuery,
   useGetMmApplicantsFullQuery,
   useTagMmCallMutation,
+  useSubmitMmJobBriefMutation,
+  useLogMmConferenceCallMutation,
+  useSubmitMmConferenceDispositionMutation,
+  useSubmitMmScreeningMutation,
+  useGetMmDriverScreeningQuery,
+  useLazyGetMmDriverScreeningQuery,
+  useGetMmDriverProfileQuery,
+  useGetMmGreenlineApplicantsQuery,
   useGetDriverBankQuery,
   useGetDriverBankDetailQuery,
   useAddDriverBankMutation,

@@ -45,6 +45,7 @@ export const DWC_CONNECTED_OPTIONS = [
   'Agree for Subscription (Tomorrow)',
   'Already Subscribed',
   'App Issue',
+  'Call Ended Between Conversation',
   "Doesn't Understand App",
   'Driver - Cab | Bus',
   'Internet Issue - Low Speed',
@@ -83,6 +84,47 @@ export const DWC_CALLBACK_OPTIONS = [
   'Call Tomorrow Morning',
   'Call In Evening',
   'Call After 2 Days',
+];
+
+// ── Matchmaking connected sub-options (mirrors the TMApp ApplicantFeedbackScreen
+// / MatchmakingFeedbackScreen). Driver-applicant calls and transporter calls get
+// different sets; greenline-job driver calls get the extra greenline options.
+export const MM_DRIVER_CONNECTED_OPTIONS = [
+  { value: 'interested_job',            label: 'Interested in the Job',                 label_hi: 'जॉब में रुचि है' },
+  { value: 'wants_more_details',        label: 'Wants More Details About Job',          label_hi: 'जॉब की और जानकारी चाहिए' },
+  { value: 'will_think',                label: 'Will Think and Call Back',              label_hi: 'सोचकर बताएंगे' },
+  { value: 'already_working',           label: 'Already Working with This Transporter', label_hi: 'पहले से इनके साथ काम कर रहे' },
+  { value: 'connect_transporter',       label: 'Wants to Connect with Transporter',     label_hi: 'ट्रांसपोर्टर से बात करनी है' },
+  { value: 'not_interested_another_job',label: 'Not Interested - Found Another Job',     label_hi: 'दूसरी जॉब मिल गई' },
+  { value: 'not_interested_salary',     label: 'Not Interested - Salary Too Low',        label_hi: 'सैलरी कम है' },
+  { value: 'not_interested_location',   label: 'Not Interested - Location Issue',        label_hi: 'लोकेशन की समस्या' },
+  { value: 'not_interested_vehicle',    label: 'Not Interested - Vehicle Mismatch',      label_hi: 'गाड़ी टाइप मैच नहीं' },
+  { value: 'not_genuine_driver',        label: 'Not a Genuine Driver',                   label_hi: 'जेन्युइन ड्राइवर नहीं' },
+  { value: 'placement_done',            label: 'MatchMaking Done (Placement)',           label_hi: 'मैचमेकिंग / प्लेसमेंट हो गई' },
+  { value: 'will_confirm_later',        label: 'Will Confirm Later',                     label_hi: 'बाद में कन्फर्म करेंगे' },
+  { value: 'rejected',                  label: 'Rejected by Driver/Transporter',         label_hi: 'रिजेक्ट हो गया' },
+  { value: 'others',                    label: 'Others',                                 label_hi: 'अन्य' },
+];
+
+export const MM_GREENLINE_CONNECTED_OPTIONS = [
+  { value: 'greenline_screening',       label: 'Interested in Greenline — Screening Q&A', label_hi: 'ग्रीनलाइन स्क्रीनिंग करें' },
+  { value: 'greenline_physical',        label: 'Greenline - Physical Interview Availability', label_hi: 'फिजिकल इंटरव्यू उपलब्धता' },
+  { value: 'greenline_trip_consent',    label: 'Driver Interview Trip Consent',          label_hi: 'इंटरव्यू ट्रिप सहमति' },
+  { value: 'greenline_interview_done',  label: 'Interview Done',                         label_hi: 'इंटरव्यू हो गया' },
+];
+
+export const MM_TRANSPORTER_CONNECTED_OPTIONS = [
+  { value: 'tr_confirmed_job',          label: 'Transporter Confirmed Job Details',      label_hi: 'जॉब डिटेल्स कन्फर्म' },
+  { value: 'tr_modify_job',             label: 'Wants to Modify Job Details',            label_hi: 'जॉब डिटेल्स बदलनी है' },
+  { value: 'tr_hold_job',               label: 'Wants to Hold the Job',                  label_hi: 'जॉब होल्ड करनी है' },
+  { value: 'tr_cancel_job',             label: 'Wants to Cancel the Job',                label_hi: 'जॉब कैंसिल करनी है' },
+  { value: 'tr_busy_callback',          label: 'Busy – Requested Call Back',             label_hi: 'व्यस्त, बाद में कॉल' },
+  { value: 'rejected',                  label: 'Not Interested Anymore',                 label_hi: 'अब रुचि नहीं' },
+  { value: 'tr_shared_notes',           label: 'Shared Additional Information',          label_hi: 'अतिरिक्त जानकारी दी' },
+  { value: 'not_genuine_transporter',   label: 'Not a Genuine Transporter',              label_hi: 'जेन्युइन ट्रांसपोर्टर नहीं' },
+  { value: 'placement_done',            label: 'Matchmaking Done',                       label_hi: 'मैचमेकिंग हो गई' },
+  { value: 'will_confirm_later',        label: 'Will Confirm Later',                     label_hi: 'बाद में कन्फर्म करेंगे' },
+  { value: 'others',                    label: 'Others',                                 label_hi: 'अन्य' },
 ];
 
 export const isSubscriptionAgreeOption = (val: string) => {
@@ -158,6 +200,18 @@ export default function PostCallDispositionModal({
   const isDriverWelcome = user?.role?.includes('DW') || user?.role?.includes('Welcome');
   const isTransporterWelcome = user?.role?.includes('TW') || user?.role?.includes('Transporter');
   const isMatchmaking = user?.role?.includes('MM') || user?.role?.includes('Match');
+
+  // Matchmaking call context (kind + greenline) — written to localStorage by
+  // useMmCallFlow on dial, read here to pick the right connected sub-options.
+  let mmCtx: { kind?: string; isGreenline?: boolean } | null = null;
+  if (isMatchmaking) {
+    try { mmCtx = JSON.parse(localStorage.getItem('mm_pending_call_context') || 'null'); } catch { mmCtx = null; }
+  }
+  const mmIsTransporterCall = mmCtx?.kind === 'transporter';
+  const mmIsGreenline = !!mmCtx?.isGreenline;
+  const mmConnectedOptions = mmIsTransporterCall
+    ? MM_TRANSPORTER_CONNECTED_OPTIONS
+    : [...MM_DRIVER_CONNECTED_OPTIONS, ...(mmIsGreenline ? MM_GREENLINE_CONNECTED_OPTIONS : [])];
 
   const getCalculatedCallbackTime = (interval: string): string => {
     const now = new Date();
@@ -544,32 +598,42 @@ export default function PostCallDispositionModal({
                   </>
                 )}
 
-                {/* Render options for Matchmaking */}
+                {/* Render options for Matchmaking — driver vs transporter, plus
+                    greenline extras for greenline jobs (mirrors the app). */}
                 {isMatchmaking && (
                   <>
-                    {[
-                      { value: 'placement_done', label: 'Driver Placement Done', label_hi: 'ड्राइवर प्लेसमेंट हो गया' },
-                      { value: 'callback', label: 'Call Back Later', label_hi: 'बाद में कॉल करें' },
-                      { value: 'rejected', label: 'Rejected by Driver/Transporter', label_hi: 'रिजेक्ट हो गया' }
-                    ].map(item => (
-                      <label
-                        key={item.value}
-                        style={getRadioStyle(level2Sub === item.value, '#10B981')}
-                      >
-                        <input
-                          type="radio"
-                          name="level2Sub"
-                          value={item.value}
-                          checked={level2Sub === item.value}
-                          onChange={() => setLevel2Sub(item.value)}
-                          style={{ accentColor: '#10B981', marginRight: 8 }}
-                        />
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
-                          <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
-                        </div>
-                      </label>
-                    ))}
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', margin: '2px 0 6px' }}>
+                      {mmIsTransporterCall ? 'Transporter Call' : 'Driver Call'}{mmIsGreenline ? ' · Greenline' : ''}
+                    </div>
+                    {mmConnectedOptions.map(item => {
+                      const isGreenlineOpt = item.value.startsWith('greenline_');
+                      return (
+                        <label
+                          key={item.value}
+                          style={getRadioStyle(level2Sub === item.value, isGreenlineOpt ? '#059669' : '#10B981')}
+                        >
+                          <input
+                            type="radio"
+                            name="level2Sub"
+                            value={item.value}
+                            checked={level2Sub === item.value}
+                            onChange={() => setLevel2Sub(item.value)}
+                            style={{ accentColor: isGreenlineOpt ? '#059669' : '#10B981', marginRight: 8 }}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                              <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                            </div>
+                            {isGreenlineOpt && (
+                              <span style={{ fontSize: 8, fontWeight: 800, color: '#059669', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 4, padding: '1px 4px', textTransform: 'uppercase' }}>
+                                Greenline
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
                   </>
                 )}
               </div>

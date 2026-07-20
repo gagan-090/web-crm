@@ -275,7 +275,7 @@ export const TlMatchmakingJobBoard: React.FC = () => {
                       </div>
                       <p className="text-[10px] text-gray-450 font-semibold">{cand.truckType} · Experience: {cand.experience}</p>
                       <div className="pt-1 flex justify-between items-center">
-                        <span className="font-mono text-gray-400">{cand.phone}</span>
+                        <span className="font-mono text-gray-400">{cand.id}</span>
                         <button 
                           onClick={() => triggerToast(`Contacting candidate ${cand.name} on behalf of assigned caller...`)}
                           className="bg-white border border-gray-200 text-gray-600 px-1.5 py-0.2 rounded hover:bg-[#F39C12] hover:text-white hover:border-[#F39C12] transition-colors text-[9.5px] font-bold"

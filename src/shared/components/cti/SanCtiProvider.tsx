@@ -356,6 +356,7 @@ export default function SanCtiProvider({
       type: 'login',
       user_name: sanUsername,
       password: sanPassword,
+      verifiedFlag: '0',
       uniqueId: '',
     });
   }, [sanUsername, sanPassword, agentId, postToSan, apiCall]);

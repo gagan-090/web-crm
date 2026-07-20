@@ -40,7 +40,6 @@ const JobCard: React.FC<{ job: any; onClick: () => void }> = ({ job, onClick }) 
 
     <p className="text-gray-500 font-semibold text-[10px] truncate">
       <span className="material-symbols-outlined text-[10px] align-middle">business</span> {job.transporter_name}
-      {job.transporter_mobile && <span className="text-gray-400 font-normal"> · {job.transporter_mobile}</span>}
     </p>
     {(job.route || job.location) && (
       <p className="text-gray-400 text-[10px] truncate mt-0.5">

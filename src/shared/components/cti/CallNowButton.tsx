@@ -11,7 +11,7 @@ interface CallNowButtonProps {
 /**
  * Call Now button for lead cards.
  */
-export default function CallNowButton({ phoneNumber, leadUserId, disabled }: CallNowButtonProps) {
+export default function CallNowButton({ phoneNumber, leadUserId, driverName, disabled }: CallNowButtonProps) {
   const { dial, callState, agentState } = useSanCti();
 
   const isAvailable = agentState === 'ready' && callState === 'idle';
@@ -20,7 +20,8 @@ export default function CallNowButton({ phoneNumber, leadUserId, disabled }: Cal
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation(); // Avoid triggering any card click handlers
     if (isDisabled) return;
-    dial(phoneNumber, leadUserId);
+    // Pass the name so the live CTI lead name (used by the script screens) is set.
+    dial(phoneNumber, leadUserId, driverName);
   };
 
   let tooltipText = 'Call Now';

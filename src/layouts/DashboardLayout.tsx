@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
@@ -46,6 +46,17 @@ export const DashboardLayout: React.FC = () => {
 
   const isThDrilldown = user?.role === Role.TH && window.location.pathname.startsWith('/tl/');
   const isCtiRole = user?.role === Role.DW || user?.role === Role.WCT || user?.role === Role.MM || user?.role === Role.SC;
+
+  // Collapsible sidebar (persisted). Hiding it reclaims the full width for the
+  // work area — useful on the wide call-history / queue tables.
+  const [sidebarHidden, setSidebarHidden] = useState<boolean>(() => {
+    try { return localStorage.getItem('crm_sidebar_hidden') === '1'; } catch { return false; }
+  });
+  const toggleSidebar = () => setSidebarHidden((prev) => {
+    const next = !prev;
+    try { localStorage.setItem('crm_sidebar_hidden', next ? '1' : '0'); } catch { /* ignore */ }
+    return next;
+  });
 
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
@@ -108,19 +119,19 @@ export const DashboardLayout: React.FC = () => {
   const layoutContent = (
     <div className="h-screen w-screen overflow-hidden bg-background relative">
       {/* Sidebar Navigation */}
-      <Sidebar />
+      <Sidebar hidden={sidebarHidden} />
 
       {/* Main Top Header */}
-      <Topbar />
+      <Topbar sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
 
       {/* Main View Area Wrapper */}
       <div
-        className={`absolute left-[240px] right-0 bottom-0 overflow-y-auto overflow-x-hidden p-md bg-background transition-all duration-300 ${
-          isThDrilldown ? 'top-[96px]' : 'top-[56px]'
-        }`}
+        className={`absolute right-0 bottom-0 overflow-y-auto overflow-x-hidden p-md bg-background transition-all duration-300 ${
+          sidebarHidden ? 'left-0' : 'left-[240px]'
+        } ${isThDrilldown ? 'top-[96px]' : 'top-[56px]'}`}
       >
         {isThDrilldown && (
-          <div className="fixed top-[56px] left-[240px] right-0 h-10 bg-amber-500 text-white flex items-center justify-between px-md font-bold text-xs z-30 select-none shadow-sm">
+          <div className={`fixed top-[56px] ${sidebarHidden ? 'left-0' : 'left-[240px]'} right-0 h-10 bg-amber-500 text-white flex items-center justify-between px-md font-bold text-xs z-30 select-none shadow-sm`}>
             <span>Viewing as Telecalling Head — Team Leader's Dashboard View</span>
             <button
               onClick={() => window.location.href = '/th/main-overview-dashboard'}

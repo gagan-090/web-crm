@@ -1,6 +1,21 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGetDwCallHistoryQuery } from '../../services/api/webCrmApi';
+import { useSanCti } from '../../shared/components/cti/SanCtiContext';
+import {
+  DWC_CONNECTED_OPTIONS,
+  DWC_NOT_CONNECTED_OPTIONS,
+  DWC_CALLBACK_OPTIONS,
+} from '../../shared/components/cti/PostCallDispositionModal';
+
+// Every canonical disposition feedback, grouped like the disposition modal, so
+// the filter offers ALL options — not only the ones already in this caller's history.
+const FEEDBACK_GROUPS: Array<{ label: string; options: readonly string[] }> = [
+  { label: 'Connected', options: DWC_CONNECTED_OPTIONS },
+  { label: 'Not Connected', options: DWC_NOT_CONNECTED_OPTIONS },
+  { label: 'Call Back Later', options: DWC_CALLBACK_OPTIONS },
+];
+const CANONICAL_FEEDBACKS = new Set(FEEDBACK_GROUPS.flatMap((g) => g.options));
 
 type DirectionFilter = 'all' | 'incoming' | 'outgoing';
 type StatusFilter = 'all' | 'connected' | 'not_connected' | 'callback_later';
@@ -35,9 +50,11 @@ const getDateBounds = (filter: DateFilter): { start: Date; end: Date } | null =>
 
 export const DwCallHistory: React.FC = () => {
   const navigate = useNavigate();
+  const { dial, agentState, callState } = useSanCti();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [playingId, setPlayingId] = useState<number | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -53,6 +70,7 @@ export const DwCallHistory: React.FC = () => {
 
   const records = response?.data || [];
   const feedbackOptions = response?.feedback_options || [];
+  const extraFeedbacks = feedbackOptions.filter((f) => !CANONICAL_FEEDBACKS.has(f));
   const pagination = response?.pagination || { total: 0, per_page: 15, current_page: 1, last_page: 1 };
 
   const filteredRecords = useMemo(() => {
@@ -98,6 +116,25 @@ export const DwCallHistory: React.FC = () => {
     });
   };
 
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+
+  // Dial a lead straight from a call-history row (icon next to the name), so an
+  // agent can re-call without scrolling to the Actions column. lead_type follows
+  // the row's process so call_history_ivr.process stays correct.
+  const handleDirectCall = (r: any) => {
+    if (agentState !== 'ready') {
+      showToast(agentState === 'logged_out'
+        ? 'CTI login failed — check the SAN softphone panel (bottom-left).'
+        : 'CTI agent is not ready yet — please wait a moment and try again.');
+      return;
+    }
+    if (callState !== 'idle') { showToast('Finish the current call before dialing another.'); return; }
+    if (!r.user_id || !r.mobile) { showToast('This record has no dialable number.'); return; }
+    const leadType = (r.process || '').toLowerCase().includes('transporter') ? 'transporter' : 'driver';
+    dial(r.mobile, Number(r.user_id), r.name, r.tmid, leadType);
+    showToast(`Dialing ${r.name || r.mobile}…`);
+  };
+
   const getStatusBadgeClass = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'connected':
@@ -119,6 +156,13 @@ export const DwCallHistory: React.FC = () => {
 
   return (
     <div className="space-y-6 w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
+
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#27AE60]"></span>
+          {toast}
+        </div>
+      )}
 
       {/* Top Header */}
       <section className="border-b border-gray-200 pb-4">
@@ -225,9 +269,20 @@ export const DwCallHistory: React.FC = () => {
               className={`pl-8 pr-3 py-2 text-sm border rounded-lg shadow-sm focus:ring-2 focus:ring-[#27AE60] focus:border-[#27AE60] outline-none transition-all font-semibold appearance-none max-w-[220px] ${feedbackFilter !== 'all' ? 'bg-teal-50 border-teal-300 text-teal-700' : 'bg-white border-gray-300 text-gray-700'}`}
             >
               <option value="all">All Feedbacks</option>
-              {feedbackOptions.map((f) => (
-                <option key={f} value={f}>{f}</option>
+              {FEEDBACK_GROUPS.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.options.map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </optgroup>
               ))}
+              {extraFeedbacks.length > 0 && (
+                <optgroup label="Other">
+                  {extraFeedbacks.map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
         </div>
@@ -282,10 +337,10 @@ export const DwCallHistory: React.FC = () => {
             <p className="text-xs text-gray-400 mt-2">Retrieving call history...</p>
           </div>
         ) : filteredRecords.length > 0 ? (
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[calc(100vh-300px)]">
             <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="bg-gray-50/75 border-b border-gray-200 text-xs font-bold text-gray-600 uppercase tracking-wider">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-600 uppercase tracking-wider">
                   <th className="px-6 py-4">Driver Details</th>
                   <th className="px-6 py-4">Direction</th>
                   <th className="px-6 py-4">Call Status</th>
@@ -302,11 +357,23 @@ export const DwCallHistory: React.FC = () => {
                 {filteredRecords.map((r: any) => (
                   <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-gray-900">{r.name}</div>
-                      <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400 font-medium">
-                        <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">{r.tmid}</span>
-                        <span>•</span>
-                        <span>**********</span>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => handleDirectCall(r)}
+                          title={`Call ${r.name || r.mobile}`}
+                          disabled={!r.user_id || !r.mobile}
+                          className="shrink-0 w-9 h-9 rounded-full bg-[#27AE60] hover:bg-[#219653] text-white flex items-center justify-center shadow-sm active:scale-95 transition-transform disabled:opacity-40"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">call</span>
+                        </button>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-gray-900 truncate">{r.name}</div>
+                          <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400 font-medium">
+                            <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">{r.tmid}</span>
+                            <span>•</span>
+                            <span>**********</span>
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">

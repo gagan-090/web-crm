@@ -7,6 +7,7 @@ import {
   type MmDriverSearchParams,
 } from '../../services/api/webCrmApi';
 import { DriverForm } from './MmDriverBank';
+import DriverDetailsModal from './DriverDetailsModal';
 
 /** Everything the filter panel can set. Kept flat so chips/reset stay trivial. */
 interface Filters {
@@ -150,6 +151,7 @@ export const MmDriverSearch: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [bankPrefill, setBankPrefill] = useState<any | null>(null);
   const [selectedDrivers, setSelectedDrivers] = useState<number[]>([]);
+  const [detailsDriver, setDetailsDriver] = useState<{ id: number; name: string; tmid: string } | null>(null);
 
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
@@ -280,9 +282,6 @@ export const MmDriverSearch: React.FC = () => {
     setSelectedDrivers(prev => (checked ? [...prev, id] : prev.filter(item => item !== id)));
   };
 
-  const handleAddIndividual = (driverName: string) => {
-    triggerToast(`Added ${driverName} to job ${jobId || 'Shortlist'} ✓`);
-  };
 
   const handleAddBulk = () => {
     if (selectedDrivers.length === 0) return;
@@ -775,11 +774,15 @@ export const MmDriverSearch: React.FC = () => {
                       ) : <span className="text-gray-300 font-mono">0</span>}
                     </td>
                     <td className="p-3 text-right pr-4 space-x-2 whitespace-nowrap">
+                      {/* Full driver dossier: profile, documents, verifications,
+                          subscription history, every applied job and the whole
+                          call timeline with recordings. */}
                       <button
-                        onClick={() => handleAddIndividual(d.name)}
-                        className="text-[#8E44AD] hover:underline font-extrabold text-[10.5px]"
+                        onClick={() => setDetailsDriver({ id: d.id, name: d.name, tmid: d.tmid })}
+                        className="w-7 h-7 rounded-lg border border-gray-200 text-gray-500 hover:text-[#8E44AD] hover:border-[#8E44AD] inline-flex items-center justify-center transition-colors align-middle"
+                        title="View complete driver details — profile, subscription, applied jobs and call history"
                       >
-                        Add to Shortlist
+                        <span className="material-symbols-outlined text-[17px]">visibility</span>
                       </button>
                       <button
                         onClick={() => setBankPrefill({
@@ -835,6 +838,16 @@ export const MmDriverSearch: React.FC = () => {
           </div>
         )}
       </section>
+
+      {detailsDriver && (
+        <DriverDetailsModal
+          open
+          driverId={detailsDriver.id}
+          driverName={detailsDriver.name}
+          uniqueId={detailsDriver.tmid}
+          onClose={() => setDetailsDriver(null)}
+        />
+      )}
 
       {bankPrefill && (
         <DriverForm

@@ -121,7 +121,15 @@ export const DwCallHistory: React.FC = () => {
   // Dial a lead straight from a call-history row (icon next to the name), so an
   // agent can re-call without scrolling to the Actions column. lead_type follows
   // the row's process so call_history_ivr.process stays correct.
+  //
+  // Social / campaign rows have NO users.id — call_history_ivr stores user_id
+  // NULL for them — so requiring one here (and on the button's disabled prop)
+  // left the Call icon permanently greyed out on every campaign lead, even
+  // though the row carries a perfectly good mobile number. They dial as
+  // 'social_media' using the originating social_media_leads id the API now
+  // resolves for the row.
   const handleDirectCall = (r: any) => {
+    if (!r.mobile) { showToast('This record has no phone number.'); return; }
     if (agentState !== 'ready') {
       showToast(agentState === 'logged_out'
         ? 'CTI login failed — check the SAN softphone panel (bottom-left).'
@@ -129,9 +137,14 @@ export const DwCallHistory: React.FC = () => {
       return;
     }
     if (callState !== 'idle') { showToast('Finish the current call before dialing another.'); return; }
-    if (!r.user_id || !r.mobile) { showToast('This record has no dialable number.'); return; }
-    const leadType = (r.process || '').toLowerCase().includes('transporter') ? 'transporter' : 'driver';
-    dial(r.mobile, Number(r.user_id), r.name, r.tmid, leadType);
+
+    const isSocial = !r.user_id;
+    const leadType = (r.process || '').toLowerCase().includes('transporter')
+      ? 'transporter'
+      : (isSocial ? 'social_media' : 'driver');
+    const leadId = isSocial ? Number(r.social_lead_id || 0) : Number(r.user_id);
+
+    dial(r.mobile, leadId, r.name, r.tmid, leadType);
     showToast(`Dialing ${r.name || r.mobile}…`);
   };
 
@@ -361,7 +374,7 @@ export const DwCallHistory: React.FC = () => {
                         <button
                           onClick={() => handleDirectCall(r)}
                           title={`Call ${r.name || r.mobile}`}
-                          disabled={!r.user_id || !r.mobile}
+                          disabled={!r.mobile}
                           className="shrink-0 w-9 h-9 rounded-full bg-[#27AE60] hover:bg-[#219653] text-white flex items-center justify-center shadow-sm active:scale-95 transition-transform disabled:opacity-40"
                         >
                           <span className="material-symbols-outlined text-[18px]">call</span>

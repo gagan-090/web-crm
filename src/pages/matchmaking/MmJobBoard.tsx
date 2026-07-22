@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGetMmJobListingsQuery, useGetMmDashboardQuery } from '../../services/api/webCrmApi';
+import { useStickyState, useStickyScroll } from '../../shared/hooks/useStickyState';
+import { openJobSession } from './mmJobSession';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const planBadge = (plan: string) => {
@@ -104,10 +106,21 @@ const JobsGrid: React.FC<{
   statusFilter: string;
   planFilter: string;
   searchQuery: string;
-}> = ({ type, statusFilter, planFilter, searchQuery }) => {
+  // Identifies this tab+status slice so the reported count lands in the right
+  // bucket in the parent.
+  countKey: string;
+  // Reports the real number of the caller's own jobs once they're all loaded,
+  // so the tab badge and status pill can show the TRUE total instead of the
+  // dashboard's out-of-sync aggregate (the "16 loaded vs 12 counted" gap).
+  onLoadedCount: (key: string, count: number) => void;
+}> = ({ type, statusFilter, planFilter, searchQuery, countKey, onLoadedCount }) => {
   const navigate = useNavigate();
   const [cursor, setCursor] = useState<number | null>(null);
   const [allJobs, setAllJobs] = useState<any[]>([]);
+  // How many pages we've auto-advanced through — capped so that a backend which
+  // ignores scope='mine' (and therefore keeps returning system-wide pages) can
+  // never make us walk the entire job table.
+  const autoPagesRef = useRef(0);
 
   const { data, isLoading, isFetching, isError, refetch } = useGetMmJobListingsQuery(
     {
@@ -117,11 +130,26 @@ const JobsGrid: React.FC<{
       status: statusFilter || undefined,
       plan_type: planFilter || undefined,
       search: searchQuery || undefined,
+      // Board shows ONLY the signed-in agent's own jobs — never the whole
+      // system. Ask the backend to filter server-side; the is_mine guard in
+      // `filtered` below enforces it even if the backend ignores this param.
+      scope: 'mine',
       limit: 20,
       cursor: cursor ?? undefined,
     },
     { refetchOnMountOrArgChange: true }
   );
+
+  // Start a filter/search over from page 1. Without this, the cursor from a
+  // previous filter's auto-pagination (which can end deep in the job table)
+  // carried into the next query as `jobs.id < <low id>` and returned an empty
+  // page — the whole board went blank and every pill read 0. Resetting on any
+  // filter change guarantees each one begins at cursor=null.
+  useEffect(() => {
+    setCursor(null);
+    setAllJobs([]);
+    autoPagesRef.current = 0;
+  }, [type, statusFilter, planFilter, searchQuery]);
 
   useEffect(() => {
     const jobs = data?.data?.jobs ?? [];
@@ -135,18 +163,56 @@ const JobsGrid: React.FC<{
     }
   }, [data, cursor]);
 
+  // What's actually shown, before the text-search filter.
+  //
+  // Regular jobs are mine-only: keep the is_mine guard as a safety net in case
+  // the backend ever ignores scope=mine. Greenline (partner) jobs are a SHARED
+  // pool worked by every matchmaking caller, so they must NOT be filtered by
+  // ownership — doing so is what left the Partner tab blank, since those jobs
+  // belong to whoever first took them (is_mine=false for everyone else).
+  const mineJobs = useMemo(
+    () => (type === 'greenline' ? allJobs : allJobs.filter((j: any) => j.is_mine)),
+    [allJobs, type]
+  );
+
   const filtered = useMemo(() => {
-    if (!searchQuery) return allJobs;
+    if (!searchQuery) return mineJobs;
     const q = searchQuery.toLowerCase();
-    return allJobs.filter((j: any) =>
+    return mineJobs.filter((j: any) =>
       j.job_title?.toLowerCase().includes(q) ||
       j.job_id?.toLowerCase().includes(q) ||
       j.transporter_name?.toLowerCase().includes(q) ||
       j.location?.toLowerCase().includes(q)
     );
-  }, [allJobs, searchQuery]);
+  }, [mineJobs, searchQuery]);
 
   const pagination = data?.data?.pagination;
+
+  // Auto-advance pagination until the server says there are no more pages, so
+  // EVERY one of the caller's jobs for this filter is loaded. We deliberately
+  // drive on has_more rather than any precomputed total — the dashboard's
+  // aggregate has been seen to undercount (it reported 12 when the agent really
+  // has 16 open jobs), and stopping at that number would hide the extra ones.
+  // Capped so a backend that ignores scope='mine' can't make us walk the whole
+  // job table.
+  useEffect(() => {
+    if (!data || isFetching) return;
+    if (!pagination?.has_more) return;
+    if (autoPagesRef.current >= 40) return;   // hard safety cap (~800 rows)
+    autoPagesRef.current += 1;
+    setCursor(pagination.next_cursor);
+  }, [data, isFetching, pagination]);
+
+  // True until all pages for this filter have been pulled.
+  const stillLoadingMine = isLoading || isFetching || !!pagination?.has_more;
+
+  // Once fully loaded, report the real total so the parent's badges match
+  // what's on screen. Skipped while a text search or plan filter is narrowing
+  // the set, since those would report a partial count for the tab+status.
+  useEffect(() => {
+    if (stillLoadingMine || searchQuery || planFilter) return;
+    onLoadedCount(countKey, mineJobs.length);
+  }, [stillLoadingMine, searchQuery, planFilter, mineJobs.length, countKey, onLoadedCount]);
 
   if (isLoading && allJobs.length === 0) {
     return (
@@ -198,50 +264,207 @@ const JobsGrid: React.FC<{
         ))}
       </div>
 
-      {pagination?.has_more && (
-        <div className="flex justify-center mt-4">
-          <button
-            onClick={() => setCursor(pagination.next_cursor)}
-            disabled={isFetching}
-            className="px-6 py-2 bg-white border border-[#8E44AD] text-[#8E44AD] rounded-xl font-bold hover:bg-purple-50 disabled:opacity-50 transition-colors text-xs"
-          >
-            {isFetching ? 'Loading...' : `Load More (${pagination.next_cursor ? 'more available' : 'done'})`}
-          </button>
+      {stillLoadingMine && (
+        <div className="flex justify-center items-center gap-2 mt-4 text-[11px] text-gray-400">
+          <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+          Loading your jobs…
         </div>
       )}
 
       <p className="text-center text-[10px] text-gray-400 mt-3 pb-2">
-        {filtered.length} job{filtered.length !== 1 ? 's' : ''}{pagination?.has_more ? ' · more available' : ' · all loaded'}
+        {searchQuery
+          ? `${filtered.length} match${filtered.length !== 1 ? 'es' : ''} in your jobs`
+          : `${filtered.length} of your job${filtered.length !== 1 ? 's' : ''}`}
       </p>
     </>
   );
 };
 
+
+// ── Job lookup (own jobs) ─────────────────────────────────────────────────────
+//
+// The board is scoped to the signed-in agent, so this lookup is too: it reaches
+// only the caller's OWN jobs from whatever fragment they have — full or partial
+// job id, transporter name, TMID (full or last digits) or mobile number. The
+// backend matches all of those; scope='mine' keeps it to the agent's jobs and
+// the is_mine guard below enforces it regardless of the backend.
+const GlobalJobSearch: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [term, setTerm] = useState('');
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(value.trim()), 350);
+    return () => clearTimeout(t);
+  }, [value]);
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const { data, isFetching } = useGetMmJobListingsQuery(
+    { type: 'any', section: 'all', search: term, scope: 'mine', limit: 25 },
+    { skip: term.length < 3 }
+  );
+  // Enforce own-jobs-only even if the backend ignores scope='mine'.
+  const results = (data?.data?.jobs ?? []).filter(j => j.is_mine);
+
+  return (
+    <div ref={boxRef} className="relative flex-1 max-w-md">
+      <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Search your jobs — job id, last 5 digits, transporter, TMID, mobile…"
+        className="w-full pl-8 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#8E44AD] bg-white"
+      />
+      {value && (
+        <button
+          onClick={() => { onChange(''); setOpen(false); }}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+        >
+          <span className="material-symbols-outlined text-sm">close</span>
+        </button>
+      )}
+
+      {open && term.length >= 3 && (
+        <div className="absolute z-40 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl max-h-[420px] overflow-y-auto custom-scrollbar">
+          {isFetching ? (
+            <p className="px-3 py-4 text-[11px] text-gray-400 text-center">Searching all jobs…</p>
+          ) : results.length === 0 ? (
+            <p className="px-3 py-4 text-[11px] text-gray-400 text-center">No job matches “{term}”.</p>
+          ) : (
+            <>
+              <p className="px-3 py-1.5 text-[9px] font-extrabold text-gray-400 uppercase border-b border-gray-100 sticky top-0 bg-white">
+                {results.length} of your job{results.length !== 1 ? 's' : ''}
+              </p>
+              {results.map(job => (
+                <button
+                  key={job.id}
+                  onClick={() => {
+                    setOpen(false);
+                    navigate('/mm/mm-job-detail', { state: { jobId: job.job_id } });
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-purple-50 border-b border-gray-50 last:border-0"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-gray-400 shrink-0">{job.job_id}</span>
+                    <span className="font-bold text-gray-800 text-[11px] truncate flex-1">{job.job_title}</span>
+                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded shrink-0 ${statusBadge(job.status)}`}>
+                      {job.status}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                    {job.transporter_name}
+                    {job.tm_user_id ? ` · ${job.tm_user_id}` : ''}
+                    {job.transporter_mobile ? ` · ${job.transporter_mobile}` : ''}
+                  </p>
+                  <p className="text-[9.5px] text-gray-400 truncate">
+                    {[job.location, job.status, job.plan_type, `${job.applicants_count} applicants`]
+                      .filter(Boolean).join(' · ')}
+                  </p>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export const MmJobBoard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'regular' | 'greenline'>('regular');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [planFilter, setPlanFilter] = useState('');
-  const [search, setSearch] = useState('');
+  // Filters are sticky: opening a job unmounts this page, and without this the
+  // agent came back to a reset board. They default to OPEN jobs — the only ones
+  // an agent can actually action — rather than every job ever posted.
+  const [activeTab, setActiveTab] = useStickyState<'regular' | 'greenline'>('mm_job_board_tab', 'regular');
+  const [statusFilter, setStatusFilter] = useStickyState('mm_job_board_status', 'open');
+  const [planFilter, setPlanFilter] = useStickyState('mm_job_board_plan', '');
+  const [search, setSearch] = useStickyState('mm_job_board_search', '');
+  const listScrollRef = useStickyScroll<HTMLDivElement>('mm_job_board_scroll');
 
-  const { data: dashData } = useGetMmDashboardQuery();
-  const stats = dashData?.data?.stats;
-  const cats  = dashData?.data?.job_categories;
+  // A job the agent left open stays open: coming back from any other screen
+  // reopens it instead of dumping the agent on the list. Read once on mount so
+  // a later "← Job Board" (which clears the key) doesn't bounce straight back.
+  const navigate = useNavigate();
+  const [reopenJobId] = useState(() => openJobSession.get());
+  useEffect(() => {
+    if (reopenJobId) {
+      navigate('/mm/mm-job-detail', { state: { jobId: reopenJobId }, replace: true });
+    }
+  }, [reopenJobId, navigate]);
+
+  // Same as the home dashboard: the tab counts must not be pinned to whatever
+  // the first fetch of the session returned.
+  const { data: dashData } = useGetMmDashboardQuery(undefined, {
+    skip: !!reopenJobId,
+    refetchOnMountOrArgChange: true,
+  });
+  // The caller's assigned jobs per tab, per status. The badge follows the
+  // active status pill — pick "Open 59" and the tab reads 59 — instead of
+  // showing a system-wide total that answers a different question.
+  const statusCounts = dashData?.data?.job_status_counts;
+
+  // The grid reports how many of the caller's own jobs it actually loaded for a
+  // given tab+status. That real, on-screen number is authoritative — the
+  // dashboard's job_status_counts aggregate has been seen to undercount (12 vs
+  // an actual 16). We prefer the live count wherever we have it and fall back to
+  // the dashboard figure only until the grid has loaded that slice.
+  const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  const countKeyFor = (type: 'regular' | 'greenline', status: string) => `${type}:${status || 'all'}`;
+  const handleLoadedCount = useCallback((key: string, count: number) => {
+    setLiveCounts(prev => (prev[key] === count ? prev : { ...prev, [key]: count }));
+  }, []);
+
+  const assignedCount = (type: 'regular' | 'greenline'): number | undefined => {
+    const live = liveCounts[countKeyFor(type, statusFilter)];
+    if (live !== undefined) return live;
+    const bucket = statusCounts?.[type];
+    if (!bucket) return undefined;
+    const key = (statusFilter || 'all') as keyof typeof bucket;
+    return bucket[key] ?? bucket.all;
+  };
+  // Caller's own count for the active tab under a specific status pill. Prefers
+  // the grid's live count; falls back to the dashboard's assigned totals (never
+  // the system-wide `stats`, which count every job ever posted).
+  const myStatusCount = (statusKey: '' | 'open' | 'closed' | 'expired' | 'expiring_soon'): number | undefined => {
+    const live = liveCounts[countKeyFor(activeTab, statusKey)];
+    if (live !== undefined) return live;
+    const bucket = statusCounts?.[activeTab];
+    if (!bucket) return undefined;
+    return statusKey ? bucket[statusKey] : bucket.all;
+  };
+
+  // Redirecting — don't paint the board behind it.
+  if (reopenJobId) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-60px)] text-gray-400">
+        <span className="material-symbols-outlined text-3xl animate-spin">progress_activity</span>
+      </div>
+    );
+  }
 
   const tabs = [
     {
       id: 'regular' as const,
       label: 'In-System Jobs',
-      count: cats?.regular_jobs,
+      count: assignedCount('regular'),
       icon: 'work',
-      desc: 'Regular transporter jobs assigned to you',
+      desc: `Regular transporter jobs assigned to you`,
     },
     {
       id: 'greenline' as const,
       label: 'Partner / Retail Jobs',
-      count: cats?.greenline_jobs,
+      count: assignedCount('greenline'),
       icon: 'handshake',
-      desc: 'Greenline, Mahindra & other partner jobs',
+      desc: `Greenline, Mahindra & other partner jobs — shared across all callers`,
     },
   ];
 
@@ -256,31 +479,18 @@ export const MmJobBoard: React.FC = () => {
             <p className="text-[10px] text-gray-400">Click any job to manage applicants, call transporter, and place drivers</p>
           </div>
 
-          {/* Search */}
-          <div className="relative flex-1 max-w-sm">
-            <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search job, transporter, location..."
-              className="w-full pl-8 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#8E44AD] bg-white"
-            />
-            {search && (
-              <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                <span className="material-symbols-outlined text-sm">close</span>
-              </button>
-            )}
-          </div>
+          {/* Global job lookup — every job in the system, whoever owns it */}
+          <GlobalJobSearch value={search} onChange={setSearch} />
 
           <div className="flex items-center gap-2 ml-auto">
             {/* Status pills with live counts */}
             <div className="flex gap-1 flex-wrap">
               {[
-                { label: 'All',           value: '',              count: stats?.total_jobs?.count },
-                { label: 'Open',          value: 'open',          count: stats?.approved_jobs?.count },
-                { label: 'Closed',        value: 'closed',        count: stats?.closed_jobs?.count },
-                { label: 'Expired',       value: 'expired',       count: stats?.expired_jobs?.count },
-                { label: 'Expiring Soon', value: 'expiring_soon', count: stats?.expiring_soon_jobs?.count, warn: true },
+                { label: 'All',           value: '',              count: myStatusCount('') },
+                { label: 'Open',          value: 'open',          count: myStatusCount('open') },
+                { label: 'Closed',        value: 'closed',        count: myStatusCount('closed') },
+                { label: 'Expired',       value: 'expired',       count: myStatusCount('expired') },
+                { label: 'Expiring Soon', value: 'expiring_soon', count: myStatusCount('expiring_soon'), warn: true },
               ].map(f => (
                 <button
                   key={f.value}
@@ -345,13 +555,15 @@ export const MmJobBoard: React.FC = () => {
       </div>
 
       {/* Job Grid */}
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+      <div ref={listScrollRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
         <JobsGrid
           key={`${activeTab}-${statusFilter}-${planFilter}-${search}`}
           type={activeTab}
           statusFilter={statusFilter}
           planFilter={planFilter}
           searchQuery={search}
+          countKey={countKeyFor(activeTab, statusFilter)}
+          onLoadedCount={handleLoadedCount}
         />
       </div>
     </main>

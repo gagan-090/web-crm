@@ -5,6 +5,9 @@ interface DriverRef { driver_id: number; name: string; mobile: string; unique_id
 
 interface Props {
   jobId: string;
+  /** Job belongs to another agent — applicants stay visible, calling is blocked. */
+  readOnly?: boolean;
+  ownerName?: string | null;
   onCall: (d: DriverRef) => void;
   onScreen: (d: DriverRef, mode: 'conduct' | 'view') => void;
   onViewDetails: (d: DriverRef) => void;
@@ -49,7 +52,7 @@ const DocChip: React.FC<{ label: string; ok: boolean }> = ({ label, ok }) => (
   </span>
 );
 
-const Card: React.FC<{ a: MmGreenlineApplicant } & Props> = ({ a, onCall, onScreen, onViewDetails }) => {
+const Card: React.FC<{ a: MmGreenlineApplicant } & Props> = ({ a, readOnly, ownerName, onCall, onScreen, onViewDetails }) => {
   const ref: DriverRef = { driver_id: a.driver_id, name: a.name, mobile: a.mobile, unique_id: a.unique_id };
   const itv = a.interview;
   return (
@@ -87,13 +90,22 @@ const Card: React.FC<{ a: MmGreenlineApplicant } & Props> = ({ a, onCall, onScre
             <span className="material-symbols-outlined text-[13px]">fact_check</span>
             {a.screening.done ? 'View' : 'Screen'}
           </button>
-          <button
-            onClick={() => onCall(ref)}
-            className="bg-[#1A5276] hover:bg-[#154360] text-white px-2.5 py-1.5 rounded-lg font-bold text-[10px] flex items-center gap-1"
-            title="Call this applicant via CTI"
-          >
-            <span className="material-symbols-outlined text-[13px]">call</span>Call
-          </button>
+          {readOnly ? (
+            <span
+              className="bg-gray-100 text-gray-400 border border-gray-200 px-2.5 py-1.5 rounded-lg font-bold text-[10px] flex items-center gap-1 cursor-not-allowed"
+              title={`This job belongs to ${ownerName || 'another agent'} — calling is disabled`}
+            >
+              <span className="material-symbols-outlined text-[13px]">phone_disabled</span>View only
+            </span>
+          ) : (
+            <button
+              onClick={() => onCall(ref)}
+              className="bg-[#1A5276] hover:bg-[#154360] text-white px-2.5 py-1.5 rounded-lg font-bold text-[10px] flex items-center gap-1"
+              title="Call this applicant via CTI"
+            >
+              <span className="material-symbols-outlined text-[13px]">call</span>Call
+            </button>
+          )}
         </div>
       </div>
 

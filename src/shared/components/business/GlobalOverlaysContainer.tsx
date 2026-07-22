@@ -64,9 +64,7 @@ export const GlobalOverlaysContainer: React.FC = () => {
   }, [triggerCall, openWhatsApp]);
 
   // Redundancy rule: check if the page itself has an active call layout
-  const isEmbeddedCallPage = 
-    location.pathname.includes('active-call') || 
-    location.pathname.includes('live-console');
+  const isEmbeddedCallPage = location.pathname.includes('active-call');
 
   const expandedChats = activeChats.filter(chat => !chat.isMinimized);
   const minimizedChats = activeChats.filter(chat => chat.isMinimized);

@@ -104,7 +104,11 @@ export const WctCallHistory: React.FC = () => {
     if (callState !== 'idle') { showToast('Finish the current call before dialing another.'); return; }
     const proc = (r.process || '').toLowerCase();
     const leadType = proc.includes('transporter') ? 'transporter' : (r.user_id ? 'driver' : 'social_media');
-    dial(r.mobile, r.user_id ? Number(r.user_id) : 0, r.name, r.tmid, leadType);
+    // Campaign rows dial against their social_media_leads id (resolved by the
+    // API from the row's social_media_call_history link), so the callback is
+    // attributed to the lead instead of being logged against nobody.
+    const leadId = r.user_id ? Number(r.user_id) : Number(r.social_lead_id || 0);
+    dial(r.mobile, leadId, r.name, r.tmid, leadType);
     showToast(`Dialing ${r.name || 'lead'}…`);
   };
 

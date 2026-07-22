@@ -30,8 +30,11 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
     isIncomingCall,
     conferenceMembers,
     conferenceDialingMembers,
+    extension,
     startConference,
     addConferenceNumber,
+    holdConferenceMember,
+    showSoftphone,
   } = useSanCti();
 
   const [showConferencePanel, setShowConferencePanel] = useState(false);
@@ -77,8 +80,17 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
     return hit ? hit.name : (raw || '');
   };
 
+  // Is the MM counterpart genuinely bridged in right now? Drives the button
+  // label so "Added" can't sit next to a stale row for someone who has left.
+  const mmPartyOnCall = !!mmConferenceParty && conferenceMembers.some(
+    m => (m.conf_member || '').replace(/\D/g, '').slice(-10) === mmConferenceParty.mobile.replace(/\D/g, '').slice(-10)
+  );
+
   const addMmPartyToCall = () => {
     if (!mmConferenceParty || !mmCtx) return;
+    // Both are safe to call in any order: startConference is a no-op once this
+    // call is already in conference mode (opening the panel below also enters
+    // it), and addConferenceNumber waits for SAN to settle before dialing.
     startConference();
     addConferenceNumber(mmConferenceParty.mobile);
     recordMmConferenceParty(mmConferenceParty);
@@ -144,6 +156,9 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
                 <button
                   onClick={addMmPartyToCall}
                   disabled={mmAlreadyAdded}
+                  title={mmPartyOnCall
+                    ? 'Already on this call — see the member list below'
+                    : mmAlreadyAdded ? 'Already requested for this call' : 'Bridge into the current call'}
                   style={{
                     ...btnStyle,
                     backgroundColor: mmAlreadyAdded ? '#374151' : '#4F46E5',
@@ -151,7 +166,7 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
                     flexShrink: 0,
                   }}
                 >
-                  {mmAlreadyAdded ? 'Added' : 'Add'}
+                  {mmPartyOnCall ? 'On call' : mmAlreadyAdded ? 'Added' : 'Add'}
                 </button>
               </div>
             </div>
@@ -219,13 +234,35 @@ export default function CallControlBar({ driverName }: CallControlBarProps) {
                   <span style={{ fontSize: 11, color: '#FCD34D' }}>Dialing...</span>
                 </div>
               ))}
-              {conferenceMembers.map((m, i) => (
+              {conferenceMembers
+                // The agent's own extension is bridged into every conference —
+                // listing it as a "member" just confuses the roster.
+                .filter(m => (m.conf_member || '') !== extension)
+                .map((m, i) => (
                 <div key={`member-${m.conf_member || i}`} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6,
                   backgroundColor: '#111827', borderRadius: 8, padding: '6px 10px', fontSize: 13,
                 }}>
-                  <span>{mmMemberLabel(m.conf_member)}</span>
-                  <span style={{ fontSize: 11, color: '#22C55E' }}>On call</span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {mmMemberLabel(m.conf_member)}
+                  </span>
+                  <span style={{ fontSize: 11, color: m.hold_status === 'hold' ? '#FCD34D' : '#22C55E', flexShrink: 0 }}>
+                    {m.hold_status === 'hold' ? 'On hold' : 'On call'}
+                  </span>
+                  <button
+                    onClick={() => holdConferenceMember(m.conf_member)}
+                    title={m.hold_status === 'hold' ? 'Resume this party' : 'Put this party on hold'}
+                    style={{ ...btnStyle, backgroundColor: '#374151', padding: '2px 8px', fontSize: 11, flexShrink: 0 }}
+                  >
+                    {m.hold_status === 'hold' ? 'Resume' : 'Hold'}
+                  </button>
+                  <button
+                    onClick={showSoftphone}
+                    title="Drop this party — opens the SAN softphone, which owns the per-leg hangup"
+                    style={{ ...btnStyle, backgroundColor: '#B91C1C', padding: '2px 8px', fontSize: 11, flexShrink: 0 }}
+                  >
+                    End
+                  </button>
                 </div>
               ))}
             </div>

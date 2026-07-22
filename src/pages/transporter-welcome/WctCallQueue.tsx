@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGetWctLeadDetailQuery, useGetDwLeadDetailQuery } from '../../services/api/webCrmApi';
 import type { DwLead } from '../../services/api/webCrmApi';
-import { useQueueCache, useQueueCountsCache, invalidateQueueCache } from '../../shared/hooks/useQueueCache';
-import type { QueueType } from '../../shared/hooks/useQueueCache';
+import {
+  useQueueCache,
+  useQueueCountsCache,
+  invalidateQueueCache,
+  endpointRoleFor,
+  LEAD_ROLES,
+  leadRoleMeta,
+} from '../../shared/hooks/useQueueCache';
+import type { QueueType, LeadRole } from '../../shared/hooks/useQueueCache';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import CrossRoleLeadDetail from '../shared/CrossRoleLeadDetail';
-
-type LeadRole = 'driver' | 'transporter';
 
 // Minutes since an ISO/SQL timestamp (best-effort; 0 when unparseable).
 const minutesSince = (ts?: string | null): number => {
@@ -94,15 +99,21 @@ export const WctCallQueue: React.FC = () => {
   const [activeTab, setActiveTab] = useState<QueueType>('all');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  // Mixed-desk toggle: a TWC caller can also work driver leads (and vice versa).
-  // 'transporter' is this desk's native role. The queue endpoints already filter
-  // assigned_to = this caller + role, so switching queueRole reuses them 1:1.
-  const [leadRole, setLeadRole] = useState<LeadRole>('transporter');
-  const queueRole = leadRole === 'transporter' ? 'wct' : 'dw';
+  // Mixed-desk toggle: a TWC caller can work every kind of lead assigned to them
+  // — transporter (this desk's native role), driver, association, foreman,
+  // puncture shop, dhaba. The queue endpoints filter assigned_to = this caller +
+  // users.role, so switching the role reuses them 1:1. Remembered per session.
+  const ROLE_KEY = 'wct_queue_lead_role';
+  const [leadRole, setLeadRole] = useState<LeadRole>(() => {
+    const stored = sessionStorage.getItem(ROLE_KEY) as LeadRole | null;
+    return stored && (LEAD_ROLES as readonly string[]).includes(stored) ? stored : 'transporter';
+  });
+  useEffect(() => { sessionStorage.setItem(ROLE_KEY, leadRole); }, [leadRole]);
+  const queueRole = endpointRoleFor(leadRole);
 
   const { data: queueData, isLoading: queueLoading, isFetching: queueFetching, refetch: refetchQueue, removeLead } =
-    useQueueCache(activeTab, { page, search, per_page: 50 }, undefined, queueRole);
-  const { counts, refetch: refetchCounts } = useQueueCountsCache(queueRole);
+    useQueueCache(activeTab, { page, search, per_page: 50 }, undefined, queueRole, leadRole);
+  const { counts, refetch: refetchCounts } = useQueueCountsCache(queueRole, leadRole);
 
   useEffect(() => { setPage(1); }, [activeTab, search, leadRole]);
 
@@ -143,7 +154,7 @@ export const WctCallQueue: React.FC = () => {
   // universal panel below.
   const { data: driverDetailData, isFetching: driverDetailLoading } = useGetDwLeadDetailQuery(
     selectedLead ? Number(selectedLead.id) : 0,
-    { skip: !selectedLead || leadRole !== 'driver' }
+    { skip: !selectedLead || leadRole === 'transporter' }
   );
 
   useEffect(() => {
@@ -266,7 +277,7 @@ export const WctCallQueue: React.FC = () => {
         {/* Tab Filter Header */}
         <div className="p-3 border-b border-gray-200 shrink-0 bg-white">
           <div className="flex justify-between items-center mb-3">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">{leadRole === 'transporter' ? 'Transporter Queue' : 'Driver Queue'}</span>
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">{leadRoleMeta[leadRole].label} Queue</span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => { refetchQueue(); refetchCounts(); }}
@@ -287,18 +298,19 @@ export const WctCallQueue: React.FC = () => {
             </div>
           </div>
 
-          {/* Driver / Transporter toggle — mixed-desk leads */}
-          <div className="flex items-center gap-1 mb-2 p-0.5 bg-gray-100 rounded-lg">
-            {(['transporter', 'driver'] as LeadRole[]).map(r => (
+          {/* Lead-role toggle — every kind of lead this desk can be assigned */}
+          <div className="grid grid-cols-3 gap-1 mb-2 p-0.5 bg-gray-100 rounded-lg">
+            {LEAD_ROLES.map(r => (
               <button
                 key={r}
                 onClick={() => { setLeadRole(r); setSelectedId(''); }}
-                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-1 ${
+                title={`${leadRoleMeta[r].label} leads assigned to you`}
+                className={`py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-1 ${
                   leadRole === r ? 'bg-[#FB641B] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                <span className="material-symbols-outlined text-[14px]">{r === 'transporter' ? 'local_shipping' : 'person'}</span>
-                {r === 'transporter' ? 'Transporter' : 'Driver'}
+                <span className="material-symbols-outlined text-[14px]">{leadRoleMeta[r].icon}</span>
+                {leadRoleMeta[r].label}
               </button>
             ))}
           </div>
@@ -411,9 +423,9 @@ export const WctCallQueue: React.FC = () => {
           <div className="flex-grow flex items-center justify-center text-gray-400 text-sm italic p-8 text-center">
             Select a {leadRole} from the queue to view details, or wait for new assignments to arrive.
           </div>
-        ) : leadRole === 'driver' ? (
+        ) : leadRole !== 'transporter' ? (
           <CrossRoleLeadDetail
-            role="driver"
+            role={leadRole}
             detail={driverDetailData?.data}
             loading={driverDetailLoading}
             accent="#FB641B"

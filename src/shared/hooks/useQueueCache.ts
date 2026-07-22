@@ -17,7 +17,28 @@ import {
 } from '../../services/api/webCrmApi';
 
 export type QueueType = 'all' | 'fresh' | 'old' | 'uncalled' | 'callbacks' | 'called';
+/** Which endpoint set backs the queue: the DW set serves every users.role except transporter. */
 export type QueueRole = 'dw' | 'wct';
+
+/**
+ * The lead roles a desk can work — literal `users.role` values, matching
+ * DwCallerController::LEAD_ROLES. Transporter has its own endpoint set (wct);
+ * the rest are the DW endpoints scoped by the `lead_role` param.
+ */
+export const LEAD_ROLES = ['driver', 'transporter', 'association', 'foreman', 'puncture', 'dhaba'] as const;
+export type LeadRole = typeof LEAD_ROLES[number];
+
+export const endpointRoleFor = (leadRole: LeadRole): QueueRole =>
+  leadRole === 'transporter' ? 'wct' : 'dw';
+
+export const leadRoleMeta: Record<LeadRole, { label: string; icon: string }> = {
+  driver:      { label: 'Driver',      icon: 'person' },
+  transporter: { label: 'Transporter', icon: 'local_shipping' },
+  association: { label: 'Association', icon: 'account_balance' },
+  foreman:     { label: 'Foreman',     icon: 'engineering' },
+  puncture:    { label: 'Puncture',    icon: 'build' },
+  dhaba:       { label: 'Dhaba',       icon: 'restaurant' },
+};
 
 export interface CacheData {
   leads: any[];
@@ -62,10 +83,14 @@ export const useQueueCache = (
   type: QueueType,
   params: { page: number; search: string; per_page: number },
   filters?: FilterState,
-  role: QueueRole = 'dw'
+  role: QueueRole = 'dw',
+  // The DW endpoints serve every non-transporter role, scoped by this param —
+  // so it has to be part of the cache key or one role's list would be served
+  // to another.
+  leadRole: LeadRole = 'driver'
 ) => {
   const { page, search, per_page } = params;
-  const cacheKey = `${role}_queue_${type}_p${page}_s${search || ''}_f${JSON.stringify(filters || {})}`;
+  const cacheKey = `${role}_queue_${leadRole}_${type}_p${page}_s${search || ''}_f${JSON.stringify(filters || {})}`;
 
   const [data, setData] = useState<CacheData | null>(() => readCache(cacheKey)?.data ?? null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(() => readCache(cacheKey)?.timestamp ?? null);
@@ -119,6 +144,8 @@ export const useQueueCache = (
         page,
         search: search || undefined,
         per_page,
+        // wct endpoints are transporter-only and ignore it; dw scopes on it.
+        lead_role: role === 'wct' ? undefined : leadRole,
         ...filters
       };
 
@@ -173,7 +200,7 @@ export const useQueueCache = (
       setIsFetching(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, page, search, per_page, role, cacheKey, JSON.stringify(filters)]);
+  }, [type, page, search, per_page, role, leadRole, cacheKey, JSON.stringify(filters)]);
 
   useEffect(() => {
     // Auto-fetch only when nothing is cached yet for this key. Once cached,
@@ -222,11 +249,11 @@ const COUNTS_FIELDS = ['total', 'fresh', 'old', 'uncalled', 'callbacks', 'called
 const isCompleteCounts = (data: any): boolean =>
   !!data && COUNTS_FIELDS.every((key) => typeof data[key] !== 'undefined');
 
-export const useQueueCountsCache = (role: QueueRole = 'dw') => {
+export const useQueueCountsCache = (role: QueueRole = 'dw', leadRole: LeadRole = 'driver') => {
   const [triggerDwCounts] = useLazyGetDwQueueCountsQuery();
   const [triggerWctCounts] = useLazyGetWctQueueCountsQuery();
   const triggerCounts = role === 'wct' ? triggerWctCounts : triggerDwCounts;
-  const cacheKey = `${role}_counts_data`;
+  const cacheKey = `${role}_counts_${leadRole}_data`;
   const [counts, setCounts] = useState<{
     total: number;
     fresh: number;
@@ -242,8 +269,8 @@ export const useQueueCountsCache = (role: QueueRole = 'dw') => {
   });
   const [isFetching, setIsFetching] = useState(false);
 
-  // Re-sync counts in the render phase when the cacheKey (role) changes — e.g.
-  // the Driver/Transporter toggle flips role dw↔wct. Without this the counts
+  // Re-sync counts in the render phase when the cacheKey changes — e.g. the
+  // lead-role toggle switches desk or scope. Without this the counts
   // state keeps the previous role's values (the effect below only refetches
   // when the new key is uncached, and never swaps in an already-cached set),
   // so the tab counts appear "stuck" after toggling.
@@ -257,7 +284,10 @@ export const useQueueCountsCache = (role: QueueRole = 'dw') => {
   const fetchCounts = useCallback(async () => {
     setIsFetching(true);
     try {
-      const result = await triggerCounts().unwrap();
+      const result = await (role === 'wct'
+        ? (triggerCounts as any)()
+        : (triggerCounts as any)({ lead_role: leadRole })
+      ).unwrap();
       if (result && result.status) {
         const data = result.data;
         setCounts(data);
@@ -268,7 +298,7 @@ export const useQueueCountsCache = (role: QueueRole = 'dw') => {
     } finally {
       setIsFetching(false);
     }
-  }, [triggerCounts, cacheKey]);
+  }, [triggerCounts, cacheKey, role, leadRole]);
 
   useEffect(() => {
     if (!isCompleteCounts(readCache(cacheKey)?.data)) {

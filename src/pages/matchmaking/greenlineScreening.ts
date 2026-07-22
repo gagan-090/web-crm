@@ -116,16 +116,23 @@ export const SCREENING_QUESTIONS: { id: number; text: string }[] =
 export const TOTAL_QUESTIONS = SCREENING_QUESTIONS.length; // 32
 
 export type Decision = 'GREEN' | 'AMBER' | 'RED';
+
+// The status actually stored against the applicant. It is chosen by the agent
+// after the Q&A — never derived from the score — and can be changed any time
+// afterwards (the Q&A itself is conducted only once).
 export type ScreeningStatus = 'shortlisted' | 'pending' | 'rejected';
+
+export const SCREENING_STATUSES: ScreeningStatus[] = ['shortlisted', 'pending', 'rejected'];
 
 export interface ScreeningResult {
   score: number;
   decision: Decision;
-  status: ScreeningStatus;
 }
 
 // Sectioned 0–100 score — IDENTICAL to the backend formula so the live preview
-// matches the stored `result`. Plus the auto-reject + GREEN/AMBER/RED decision.
+// matches the stored `result`. The GREEN/AMBER/RED decision is ADVISORY ONLY:
+// it is shown to the agent as guidance and never auto-selects or auto-rejects
+// the applicant. The final accept/reject call is the agent's alone.
 export function computeScreening(answers: Record<number, YesNo>): ScreeningResult {
   const yes = (id: number) => answers[id] === 'Yes';
   const no = (id: number) => answers[id] === 'No';
@@ -162,23 +169,37 @@ export function computeScreening(answers: Record<number, YesNo>): ScreeningResul
   // 7) Intent & Stability – 5
   if (no(31) && yes(32)) score += 5;
 
-  // Auto-reject (critical Yes questions) + major-issue cap (accident/blacklist).
-  const autoReject = [2, 7, 8, 14, 25, 26].some(id => answers[id] !== 'Yes');
+  // Critical-question flag + major-issue flag (accident/blacklist). These only
+  // colour the advisory band — they do NOT reject anyone on their own.
+  const criticalMissed = [2, 7, 8, 14, 25, 26].some(id => answers[id] !== 'Yes');
   const majorIssue = yes(10) || yes(11);
 
   let decision: Decision;
-  if (autoReject || score < 65) decision = 'RED';
+  if (criticalMissed || score < 65) decision = 'RED';
   else if (score < 80 || majorIssue) decision = 'AMBER';
   else decision = 'GREEN';
 
-  const status: ScreeningStatus =
-    decision === 'GREEN' ? 'shortlisted' : decision === 'AMBER' ? 'pending' : 'rejected';
-
-  return { score, decision, status };
+  return { score, decision };
 }
 
+// Advisory band shown next to the score — guidance for the agent, not an outcome.
 export const decisionMeta: Record<Decision, { label: string; text: string; bg: string; border: string }> = {
-  GREEN: { label: 'Recommended (Pass)', text: '#16A34A', bg: '#DCFCE7', border: '#BBF7D0' },
-  AMBER: { label: 'Needs Review (Hold)', text: '#D97706', bg: '#FEF3C7', border: '#FCD34D' },
-  RED:   { label: 'Rejected (Fail)',     text: '#DC2626', bg: '#FEE2E2', border: '#FECACA' },
+  GREEN: { label: 'Advisory: strong profile', text: '#16A34A', bg: '#DCFCE7', border: '#BBF7D0' },
+  AMBER: { label: 'Advisory: review closely', text: '#D97706', bg: '#FEF3C7', border: '#FCD34D' },
+  RED:   { label: 'Advisory: weak profile',   text: '#DC2626', bg: '#FEE2E2', border: '#FECACA' },
 };
+
+// The agent's call — the only thing that sets the applicant's status, and the
+// only part of a screening that stays editable after submission.
+export const statusMeta: Record<ScreeningStatus, { label: string; icon: string; text: string; bg: string; border: string }> = {
+  shortlisted: { label: 'Shortlisted', icon: 'check_circle', text: '#16A34A', bg: '#DCFCE7', border: '#16A34A' },
+  pending:     { label: 'Pending',     icon: 'schedule',     text: '#D97706', bg: '#FEF3C7', border: '#D97706' },
+  rejected:    { label: 'Rejected',    icon: 'cancel',       text: '#DC2626', bg: '#FEE2E2', border: '#DC2626' },
+};
+
+// Normalise whatever the API returns (legacy rows may hold 'accepted').
+export function toScreeningStatus(v?: string | null): ScreeningStatus | null {
+  const s = (v || '').toLowerCase();
+  if (s === 'accepted') return 'shortlisted';
+  return (SCREENING_STATUSES as string[]).includes(s) ? (s as ScreeningStatus) : null;
+}

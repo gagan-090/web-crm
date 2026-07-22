@@ -529,6 +529,15 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/dw/dw-subscriptions',
+    name: 'My Subscriptions',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'payments',
+    showInMenu: true
+  },
+  {
     path: '/dw/dw-campaign-leads',
     name: 'Campaign Leads',
     role: 'Driver Welcome',
@@ -627,15 +636,6 @@ export const dynamicRoutes: RouteItem[] = [
     icon: 'preview',
     showInMenu: true
   },
-  {
-    path: '/dialer/live-console',
-    name: 'Active Call Console (Live)',
-    role: 'Driver Welcome',
-    permission: 'calls:dial',
-    layout: 'caller',
-    icon: 'phone',
-    showInMenu: false
-  },
 
 
   // ==================== TRANSPORTER WELCOME (wct) ====================
@@ -664,6 +664,15 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'history',
+    showInMenu: true
+  },
+  {
+    path: '/wct/wct-subscriptions',
+    name: 'My Subscriptions',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'payments',
     showInMenu: true
   },
   {
@@ -756,15 +765,6 @@ export const dynamicRoutes: RouteItem[] = [
     icon: 'local_shipping',
     showInMenu: true
   },
-  {
-    path: '/dialer/live-console',
-    name: 'Active Call Console (Live)',
-    role: 'Transporter Welcome',
-    permission: 'calls:dial',
-    layout: 'caller',
-    icon: 'phone',
-    showInMenu: false
-  },
 
 
   // ==================== MATCHMAKING CALLER (mm) ====================
@@ -775,15 +775,6 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'dashboard',
-    showInMenu: true
-  },
-  {
-    path: '/dialer/live-console',
-    name: 'Active Call Console (Live)',
-    role: 'Matchmaking',
-    permission: 'calls:dial',
-    layout: 'caller',
-    icon: 'phone',
     showInMenu: true
   },
   {
@@ -814,12 +805,30 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
-    path: '/mm/mm-placement-confirmation',
-    name: 'Placement Confirmation',
+    path: '/mm/mm-call-queue',
+    name: 'My Queue',
     role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
-    icon: 'check_circle',
+    icon: 'call',
+    showInMenu: true
+  },
+  {
+    path: '/mm/mm-call-history',
+    name: 'Call History',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'call_log',
+    showInMenu: true
+  },
+  {
+    path: '/mm/mm-subscriptions',
+    name: 'My Subscriptions',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'payments',
     showInMenu: true
   },
   {
@@ -848,24 +857,6 @@ export const dynamicRoutes: RouteItem[] = [
     layout: 'dashboard',
     icon: 'dashboard_customize',
     showInMenu: true
-  },
-  {
-    path: '/mm/tl-overview-tr-matchmaking',
-    name: 'Transporter Matchmaking Overview',
-    role: 'Matchmaking',
-    permission: 'calls:dial',
-    layout: 'dashboard',
-    icon: 'preview',
-    showInMenu: true
-  },
-  {
-    path: '/mm/tl-overview-tr-matchmaking-white-bg',
-    name: 'Tr Matchmaking White Bg',
-    role: 'Matchmaking',
-    permission: 'calls:dial',
-    layout: 'dashboard',
-    icon: 'preview',
-    showInMenu: false
   },
   {
     path: '/mm/hr-analytics-summary',
@@ -912,15 +903,6 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'dashboard',
-    showInMenu: true
-  },
-  {
-    path: '/dialer/live-console',
-    name: 'Active Call Console (Live)',
-    role: 'Special Categories',
-    permission: 'calls:dial',
-    layout: 'caller',
-    icon: 'phone',
     showInMenu: true
   },
   {

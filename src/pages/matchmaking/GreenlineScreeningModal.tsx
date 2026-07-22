@@ -1,15 +1,20 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   useSubmitMmScreeningMutation,
+  useUpdateMmScreeningStatusMutation,
   useGetMmDriverScreeningQuery,
 } from '../../services/api/webCrmApi';
 import {
   GREENLINE_MODULES,
   SCREENING_QUESTIONS,
+  SCREENING_STATUSES,
   TOTAL_QUESTIONS,
   computeScreening,
   decisionMeta,
+  statusMeta,
+  toScreeningStatus,
   type YesNo,
+  type ScreeningStatus,
 } from './greenlineScreening';
 
 interface Props {
@@ -19,7 +24,7 @@ interface Props {
   uniqueId: string;
   driverName: string;
   onClose: () => void;
-  onSubmitted?: (res: { score: number; decision: string; status: string }) => void;
+  onSubmitted?: (res: { score: number; decision?: string; status: string }) => void;
 }
 
 const answerColor = (a?: string | null) => {
@@ -29,12 +34,45 @@ const answerColor = (a?: string | null) => {
   return '#94A3B8';
 };
 
+/** Shortlisted / Pending / Rejected — the agent's call, in both modes. */
+const StatusPicker: React.FC<{
+  value: ScreeningStatus | null;
+  onChange: (s: ScreeningStatus) => void;
+  disabled?: boolean;
+}> = ({ value, onChange, disabled }) => (
+  <div className="flex gap-2">
+    {SCREENING_STATUSES.map(opt => {
+      const meta = statusMeta[opt];
+      const active = value === opt;
+      return (
+        <button
+          key={opt}
+          disabled={disabled}
+          onClick={() => onChange(opt)}
+          className="flex-1 py-2 rounded-xl text-xs font-extrabold border-2 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+          style={
+            active
+              ? { background: meta.bg, color: meta.text, borderColor: meta.border }
+              : { background: '#fff', color: '#94A3B8', borderColor: '#E5E7EB' }
+          }
+        >
+          <span className="material-symbols-outlined text-base">{meta.icon}</span>
+          {meta.label}
+        </button>
+      );
+    })}
+  </div>
+);
+
 export const GreenlineScreeningModal: React.FC<Props> = ({
   open, mode, driverId, uniqueId, driverName, onClose, onSubmitted,
 }) => {
   const [answers, setAnswers] = useState<Record<number, YesNo>>({});
+  // The agent's own call — never pre-filled from the score.
+  const [agentStatus, setAgentStatus] = useState<ScreeningStatus | null>(null);
   const [remarks, setRemarks] = useState('');
   const [submitScreening, { isLoading: isSubmitting }] = useSubmitMmScreeningMutation();
+  const [updateStatus, { isLoading: isUpdating }] = useUpdateMmScreeningStatusMutation();
 
   // View mode fetch (skipped entirely while conducting or closed).
   const {
@@ -43,23 +81,35 @@ export const GreenlineScreeningModal: React.FC<Props> = ({
     isError: resultsError,
   } = useGetMmDriverScreeningQuery(driverId, { skip: !open || mode !== 'view' });
 
+  const results = resultsData?.data;
+
   const answeredCount = Object.keys(answers).length;
   const allAnswered = answeredCount === TOTAL_QUESTIONS;
   const live = useMemo(() => (allAnswered ? computeScreening(answers) : null), [answers, allAnswered]);
 
+  // View mode: the stored result stays editable — the Q&A below does not.
+  const savedStatus = toScreeningStatus(results?.telecaller_status);
+  const [editStatus, setEditStatus] = useState<ScreeningStatus | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => { setEditStatus(savedStatus); }, [savedStatus]);
+  const statusDirty = editStatus !== null && editStatus !== savedStatus;
+
   if (!open) return null;
 
   const handleSubmit = async () => {
-    if (!allAnswered || !live) return;
+    if (!allAnswered || !agentStatus) return;
+    setNotice(null);
     const answersArr = Array.from({ length: TOTAL_QUESTIONS }, (_, i) => answers[i + 1]);
     try {
       const res = await submitScreening({
         user_id: driverId,
         unique_id: uniqueId,
-        status: live.status,
+        status: agentStatus,
         answers: answersArr,
         telecaller_remarks: remarks || undefined,
       }).unwrap();
+      // Q&A is one-time: the API refuses a second submission for this driver.
+      if (!res.status) { setNotice(res.message); return; }
       onSubmitted?.({ score: res.score, decision: res.decision, status: res.screening_status });
       onClose();
     } catch {
@@ -67,7 +117,19 @@ export const GreenlineScreeningModal: React.FC<Props> = ({
     }
   };
 
-  const results = resultsData?.data;
+  // Change the result of an already-conducted screening (any number of times).
+  const handleStatusUpdate = async () => {
+    if (!editStatus || !statusDirty) return;
+    setNotice(null);
+    try {
+      const res = await updateStatus({ user_id: driverId, status: editStatus }).unwrap();
+      if (!res.status) { setNotice(res.message); return; }
+      onSubmitted?.({ score: res.score, status: res.screening_status });
+      onClose();
+    } catch {
+      /* surfaced by the mutation error */
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -106,7 +168,7 @@ export const GreenlineScreeningModal: React.FC<Props> = ({
                   className="text-[11px] font-extrabold px-2.5 py-1 rounded-lg"
                   style={{ background: decisionMeta[live.decision].bg, color: decisionMeta[live.decision].text }}
                 >
-                  {live.score} pts · {live.decision}
+                  {live.score} pts · {live.decision} (advisory)
                 </span>
               )}
             </div>
@@ -165,16 +227,37 @@ export const GreenlineScreeningModal: React.FC<Props> = ({
                   className="w-full border border-gray-200 rounded-xl p-2.5 text-xs outline-none focus:ring-1 focus:ring-[#8E44AD]"
                 />
               </div>
+
+              {/* Agent's call — the score is guidance only, this sets the result */}
+              <div>
+                <p className="text-[11px] font-extrabold text-gray-500 mb-1">Your Decision <span className="text-red-500">*</span></p>
+                <p className="text-[10px] text-gray-400 mb-2">
+                  The score is advisory only — shortlist, hold or reject on your own judgement, whatever it says.
+                  You can change this result later; the questionnaire is answered once.
+                </p>
+                <StatusPicker value={agentStatus} onChange={setAgentStatus} />
+              </div>
+
+              {notice && (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-[11px] font-semibold text-amber-800">
+                  {notice}
+                </div>
+              )}
             </div>
 
             {/* Footer */}
             <div className="px-5 py-3 border-t border-gray-200 flex items-center gap-3 shrink-0 bg-white">
-              {live ? (
-                <span className="text-[11px] font-bold" style={{ color: decisionMeta[live.decision].text }}>
-                  {decisionMeta[live.decision].label}
+              {!allAnswered ? (
+                <span className="text-[11px] text-gray-400">Answer all {TOTAL_QUESTIONS} questions to score</span>
+              ) : agentStatus ? (
+                <span className="text-[11px] font-bold" style={{ color: statusMeta[agentStatus].text }}>
+                  Marking as {agentStatus}
+                  {live && (
+                    <span className="text-gray-400 font-semibold"> · {decisionMeta[live.decision].label}</span>
+                  )}
                 </span>
               ) : (
-                <span className="text-[11px] text-gray-400">Answer all {TOTAL_QUESTIONS} questions to score</span>
+                <span className="text-[11px] font-bold text-amber-600">Pick a result to submit</span>
               )}
               <div className="ml-auto flex gap-2">
                 <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-bold text-gray-500 hover:bg-gray-100">
@@ -182,7 +265,7 @@ export const GreenlineScreeningModal: React.FC<Props> = ({
                 </button>
                 <button
                   onClick={handleSubmit}
-                  disabled={!allAnswered || isSubmitting}
+                  disabled={!allAnswered || !agentStatus || isSubmitting}
                   className="px-5 py-2 rounded-lg text-xs font-bold text-white bg-[#8E44AD] hover:bg-[#7D3C98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                 >
                   {isSubmitting && <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>}
@@ -195,6 +278,7 @@ export const GreenlineScreeningModal: React.FC<Props> = ({
 
         {/* ── VIEW MODE ────────────────────────────────────────────── */}
         {mode === 'view' && (
+          <>
           <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar">
             {resultsLoading ? (
               <div className="py-16 text-center text-gray-400">
@@ -219,19 +303,30 @@ export const GreenlineScreeningModal: React.FC<Props> = ({
                     <p className="text-[9px] text-gray-400 font-bold uppercase">Telecaller Status</p>
                     <p
                       className="text-sm font-extrabold capitalize"
-                      style={{
-                        color:
-                          results.telecaller_status === 'shortlisted' || results.telecaller_status === 'accepted' ? '#10B981'
-                          : results.telecaller_status === 'rejected' ? '#EF4444' : '#F59E0B',
-                      }}
+                      style={{ color: savedStatus ? statusMeta[savedStatus].text : '#F59E0B' }}
                     >
-                      {results.telecaller_status || 'N/A'}
+                      {savedStatus || results.telecaller_status || 'N/A'}
                     </p>
                     {results.screener?.name && (
                       <p className="text-[10px] text-gray-400 mt-0.5">by {results.screener.name} · {results.screened_at}</p>
                     )}
                   </div>
                 </div>
+
+                {/* Result stays editable — the answers below do not. */}
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-[11px] font-extrabold text-gray-500 mb-1">Change Result</p>
+                  <p className="text-[10px] text-gray-400 mb-2">
+                    You can revise this any time, regardless of the score. The questionnaire itself is answered once and can't be redone.
+                  </p>
+                  <StatusPicker value={editStatus} onChange={setEditStatus} disabled={isUpdating} />
+                </div>
+
+                {notice && (
+                  <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-[11px] font-semibold text-amber-800">
+                    {notice}
+                  </div>
+                )}
 
                 {results.telecaller_remarks && (
                   <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
@@ -262,6 +357,33 @@ export const GreenlineScreeningModal: React.FC<Props> = ({
               </div>
             )}
           </div>
+
+          {/* Footer — save a revised result */}
+          {results && (
+            <div className="px-5 py-3 border-t border-gray-200 flex items-center gap-3 shrink-0 bg-white">
+              {statusDirty && editStatus ? (
+                <span className="text-[11px] font-bold" style={{ color: statusMeta[editStatus].text }}>
+                  Changing to {editStatus}
+                </span>
+              ) : (
+                <span className="text-[11px] text-gray-400">Pick a different result to update it</span>
+              )}
+              <div className="ml-auto flex gap-2">
+                <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-bold text-gray-500 hover:bg-gray-100">
+                  Close
+                </button>
+                <button
+                  onClick={handleStatusUpdate}
+                  disabled={!statusDirty || isUpdating}
+                  className="px-5 py-2 rounded-lg text-xs font-bold text-white bg-[#8E44AD] hover:bg-[#7D3C98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {isUpdating && <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>}
+                  Update Result
+                </button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
     </div>

@@ -5,14 +5,19 @@ import {
   useSubmitDwFeedbackMutation,
   useLazyGetDwGlobalSearchQuery
 } from '../../services/api/webCrmApi';
-import { useQueueCache, useQueueCountsCache, invalidateQueueCache } from '../../shared/hooks/useQueueCache';
-import type { QueueType } from '../../shared/hooks/useQueueCache';
+import {
+  useQueueCache,
+  useQueueCountsCache,
+  invalidateQueueCache,
+  endpointRoleFor,
+  LEAD_ROLES,
+  leadRoleMeta,
+} from '../../shared/hooks/useQueueCache';
+import type { QueueType, LeadRole } from '../../shared/hooks/useQueueCache';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { DriverForm } from '../matchmaking/MmDriverBank';
 import CrossRoleLeadDetail from '../shared/CrossRoleLeadDetail';
-
-type LeadRole = 'driver' | 'transporter';
 
 const SkeletonCard = () => (
   <div className="p-3 border-l-4 border-gray-200 bg-white animate-pulse space-y-2">
@@ -28,18 +33,43 @@ const SkeletonCard = () => (
   </div>
 );
 
-export const DwCallQueue: React.FC = () => {
+/**
+ * The shared call-queue desk.
+ *
+ * Driver Welcome, Transporter Welcome and Matchmaking all work the SAME queue:
+ * leads assigned to the signed-in agent. The queue endpoints already filter
+ * `assigned_to = caller + role`, so the only per-desk differences are which
+ * side the toggle starts on and where the tab selection is remembered — both
+ * props, both defaulted so the existing Driver Welcome usage is unchanged.
+ */
+interface DwCallQueueProps {
+  /** Namespaces the remembered tab per desk (dw / wct / mm). */
+  deskKey?: string;
+  /** Which lead role this desk opens on; the agent can switch to any of LEAD_ROLES. */
+  defaultLeadRole?: LeadRole;
+  /**
+   * When true the global search reaches EVERY user in the database (any role),
+   * not just the caller's assigned drivers — and selecting a result opens that
+   * user's full profile + call timeline and lets the agent call them, whether
+   * or not the lead is assigned to them. Used by the matchmaking desk.
+   */
+  globalSearchAllRoles?: boolean;
+}
+
+export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaultLeadRole = 'driver', globalSearchAllRoles = false }) => {
   const { dial, callState, agentState } = useSanCti();
   const { user } = useAuth();
 
+  const tabStorageKey = `${deskKey}_queue_tab`;
+
   // Search, Tab, Sort & Pagination States
   const [activeTab, setActiveTab] = useState<QueueType>(
-    (sessionStorage.getItem('dw_queue_tab') as QueueType) || 'fresh'
+    (sessionStorage.getItem(tabStorageKey) as QueueType) || 'fresh'
   );
 
   useEffect(() => {
-    sessionStorage.setItem('dw_queue_tab', activeTab);
-  }, [activeTab]);
+    sessionStorage.setItem(tabStorageKey, activeTab);
+  }, [activeTab, tabStorageKey]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -69,15 +99,18 @@ export const DwCallQueue: React.FC = () => {
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      if (globalSearchInput.length >= 3) {
-        triggerGlobalSearch(globalSearchInput);
+      const trimmed = globalSearchInput.trim();
+      if (trimmed.length >= 3) {
+        triggerGlobalSearch(globalSearchAllRoles
+          ? { q: trimmed, roles: 'all' }
+          : trimmed);
         setIsGlobalSearchOpen(true);
       } else {
         setIsGlobalSearchOpen(false);
       }
-    }, 500);
+    }, 400);
     return () => clearTimeout(delayDebounceFn);
-  }, [globalSearchInput, triggerGlobalSearch]);
+  }, [globalSearchInput, triggerGlobalSearch, globalSearchAllRoles]);
 
 
   // Advanced Filter States
@@ -119,11 +152,20 @@ export const DwCallQueue: React.FC = () => {
     setCurrentPage(1);
   };
 
-  // Mixed-desk toggle: a DWC caller can also work transporter leads (and vice
-  // versa). 'driver' is this desk's native role. The queue endpoints already
-  // filter assigned_to = this caller + role, so switching queueRole reuses them.
-  const [leadRole, setLeadRole] = useState<LeadRole>('driver');
-  const queueRole = leadRole === 'transporter' ? 'wct' : 'dw';
+  // Mixed-desk toggle: every desk can work every kind of lead assigned to it —
+  // driver, transporter, association, foreman, puncture shop, dhaba. The queue
+  // endpoints filter assigned_to = this caller + users.role, so switching the
+  // role reuses them: transporter has its own endpoint set, the rest are the DW
+  // set scoped by lead_role. The choice is remembered per desk.
+  const roleStorageKey = `${deskKey}_queue_lead_role`;
+  const [leadRole, setLeadRole] = useState<LeadRole>(() => {
+    const stored = sessionStorage.getItem(roleStorageKey) as LeadRole | null;
+    return stored && (LEAD_ROLES as readonly string[]).includes(stored) ? stored : defaultLeadRole;
+  });
+  useEffect(() => {
+    sessionStorage.setItem(roleStorageKey, leadRole);
+  }, [leadRole, roleStorageKey]);
+  const queueRole = endpointRoleFor(leadRole);
 
   // Integrate SWR caching hooks
   const {
@@ -136,9 +178,9 @@ export const DwCallQueue: React.FC = () => {
     page: currentPage,
     search: searchQuery,
     per_page: 20
-  }, activeFilters, queueRole);
+  }, activeFilters, queueRole, leadRole);
 
-  const { counts, isFetching: isCountsFetching, refetch: refetchCounts } = useQueueCountsCache(queueRole);
+  const { counts, isFetching: isCountsFetching, refetch: refetchCounts } = useQueueCountsCache(queueRole, leadRole);
 
   const handleRefresh = () => {
     refetchQueue();
@@ -178,7 +220,7 @@ export const DwCallQueue: React.FC = () => {
   // default cache would otherwise serve a result from before the latest call
   // history row was written.
   const { data: detailResponse, isLoading: isDetailLoading, refetch: refetchDetail } = useGetDwLeadDetailQuery(selectedId, {
-    skip: !selectedId || leadRole !== 'driver',
+    skip: !selectedId || leadRole === 'transporter',
     refetchOnMountOrArgChange: true
   });
 
@@ -388,7 +430,9 @@ export const DwCallQueue: React.FC = () => {
             <span className="material-symbols-outlined absolute left-2 text-gray-400 text-[18px]">search</span>
             <input
               type="text"
-              placeholder="Global Search (Mobile, TMID, Name)..."
+              placeholder={globalSearchAllRoles
+                ? 'Search ANY user — name, TMID, mobile…'
+                : 'Global Search (Mobile, TMID, Name)...'}
               value={globalSearchInput}
               onChange={(e) => setGlobalSearchInput(e.target.value)}
               onFocus={() => { if (globalSearchInput.length >= 3) setIsGlobalSearchOpen(true); }}
@@ -400,14 +444,26 @@ export const DwCallQueue: React.FC = () => {
           </div>
           
           {/* Autocomplete Dropdown */}
-          {isGlobalSearchOpen && globalSearchData?.data && (
+          {isGlobalSearchOpen && (
             <div className="absolute top-full left-3 right-3 mt-1 bg-white border border-gray-200 shadow-xl rounded-lg z-50 max-h-[300px] overflow-y-auto divide-y divide-gray-100">
-              {globalSearchData.data.length > 0 ? (
+              {isGlobalSearchFetching ? (
+                <div className="p-4 text-center text-xs text-gray-500 flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined text-[16px] animate-spin text-[#27AE60]">sync</span>
+                  Searching...
+                </div>
+              ) : globalSearchData?.data && globalSearchData.data.length > 0 ? (
                 globalSearchData.data.map((res: any) => (
                   <div
                     key={`${res.source}-${res.id}`}
                     onClick={() => {
                       const finalId = res.source === 'social_media' ? `sm-${res.id}` : res.id;
+                      // Open the panel for the found user's ACTUAL role, so a
+                      // global search that lands on a transporter loads the
+                      // transporter detail (not the driver cockpit). Roles the
+                      // desk doesn't model fall back to 'driver'.
+                      const r = String(res.role || 'driver').toLowerCase();
+                      const nextRole = (LEAD_ROLES as readonly string[]).includes(r) ? (r as LeadRole) : 'driver';
+                      setLeadRole(nextRole);
                       setSelectedId(finalId);
                       setIsGlobalSearchOpen(false);
                       setGlobalSearchInput('');
@@ -417,8 +473,10 @@ export const DwCallQueue: React.FC = () => {
                     <div>
                       <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
                         {res.name}
-                        {res.source === 'social_media' && (
+                        {res.source === 'social_media' ? (
                           <span className="bg-purple-100 text-purple-700 text-[9px] px-1.5 py-0.5 rounded border border-purple-200">SML</span>
+                        ) : res.role && (
+                          <span className="bg-gray-100 text-gray-600 text-[9px] px-1.5 py-0.5 rounded border border-gray-200 uppercase">{res.role}</span>
                         )}
                       </div>
                       <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5">
@@ -430,7 +488,7 @@ export const DwCallQueue: React.FC = () => {
                     </div>
                     <div className="text-right">
                       <div className="text-xs font-mono text-gray-600 bg-gray-100 px-1 rounded">{res.tmid}</div>
-                      <div className="text-[11px] font-medium text-[#27AE60] mt-0.5">**********</div>
+                      <div className="text-[11px] font-medium text-[#27AE60] mt-0.5">{res.mobile ? res.mobile.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2') : '**********'}</div>
                     </div>
                   </div>
                 ))
@@ -475,18 +533,19 @@ export const DwCallQueue: React.FC = () => {
             </div>
           </div>
 
-          {/* Driver / Transporter toggle — mixed-desk leads */}
-          <div className="flex items-center gap-1 mb-3 p-0.5 bg-gray-100 rounded-lg">
-            {(['driver', 'transporter'] as LeadRole[]).map(r => (
+          {/* Lead-role toggle — every kind of lead this desk can be assigned */}
+          <div className="grid grid-cols-3 gap-1 mb-3 p-0.5 bg-gray-100 rounded-lg">
+            {LEAD_ROLES.map(r => (
               <button
                 key={r}
                 onClick={() => { setLeadRole(r); setSelectedId(''); setCurrentPage(1); }}
-                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-1 ${
+                title={`${leadRoleMeta[r].label} leads assigned to you`}
+                className={`py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-1 ${
                   leadRole === r ? 'bg-[#27AE60] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                <span className="material-symbols-outlined text-[14px]">{r === 'transporter' ? 'local_shipping' : 'person'}</span>
-                {r === 'transporter' ? 'Transporter' : 'Driver'}
+                <span className="material-symbols-outlined text-[14px]">{leadRoleMeta[r].icon}</span>
+                {leadRoleMeta[r].label}
               </button>
             ))}
           </div>

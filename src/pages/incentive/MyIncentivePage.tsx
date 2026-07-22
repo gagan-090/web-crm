@@ -14,7 +14,7 @@ export default function MyIncentivePage() {
 
   const { data: progress } = useGetGateProgressQuery(roleName, { skip: !roleName });
   const { data: incentive, isLoading } = useGetMonthIncentiveQuery({ role: roleName, period }, { skip: !roleName });
-  const { data: history } = useGetIncentiveHistoryQuery();
+  const { data: history } = useGetIncentiveHistoryQuery(roleName, { skip: !roleName });
 
   if (isLoading || !incentive) {
     return (
@@ -456,32 +456,48 @@ export default function MyIncentivePage() {
             <div className="flex flex-col gap-3 text-xs font-semibold text-gray-650">
               <div className="flex justify-between">
                 <span>{t.myRank}</span>
-                <span className="text-gray-950 font-bold">#2 of 45 callers</span>
+                <span className="text-gray-950 font-bold">
+                  {incentive.peerRank
+                    ? `#${incentive.peerRank.rank} of ${incentive.peerRank.total} callers`
+                    : '—'}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>{t.avgAccrued}</span>
                 <span className="font-mono text-gray-950">₹{incentive.peerAverage.toLocaleString()}</span>
               </div>
-              {/* Simple bar visual comparison */}
-              <div className="mt-2 bg-gray-55 border border-gray-200 rounded-lg p-3">
-                <span className="text-[9px] text-gray-450 block mb-2 uppercase tracking-wide font-bold">Payout Comparison</span>
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-8 text-[10px] text-gray-505 font-bold">Me</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden border border-gray-250/50">
-                      <div className="h-full rounded-full bg-gray-700" style={{ width: `${Math.min(100, (incentive.preTeiAmount / 45000) * 100)}%` }} />
+              {/* Revenue vs peer average. Both bars are COLLECTED REVENUE —
+                  the old version plotted the agent's commission against the peers'
+                  revenue on a fixed ₹45,000 scale, so the two bars measured
+                  different things and neither was to scale. */}
+              {(() => {
+                const mine = progress?.accruedIncentive ?? 0;
+                const avg = incentive.peerAverage ?? 0;
+                const scale = Math.max(mine, avg, 1);
+                return (
+                  <div className="mt-2 bg-gray-55 border border-gray-200 rounded-lg p-3">
+                    <span className="text-[9px] text-gray-450 block mb-2 uppercase tracking-wide font-bold">
+                      Revenue vs peer average
+                    </span>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-8 text-[10px] text-gray-505 font-bold">Me</span>
+                        <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden border border-gray-250/50">
+                          <div className="h-full rounded-full bg-gray-700" style={{ width: `${Math.min(100, (mine / scale) * 100)}%` }} />
+                        </div>
+                        <span className="w-14 text-right font-mono text-[10px] text-gray-800 font-bold shrink-0">₹{mine.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-8 text-[10px] text-gray-505 font-bold">Avg</span>
+                        <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden border border-gray-250/50">
+                          <div className="h-full rounded-full bg-gray-400" style={{ width: `${Math.min(100, (avg / scale) * 100)}%` }} />
+                        </div>
+                        <span className="w-14 text-right font-mono text-[10px] text-gray-850 shrink-0">₹{avg.toLocaleString()}</span>
+                      </div>
                     </div>
-                    <span className="w-12 text-right font-mono text-[10px] text-gray-800 font-bold shrink-0">₹{incentive.preTeiAmount.toLocaleString()}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-8 text-[10px] text-gray-505 font-bold">Avg</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden border border-gray-250/50">
-                      <div className="h-full rounded-full bg-gray-400" style={{ width: `${Math.min(100, (incentive.peerAverage / 45000) * 100)}%` }} />
-                    </div>
-                    <span className="w-12 text-right font-mono text-[10px] text-gray-850 shrink-0">₹{incentive.peerAverage.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
             </div>
           </div>
 

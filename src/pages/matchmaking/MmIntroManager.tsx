@@ -66,16 +66,11 @@ export const MmIntroManager: React.FC = () => {
     triggerToast('Joining confirmed by both parties ✓');
   };
 
-  const handleMarkJobFilled = () => {
-    navigate('/mm/mm-placement-confirmation', {
-      state: {
-        jobId: state.jobId,
-        jobRoute: state.jobRoute,
-        jobTransporter: state.jobTransporter,
-        driverName: state.driverName,
-        driverTmid: state.driverTmid
-      }
-    });
+  // The intro handover ends here — the separate placement-confirmation screen
+  // was removed, so the agent returns to the board once the intro is logged.
+  const handleIntroComplete = () => {
+    triggerToast('Intro handover completed and logged ✓');
+    navigate('/mm/mm-job-board');
   };
 
   return (
@@ -263,13 +258,13 @@ export const MmIntroManager: React.FC = () => {
       {/* Footer and Mark Filled CTA */}
       <div className="mt-8 pt-5 border-t border-gray-200 flex flex-col gap-3">
         <button
-          onClick={handleMarkJobFilled}
+          onClick={handleIntroComplete}
           disabled={!step5Done}
           className={`w-full py-2.5 rounded-xl font-bold text-center text-xs shadow-md ${
             step5Done ? 'bg-green-600 hover:bg-green-700 text-white cursor-pointer' : 'bg-gray-100 text-gray-450 cursor-not-allowed'
           }`}
         >
-          Proceed to Placement Confirmation
+          Complete Intro Handover
         </button>
 
         <p className="text-[10px] text-gray-400 text-center select-none mt-1">

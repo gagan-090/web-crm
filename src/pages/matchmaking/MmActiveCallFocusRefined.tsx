@@ -2,6 +2,12 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import { useMmCallFlow } from './useMmCallFlow';
+import { useAuth } from '../../app/providers/AuthProvider';
+import {
+  useGetDriverBankDetailQuery,
+  useGetMmJobDetailQuery,
+  useGetMmCallHistoryQuery,
+} from '../../services/api/webCrmApi';
 
 // ── MM Active Call Cockpit ───────────────────────────────────────────────────
 //
@@ -18,13 +24,52 @@ import { useMmCallFlow } from './useMmCallFlow';
 interface CallContext {
   name?: string;
   tmid?: string;
+  mobile?: string;
+  userId?: number;
   jobId?: string;
   jobRoute?: string;
   jobTransporter?: string;
   jobTier?: string;
   driverName?: string;
   driverTmid?: string;
+  // Set by the Driver Bank call button (useClickToCall extraState) so this
+  // screen can pull the full driver profile, the job they were added for, and
+  // their call timeline.
+  source?: string;
+  driverBankId?: number;
 }
+
+// ── Small presentational helpers ──────────────────────────────────────────────
+const Field: React.FC<{ label: string; value?: React.ReactNode }> = ({ label, value }) => (
+  <div>
+    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">{label}</p>
+    <p className="text-gray-800 font-semibold mt-0.5 break-words">{value || '—'}</p>
+  </div>
+);
+
+const availStyle = (a?: string) =>
+  a === 'available' ? 'bg-green-50 text-green-700 border-green-200'
+  : a === 'busy' ? 'bg-red-50 text-red-700 border-red-200'
+  : a === 'callback' ? 'bg-blue-50 text-blue-700 border-blue-200'
+  : 'bg-gray-50 text-gray-600 border-gray-200';
+
+const callStatusStyle = (s?: string | null) =>
+  s === 'connected' ? 'bg-green-50 text-green-700'
+  : s === 'callback_later' ? 'bg-amber-50 text-amber-700'
+  : 'bg-red-50 text-red-500';
+
+const fmtDateTime = (s?: string | null) => {
+  if (!s) return '—';
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? String(s) : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+};
+
+const fmtDuration = (secs?: number | string | null) => {
+  const n = Number(secs) || 0;
+  const m = Math.floor(n / 60).toString().padStart(2, '0');
+  const s = (n % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+};
 
 export const MmActiveCallFocusRefined: React.FC = () => {
   const navigate = useNavigate();
@@ -43,6 +88,37 @@ export const MmActiveCallFocusRefined: React.FC = () => {
     isHeld,
     toggleHold,
   } = useSanCti();
+
+  const { user } = useAuth();
+
+  // ── Driver Bank call context ──
+  // When the call was launched from the Driver Bank, pull the full picture:
+  // the driver's profile, the job they were added for, and their call timeline.
+  const isDriverBank = ctx.source === 'driver-bank';
+  const { data: dbDetail, isFetching: dbLoading } = useGetDriverBankDetailQuery(
+    ctx.driverBankId as number,
+    { skip: !isDriverBank || !ctx.driverBankId }
+  );
+  const { data: jobDetailRes, isFetching: jobLoading } = useGetMmJobDetailQuery(
+    ctx.jobId as string,
+    { skip: !ctx.jobId }
+  );
+  const { data: callHistRes, isFetching: histLoading } = useGetMmCallHistoryQuery(
+    { search: ctx.tmid || ctx.name || '', per_page: 50 },
+    { skip: !isDriverBank || (!ctx.tmid && !ctx.name) }
+  );
+
+  const dbDriver = dbDetail?.data?.driver;
+  const dbSubscription = dbDetail?.data?.subscription;
+  const job = jobDetailRes?.data;
+  // Server search can over-match; keep only rows for this exact driver, but if
+  // that leaves nothing (tmid/lead_id formatting differences) fall back to the
+  // server-scoped list so the timeline is never wrongly empty.
+  const historyRaw: any[] = callHistRes?.data || [];
+  const historyStrict = historyRaw.filter(
+    (r) => (ctx.tmid && r.lead_tmid === ctx.tmid) || (ctx.userId && r.lead_id === ctx.userId)
+  );
+  const timeline = historyStrict.length ? historyStrict : historyRaw;
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [scriptTab, setScriptTab] = useState<'opening' | 'interest' | 'intro' | 'rejection' | 'closure'>('opening');
@@ -127,8 +203,158 @@ export const MmActiveCallFocusRefined: React.FC = () => {
         {/* Work Area */}
         <div className="flex-1 p-4 space-y-4 overflow-y-auto">
 
-          {/* JOB CONTEXT CHIP */}
-          {ctx.jobId ? (
+          {isDriverBank ? (
+            <>
+              {/* Agent on this call */}
+              <div className="flex items-center justify-between bg-[#F4ECF7] border border-[#8E44AD]/40 rounded-xl p-3 shadow-sm">
+                <div className="flex items-center gap-2.5">
+                  <span className="material-symbols-outlined text-[#7D3C98]">headset_mic</span>
+                  <div>
+                    <span className="text-[9px] font-extrabold text-[#7D3C98] uppercase tracking-wider block">Agent on this call</span>
+                    <span className="font-extrabold text-gray-900">{user?.name || '—'}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[9px] font-bold text-gray-400 uppercase block">Called from</span>
+                  <span className="text-[10px] font-bold text-gray-700">Driver Bank</span>
+                </div>
+              </div>
+
+              {/* Driver complete details */}
+              <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <h3 className="text-xs font-extrabold text-gray-800 uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                  <span className="material-symbols-outlined text-sm text-[#8E44AD]">badge</span>
+                  Driver Details
+                </h3>
+                {dbLoading && !dbDriver ? (
+                  <div className="h-20 bg-gray-100 rounded-lg animate-pulse" />
+                ) : dbDriver ? (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <Field label="Name" value={dbDriver.name} />
+                      <Field label="TMID" value={dbDriver.tmid} />
+                      <Field label="Mobile" value={currentPhoneNumber || ctx.mobile} />
+                      <Field label="Base Location" value={dbDriver.location} />
+                      <Field label="License Type" value={dbDriver.license_type} />
+                      <Field label="Vehicle Type" value={dbDriver.vehicle_type} />
+                      <Field label="Experience" value={dbDriver.experience} />
+                      <Field label="Current Income" value={dbDriver.current_income} />
+                      <Field label="Availability" value={
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${availStyle(dbDriver.availability)}`}>
+                          {dbDriver.availability || '—'}
+                        </span>
+                      } />
+                      <Field label="Added By" value={dbDriver.added_by_admin_name || dbDriver.added_by_name} />
+                    </div>
+                    {(dbDriver.feedback || dbDriver.remarks) && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {dbDriver.feedback && <Field label="Last Feedback" value={dbDriver.feedback} />}
+                        {dbDriver.remarks && <Field label="Remarks" value={dbDriver.remarks} />}
+                      </div>
+                    )}
+                    {dbSubscription && (
+                      <div className="mt-3 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-lg p-2.5 flex items-center justify-between">
+                        <div>
+                          <span className="text-[9px] font-bold text-amber-700 uppercase">Subscription</span>
+                          <p className="text-xs font-bold text-amber-800">{dbSubscription.plan_name || 'Active Plan'}</p>
+                        </div>
+                        {dbSubscription.payment_amount && (
+                          <span className="text-sm font-extrabold text-amber-800">₹{dbSubscription.payment_amount}</span>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-gray-400 font-semibold text-[11px]">Driver profile not available.</p>
+                )}
+              </section>
+
+              {/* Job the driver was added for */}
+              <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <h3 className="text-xs font-extrabold text-gray-800 uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                  <span className="material-symbols-outlined text-sm text-[#8E44AD]">work</span>
+                  Job Added For {ctx.jobId && <span className="font-mono text-[10px] text-gray-400">· {ctx.jobId}</span>}
+                </h3>
+                {!ctx.jobId ? (
+                  <p className="text-gray-400 font-semibold text-[11px]">This driver was added to the bank without a linked job.</p>
+                ) : jobLoading && !job ? (
+                  <div className="h-24 bg-gray-100 rounded-lg animate-pulse" />
+                ) : job ? (
+                  <>
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <h4 className="font-extrabold text-gray-900 text-sm leading-tight">{job.job_title}</h4>
+                      <div className="flex gap-1 shrink-0">
+                        {job.is_greenline && <span className="bg-emerald-100 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-200">GREENLINE</span>}
+                        {job.status && <span className="bg-gray-100 text-gray-600 text-[9px] font-bold px-1.5 py-0.5 rounded">{job.status}</span>}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <Field label="Transporter" value={job.transporter_name} />
+                      <Field label="Transporter Mobile" value={job.transporter_mobile} />
+                      <Field label="Location" value={job.job_location} />
+                      <Field label="Route" value={job.route} />
+                      <Field label="Salary" value={job.salary_range} />
+                      <Field label="Vehicle Type" value={job.vehicle_type} />
+                      <Field label="License" value={job.license_type} />
+                      <Field label="Experience Req." value={job.required_experience} />
+                      <Field label="Drivers Needed" value={job.number_of_drivers_required} />
+                      <Field label="Deadline" value={job.application_deadline ? fmtDateTime(job.application_deadline) : '—'} />
+                      <Field label="Applicants" value={job.counts?.applicants} />
+                    </div>
+                    {job.job_description && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <Field label="Description" value={job.job_description} />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-gray-400 font-semibold text-[11px]">Job details could not be loaded.</p>
+                )}
+              </section>
+
+              {/* Call timeline with feedback */}
+              <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <h3 className="text-xs font-extrabold text-gray-800 uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                  <span className="material-symbols-outlined text-sm text-[#8E44AD]">history</span>
+                  Call Timeline &amp; Feedback
+                  <span className="ml-auto text-[9px] bg-gray-100 text-gray-500 font-bold px-2 py-0.5 rounded-full">{timeline.length}</span>
+                </h3>
+                {histLoading && timeline.length === 0 ? (
+                  <div className="h-16 bg-gray-100 rounded-lg animate-pulse" />
+                ) : timeline.length === 0 ? (
+                  <p className="text-gray-400 font-semibold text-[11px]">No previous calls logged for this driver.</p>
+                ) : (
+                  <ol className="relative border-l-2 border-gray-100 ml-1.5 space-y-3">
+                    {timeline.map((r: any) => (
+                      <li key={r.id} className="ml-4">
+                        <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#8E44AD] border-2 border-white" />
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-bold text-gray-700">{fmtDateTime(r.called_at)}</span>
+                          {r.call_status && (
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded capitalize ${callStatusStyle(r.call_status)}`}>
+                              {String(r.call_status).replace('_', ' ')}
+                            </span>
+                          )}
+                          {r.direction && <span className="text-[9px] text-gray-400 uppercase">{r.direction}</span>}
+                          <span className="text-[9px] text-gray-400 ml-auto">⏱ {fmtDuration(r.duration_seconds)}</span>
+                        </div>
+                        {r.job_id && (
+                          <p className="text-[9.5px] text-gray-500 mt-0.5">Job: <span className="font-mono">{r.job_id}</span>{r.job_title ? ` · ${r.job_title}` : ''}</p>
+                        )}
+                        {r.feedback && <p className="text-[10.5px] text-gray-800 mt-0.5 font-medium">{r.feedback}</p>}
+                        {r.remarks && <p className="text-[10px] text-gray-500 mt-0.5 italic">“{r.remarks}”</p>}
+                        {r.match_status && (
+                          <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded border bg-gray-50 text-gray-600 border-gray-200 capitalize">
+                            MM: {String(r.match_status).replace('_', ' ')}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+            </>
+          ) : ctx.jobId ? (
             <div className="bg-[#F4ECF7] border border-[#8E44AD] rounded-xl p-4 shadow-sm select-none">
               <span className="text-[10px] font-extrabold text-[#7D3C98] uppercase tracking-wider block">CALLING CONTEXT: JOB POSTING</span>
               <div className="grid grid-cols-2 gap-y-2 gap-x-4 mt-2.5 font-bold text-gray-700">

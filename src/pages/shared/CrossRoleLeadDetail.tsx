@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import type { DwLeadDetailResponse } from '../../services/api/webCrmApi';
+import { leadRoleMeta } from '../../shared/hooks/useQueueCache';
+import type { LeadRole } from '../../shared/hooks/useQueueCache';
 
 type DetailData = DwLeadDetailResponse['data'];
 
 interface CrossRoleLeadDetailProps {
-  role: 'driver' | 'transporter';
+  /** Any lead role a desk can work; everything but 'transporter' uses the
+      person-shaped layout, labelled with the role's own name. */
+  role: LeadRole;
   detail?: DetailData;
   loading?: boolean;
   accent?: string;               // hex accent for buttons/badges
@@ -50,6 +54,7 @@ export const CrossRoleLeadDetail: React.FC<CrossRoleLeadDetailProps> = ({
   const postedJobs = detail?.posted_jobs || [];
   const appliedJobs = detail?.applied_jobs || [];
   const isTransporter = role === 'transporter';
+  const roleLabel = leadRoleMeta[role]?.label ?? 'Lead';
   const completion = Math.max(0, Math.min(100, Number(p?.profile_completion ?? 0)));
 
   const location = [p?.city, p?.state].filter(Boolean).join(', ') || '—';
@@ -76,7 +81,7 @@ export const CrossRoleLeadDetail: React.FC<CrossRoleLeadDetailProps> = ({
               <h2 className="text-lg font-bold text-gray-900 truncate">{p.name || 'Lead'}</h2>
               <span className="font-mono text-[11px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{p.tmid}</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase" style={{ color: accent, borderColor: `${accent}55` }}>
-                {isTransporter ? 'Transporter' : 'Driver'}
+                {roleLabel}
               </span>
             </div>
             <div className="text-xs text-gray-500 mt-0.5">{completion}% profile complete</div>
@@ -92,7 +97,7 @@ export const CrossRoleLeadDetail: React.FC<CrossRoleLeadDetailProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {/* Profile */}
         <div className="border border-gray-200 rounded-xl p-3">
-          <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">{isTransporter ? 'Transporter Profile' : 'Driver Profile'}</h3>
+          <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">{roleLabel} Profile</h3>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
             <Field label="Mobile" value={p.mobile} />
             <Field label="Location" value={location} />

@@ -91,8 +91,11 @@ export function useMmCallFlow({ onToast, onLogSaved }: UseMmCallFlowOptions = {}
   // Job brief to collect once a transporter call has been dispositioned.
   const [jobBriefTarget, setJobBriefTarget] = useState<{ jobId: string; name: string } | null>(null);
   // Transporter conferenced into a driver call — still owes its own
-  // disposition once the primary call has been dispositioned.
-  const [conferenceDisposition, setConferenceDisposition] =
+  // disposition once the primary call has been dispositioned. It is QUEUED
+  // here the moment the leg is logged (mid-call) and only surfaced once the
+  // call is over: popping a feedback form over a live conference hides the
+  // call controls and interrupts the conversation the agent is still having.
+  const [pendingConferenceDisposition, setConferenceDisposition] =
     useState<PendingConferenceDisposition | null>(null);
 
   const toast = useCallback((msg: string) => {
@@ -299,8 +302,9 @@ export function useMmCallFlow({ onToast, onLogSaved }: UseMmCallFlowOptions = {}
     jobBriefTarget,
     openJobBrief,
     closeJobBrief: useCallback(() => setJobBriefTarget(null), []),
-    // Disposition owed by a conferenced transporter
-    conferenceDisposition,
+    // Disposition owed by a conferenced transporter — released only once the
+    // call has fully ended (SAN back to idle, primary disposition submitted).
+    conferenceDisposition: callState === 'idle' ? pendingConferenceDisposition : null,
     clearConferenceDisposition: useCallback(() => setConferenceDisposition(null), []),
   };
 }

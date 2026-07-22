@@ -533,9 +533,18 @@ export interface MmDashboardResponse {
       total_applicants: { count: number };
     };
     job_categories: {
+      /** Every job of this type in the system — matches what the board's tabs list. */
       regular_jobs: number;
       greenline_jobs: number;
+      /** The slice of each that belongs to the signed-in caller. */
+      regular_jobs_assigned?: number;
+      greenline_jobs_assigned?: number;
     };
+    /** The caller's OWN assigned jobs, per board tab, per status filter. */
+    job_status_counts?: Record<'regular' | 'greenline', {
+      all: number; open: number; pending: number;
+      closed: number; expired: number; expiring_soon: number;
+    }>;
   };
 }
 
@@ -651,6 +660,117 @@ export interface MmDriverFiltersResponse {
   };
 }
 
+// ── MM agent reporting ──────────────────────────────────────────────────────
+
+export interface MmPlacementRow {
+  job_id: string;
+  driver_id: number | null;
+  driver_name: string | null;
+  tier: 'super_premium' | 'premium' | 'standard' | 'unknown';
+  source: 'web_crm' | 'app';
+  job_posted_at: string | null;
+  placed_at: string | null;
+  days_to_fill: number | null;
+  sla_target_days: number | null;
+  within_sla: boolean | null;
+  replacement_until: string | null;
+  in_replacement_window: boolean;
+}
+
+export interface MmSlaTier {
+  target_days: number;
+  measured: number;
+  within_sla: number;
+  breached: number;
+  rate: number | null;
+}
+
+export interface MmAgentPerformanceResponse {
+  status: boolean;
+  data: {
+    period: string;
+    config: Record<string, number>;
+    fulfillments: {
+      total: number; target: number;
+      premium: number; super_premium: number; standard: number; unknown_tier: number;
+    };
+    sla: {
+      overall_rate: number | null;
+      measured: number;
+      within_sla: number;
+      by_tier: { super_premium: MmSlaTier; premium: MmSlaTier };
+      replacement: {
+        window_days: number; in_window: number; expired: number; tracking_note: string;
+      };
+    };
+    incentive: {
+      accrued: number; gate: number; gate_crossed: boolean;
+      rate_premium: number; rate_super_premium: number;
+    };
+    rejections: {
+      total: number;
+      reasons: Array<{ reason: string; count: number; percent: number }>;
+    };
+    sourcing: {
+      calls_made: number; placements: number; calls_per_placement: number | null;
+    };
+    placements: MmPlacementRow[];
+  };
+}
+
+export interface MmAgentStatsResponse {
+  status: boolean;
+  data: {
+    period: string;
+    agent: { id: number; name: string };
+    calls: {
+      total: number; connected: number; not_connected: number; callback: number;
+      pending: number; to_drivers: number; to_transporters: number;
+      unattributed: number; connect_rate: number | null;
+    };
+    feedback: Array<{ label: string; count: number }>;
+    funnel: {
+      jobs_total: number; jobs_open: number; jobs_closed: number;
+      jobs_standard: number; jobs_premium: number; jobs_super_premium: number;
+      jobs_assigned_to_me: number;
+      applications_total: number; applications_pending: number;
+      applications_accepted: number; applications_rejected: number;
+      my_matched: number; my_selected: number;
+    };
+  };
+}
+
+export interface MmCallHistoryRow {
+  id: number;
+  recording_url: string | null;
+  bill_duration: number | string | null;
+  job_id: string | null;
+  job_title: string | null;
+  transporter_name: string | null;
+  lead_id: number | null;
+  lead_tmid: string | null;
+  lead_name: string | null;
+  lead_role: string | null;
+  call_status: string | null;
+  feedback: string | null;
+  remarks: string | null;
+  match_status: string | null;
+  process: string | null;
+  call_type: string | null;
+  direction: string | null;
+  duration_seconds: number;
+  disposition_sub: string | null;
+  callback_at: string | null;
+  recording: string | null;
+  called_at: string;
+}
+
+export interface MmCallHistoryResponse {
+  status: boolean;
+  data: MmCallHistoryRow[];
+  pagination: { total: number; per_page: number; current_page: number; last_page: number };
+}
+
 /**
  * Transporter job brief — identical field set and naming to the mobile
  * JobBriefFeedbackModal payload (src/screens/matchmaking-telecalling/
@@ -746,6 +866,10 @@ export interface MmJobListingsResponse {
       vehicle_type: string;
       benefits: { stay: string; food: string; esi_pf: string };
       assigned_to: string | null;
+      /** Owner of the job — the board is system-wide, so not every job is the caller's. */
+      assigned_to_id: number | null;
+      assigned_to_name: string | null;
+      is_mine: boolean;
       deadline: string | null;
       applicants_count: number;
       created_at: string;
@@ -787,6 +911,10 @@ export interface MmJobDetailResponse {
     status: string | null;
     created_at: string | null;
     is_greenline?: boolean;
+    /** Ownership — false `is_mine` puts the detail screen in read-only mode. */
+    assigned_to_id?: number | null;
+    assigned_to_name?: string | null;
+    is_mine?: boolean;
   };
 }
 
@@ -858,7 +986,14 @@ export interface MmApplicant {
   interview: any;
   applied_at: string;
   is_matched: boolean;
-  selected_jobs: Array<{ job_id: string; job_title: string; job_location: string; selected_at: string }>;
+  selected_jobs: Array<{
+    job_id: string;
+    job_title: string;
+    job_location: string;
+    selected_at: string;
+    /** Resolved by MmCallerController::mmJobApplicants from jobs.transporter_id. */
+    transporter_name?: string | null;
+  }>;
   match_making_status: { status: string; feedback: string; called_at: string } | null;
   call_timeline?: Array<{
     call_status: string | null;
@@ -868,6 +1003,8 @@ export interface MmApplicant {
     remarks: string | null;
     called_by: string | null;
     called_at: string;
+    job_id?: string | null;
+    transporter_name?: string | null;
   }>;
 }
 
@@ -888,6 +1025,31 @@ export interface MmDriverProfileResponse {
     pan_verification: Record<string, string | null> | null;
     aadhaar_verification: Record<string, string | null> | null;
     verification_summary: Record<string, string | null> | null;
+    subscription: {
+      current_plan: string; current_label: string; current_amount: number;
+      total_paid: number; payment_count: number;
+      payments: Array<{
+        id: number; amount: number; status: string;
+        plan_name: string | null; plan_label: string | null;
+        duration_months: number | null;
+        start_at: string | number | null; end_at: string | number | null; paid_at: string;
+      }>;
+    };
+    applied_jobs: Array<{
+      application_id: number; job_id: string | null; status: string | null;
+      rejection_remark: string | null; applied_at: string;
+      job_ref: string | null; job_title: string | null; job_location: string | null;
+      route: string | null; salary: string | null; vehicle_type: string | null;
+      transporter_name: string | null;
+    }>;
+    call_timeline: Array<{
+      id: number; job_id: string | null; job_title: string | null; transporter_name: string | null;
+      call_status: string | null; feedback: string | null; remarks: string | null;
+      match_status: string | null; disposition_sub: string | null; process: string | null;
+      call_type: string | null; direction: string | null; duration_seconds: number;
+      callback_at: string | null; called_by: string | null; called_at: string;
+      recording_url: string | null; bill_duration: string | number | null;
+    }>;
   } | null;
 }
 
@@ -1121,6 +1283,97 @@ export interface TlDashboardResponse {
   };
 }
 
+export type TlBoardColumn = 'open' | 'in_progress' | 'sla_risk' | 'filled' | 'expired';
+
+export interface TlBoardJob {
+  id: number;
+  job_id: string;
+  title: string;
+  location: string | null;
+  route: string | null;
+  vehicle_type: string | null;
+  salary_range: string | null;
+  experience: string | null;
+  license_type: string | null;
+  drivers_required: number;
+  column: TlBoardColumn;
+  is_verified: boolean;
+  is_closed: boolean;
+  deadline: string | null;
+  /** Minutes to the application deadline; negative once past, null when none is set. */
+  sla_minutes_left: number | null;
+  posted_at: string | null;
+  last_activity_at: string | null;
+  assigned_to: number | null;
+  assigned_name: string | null;
+  transporter: { id: number; name: string | null; tmid: string | null; mobile: string | null; city: string | null };
+  is_greenline: boolean;
+  applicants_count: number;
+  matched_count: number;
+  selected_count: number;
+  calls_count: number;
+  plan_type: 'STANDARD' | 'PREMIUM' | 'SUPER PREMIUM';
+}
+
+export interface TlBoardAgent {
+  id: number;
+  name: string;
+  role: string;
+  mobile: string | null;
+  live_jobs: number;
+}
+
+export interface TlMatchmakingBoardResponse {
+  status: boolean;
+  data: {
+    board: Record<TlBoardColumn, { total: number; jobs: TlBoardJob[] }>;
+    agents: TlBoardAgent[];
+    summary: {
+      total_on_board: number;
+      sla_risk: number;
+      unassigned: number;
+      window_days: number;
+      sla_risk_hours: number;
+      generated_at: string;
+    };
+  };
+}
+
+export interface TlBoardCandidate {
+  application_id: number;
+  driver_id: number;
+  tmid: string | null;
+  name: string | null;
+  mobile: string | null;
+  city: string | null;
+  state: string | null;
+  vehicles: string[];
+  license_type: string | null;
+  experience: string | null;
+  expected_salary: string | null;
+  applied_at: string | null;
+  application_status: string | null;
+  fit: number;
+  fit_breakdown: { vehicle: number; licence: number; experience: number; location: number; profile: number };
+  match_status: string | null;
+  last_call_status: string | null;
+  last_call_at: string | null;
+}
+
+export interface TlBoardCandidatesResponse {
+  status: boolean;
+  data: {
+    job: {
+      id: number; job_id: string; title: string; vehicle_type: string[];
+      license_type: string | null; experience: string | null; salary_range: string | null; location: string | null;
+    };
+    candidates: TlBoardCandidate[];
+    shortlisted: number;
+    total_applicants: number;
+    scanned: number;
+  };
+}
+
 export interface TlRosterResponse {
   status: boolean;
   roster: Array<{
@@ -1138,6 +1391,8 @@ export interface DwQueueParams {
   per_page?: number;
   page?: number;
   search?: string;
+  /** users.role the queue is scoped to — driver | transporter | association | foreman | puncture | dhaba. */
+  lead_role?: string;
   subscribed?: string;
   salary?: string;
   route?: string;
@@ -1197,6 +1452,35 @@ export interface DwJobSearchResponse {
   };
 }
 
+export interface MmSubscriptionsResponse {
+  status: boolean;
+  data: {
+    summary: {
+      total_amount: number;
+      total_count: number;
+      refunded_count: number;
+      premium_jobs: { count: number; amount: number };
+      super_premium_jobs: { count: number; amount: number };
+      transporter_subs: { count: number; amount: number };
+      driver_subs: { count: number; amount: number };
+      period: string;
+    };
+    breakdown: Array<{
+      key: string; label: string; for: string | null;
+      plan_amount: number | null; count: number; amount: number; refunded_count: number;
+    }>;
+    trend: Array<{ month: string; count: number; amount: number }>;
+    rows: Array<{
+      id: number; date: string; collected_at: string; tmid: string;
+      customer_name: string; customer_mobile: string | null; customer_role: string | null;
+      plan_key: string; plan_label: string; plan_for: string | null;
+      amount: number; payment_id: string | null; source: string; job_id: string | null;
+      is_refunded: boolean; refunded_at: string | null; remarks: string | null;
+    }>;
+    pagination: { total: number; per_page: number; current_page: number; last_page: number };
+  };
+}
+
 export const webCrmApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // DW Endpoints
@@ -1212,8 +1496,11 @@ export const webCrmApi = baseApi.injectEndpoints({
         params: params || undefined,
       }),
     }),
-    getDwQueueCounts: builder.query<any, void>({
-      query: () => '/web-crm/dw/queue/counts',
+    getDwQueueCounts: builder.query<any, { lead_role?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/queue/counts',
+        params: params || undefined,
+      }),
     }),
     getDwQueueFresh: builder.query<any, DwQueueParams | void>({
       query: (params) => ({
@@ -1471,6 +1758,22 @@ export const webCrmApi = baseApi.injectEndpoints({
     getMmDashboard: builder.query<MmDashboardResponse, void>({
       query: () => '/web-crm/match-making/home',
     }),
+    getMmSubscriptions: builder.query<MmSubscriptionsResponse, {
+      // Which desk's route to hit. collection_by is keyed by caller id, so
+      // every role reads its own book from the identical handler; only the URL
+      // prefix differs (dw / wct / match-making).
+      base?: string;
+      period?: string; type?: string; search?: string;
+      from?: string; to?: string; page?: number; per_page?: number;
+    } | void>({
+      query: (arg) => {
+        const { base = '/web-crm/match-making', ...params } = arg || {};
+        return {
+          url: `${base}/subscriptions`,
+          params: Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')),
+        };
+      },
+    }),
     getMmJobs: builder.query<MmJobsResponse, void>({
       query: () => '/web-crm/mm/jobs',
     }),
@@ -1512,6 +1815,11 @@ export const webCrmApi = baseApi.injectEndpoints({
     getMmJobListings: builder.query<MmJobListingsResponse, {
       type?: string; section?: string; status?: string; search?: string;
       license_type?: string; vehicle_type?: string; plan_type?: string;
+      // scope='mine' restricts the listing to jobs assigned to the signed-in
+      // caller. The endpoint is system-wide by default and annotates each row
+      // with is_mine; passing this lets the backend filter server-side (correct
+      // pagination + counts) where the board only ever wants the caller's own.
+      scope?: string;
       limit?: number; cursor?: number | null;
     }>({
       query: (params) => ({
@@ -1554,6 +1862,32 @@ export const webCrmApi = baseApi.injectEndpoints({
     }>({
       query: (body) => ({ url: '/web-crm/match-making/ivr-call-tag-job', method: 'POST', body }),
       invalidatesTags: ['MmApplicants', 'MmTransporter', 'MmJobs'],
+    }),
+
+    // ── MM agent reporting (all real rows, no mock data) ──
+    getMmAgentPerformance: builder.query<MmAgentPerformanceResponse, { period?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/match-making/agent-performance',
+        params: params || undefined,
+      }),
+      providesTags: ['MmJobs'],
+    }),
+    getMmAgentStats: builder.query<MmAgentStatsResponse, { period?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/match-making/agent-stats',
+        params: params || undefined,
+      }),
+      providesTags: ['MmJobs'],
+    }),
+    getMmCallHistory: builder.query<MmCallHistoryResponse, {
+      page?: number; per_page?: number; period?: string;
+      call_status?: string; job_id?: string; search?: string;
+      date_from?: string; date_to?: string;
+    } | void>({
+      query: (params) => ({
+        url: '/web-crm/match-making/call-history',
+        params: params || undefined,
+      }),
     }),
 
     // Transporter job brief captured during the matchmaking call. Field names
@@ -1600,13 +1934,23 @@ export const webCrmApi = baseApi.injectEndpoints({
 
     // Greenline driver screening — native Web CRM, writes to the shared
     // driver_screening_questions table. `answers` is an ordered Yes/No array
-    // (index 0 → answer1). `status` is the telecaller decision derived from the
-    // GREEN/AMBER/RED result.
+    // (index 0 → answer1). `status` is the agent's own accepted/rejected call —
+    // the returned score/decision is advisory and never sets it.
     submitMmScreening: builder.mutation<
       { status: boolean; message: string; score: number; decision: string; screening_status: string; data: any },
       { user_id: number; unique_id: string; status: string; answers: string[]; telecaller_remarks?: string }
     >({
       query: (body) => ({ url: '/web-crm/match-making/driver-screening-submit', method: 'POST', body }),
+      invalidatesTags: ['MmApplicants', 'MmJobs'],
+    }),
+    // Change the result of an already-conducted screening (shortlisted /
+    // pending / rejected). The Q&A answers and score are left untouched, so the
+    // agent can revise the call as many times as they need.
+    updateMmScreeningStatus: builder.mutation<
+      { status: boolean; message: string; score: number; screening_status: string; data: any },
+      { user_id: number; status: string; telecaller_remarks?: string }
+    >({
+      query: (body) => ({ url: '/web-crm/match-making/driver-screening-status', method: 'POST', body }),
       invalidatesTags: ['MmApplicants', 'MmJobs'],
     }),
     getMmDriverScreening: builder.query<MmScreeningResultsResponse, number | string>({
@@ -1721,6 +2065,32 @@ export const webCrmApi = baseApi.injectEndpoints({
     getTlRoster: builder.query<TlRosterResponse, void>({
       query: () => '/web-crm/tl/roster',
     }),
+
+    // ── TL Matchmaking Job Board ──────────────────────────────────────────
+    // Live kanban over the `jobs` table: column placement, SLA and every count
+    // are computed server-side so the board can't disagree with itself.
+    getTlMatchmakingBoard: builder.query<
+      TlMatchmakingBoardResponse,
+      { search?: string; agent_id?: number; window_days?: number; sla_hours?: number; per_column?: number } | void
+    >({
+      query: (params) => ({
+        url: '/web-crm/tl/matchmaking-board',
+        params: params
+          ? Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''))
+          : undefined,
+      }),
+      providesTags: ['TlBoard'],
+    }),
+    getTlMatchmakingCandidates: builder.query<TlBoardCandidatesResponse, number>({
+      query: (jobRowId) => `/web-crm/tl/matchmaking-board/job/${jobRowId}/candidates`,
+    }),
+    assignTlMatchmakingJob: builder.mutation<
+      { status: boolean; message: string; data?: { job_row_id: number; assigned_to: number; assigned_name: string; previous: string | null } },
+      { job_row_id: number; admin_id: number; reason: string }
+    >({
+      query: (body) => ({ url: '/web-crm/tl/matchmaking-board/assign', method: 'POST', body }),
+      invalidatesTags: ['TlBoard'],
+    }),
     reassignTlLeads: builder.mutation<any, { lead_ids: number[]; reassign_to: number; audit_reason: string }>({
       query: (body) => ({
         url: '/web-crm/tl/reassign',
@@ -1754,8 +2124,37 @@ export const webCrmApi = baseApi.injectEndpoints({
         body: { notes },
       }),
     }),
-    getDwGlobalSearch: builder.query<any, string>({
-      query: (searchStr) => `/web-crm/dw/global-search?q=${searchStr}`,
+    getDwGlobalSearch: builder.query<any, string | { q: string; roles?: string }>({
+      query: (arg) => {
+        let searchStr = '';
+        let rolesStr: string | undefined = undefined;
+
+        const extractString = (val: any): string => {
+          if (!val) return '';
+          if (typeof val === 'string') return val;
+          if (typeof val === 'number') return String(val);
+          if (typeof val === 'object') {
+            if (typeof val.q === 'string') return val.q;
+            if (typeof val.query === 'string') return val.query;
+            if (val.q && typeof val.q === 'object') return extractString(val.q);
+          }
+          return '';
+        };
+
+        searchStr = extractString(arg);
+
+        if (typeof arg === 'object' && arg !== null) {
+          if (typeof arg.roles === 'string') {
+            rolesStr = arg.roles;
+          }
+        }
+
+        const q = searchStr.trim();
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        if (rolesStr) params.set('roles', rolesStr);
+        return `/web-crm/dw/global-search?${params.toString()}`;
+      },
     }),
     getDwJobSearch: builder.query<DwJobSearchResponse, DwJobSearchParams | void>({
       query: (params) => {
@@ -1838,6 +2237,7 @@ export const {
   useGetWctJobApplicantsQuery,
   useGetWctD7UpsellQuery,
   useGetMmDashboardQuery,
+  useGetMmSubscriptionsQuery,
   useGetMmJobsQuery,
   useGetMmDriversQuery,
   useGetMmDriverFiltersQuery,
@@ -1850,10 +2250,14 @@ export const {
   useGetMmJobTransporterDetailQuery,
   useGetMmApplicantsFullQuery,
   useTagMmCallMutation,
+  useGetMmAgentPerformanceQuery,
+  useGetMmAgentStatsQuery,
+  useGetMmCallHistoryQuery,
   useSubmitMmJobBriefMutation,
   useLogMmConferenceCallMutation,
   useSubmitMmConferenceDispositionMutation,
   useSubmitMmScreeningMutation,
+  useUpdateMmScreeningStatusMutation,
   useGetMmDriverScreeningQuery,
   useLazyGetMmDriverScreeningQuery,
   useGetMmDriverProfileQuery,
@@ -1877,6 +2281,9 @@ export const {
   useGetTlDashboardQuery,
   useGetTlRosterQuery,
   useReassignTlLeadsMutation,
+  useGetTlMatchmakingBoardQuery,
+  useGetTlMatchmakingCandidatesQuery,
+  useAssignTlMatchmakingJobMutation,
   useGetTargetQuery,
   useSetTargetMutation,
   useGetDwCampaignLeadsQuery,

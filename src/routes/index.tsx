@@ -15,7 +15,6 @@ import HiringDashboardPage from '../features/hr/pages/HiringDashboardPage';
 import BacklogPage from '../features/backlog/pages/BacklogPage';
 import SettingsPage from '../features/settings/pages/SettingsPage';
 import NotificationsPage from '../features/notifications/pages/NotificationsPage';
-import ActiveCallPage from '../features/calls/pages/ActiveCallPage';
 import { usePermissions } from '../shared/hooks/usePermissions';
 import { Role } from '../shared/constants/roles';
 
@@ -98,19 +97,19 @@ import WctCallHistory from '../pages/transporter-welcome/WctCallHistory';
 import WctJobs from '../pages/transporter-welcome/WctJobs';
 import HrAnalyticsSummary from '../pages/matchmaking/HrAnalyticsSummary';
 import MmDriverBank from '../pages/matchmaking/MmDriverBank';
-import TlOverviewTrMatchmaking from '../pages/matchmaking/TlOverviewTrMatchmaking';
-import TlOverviewTrMatchmakingWhiteBg from '../pages/matchmaking/TlOverviewTrMatchmakingWhiteBg';
 import MmActiveCallFocusRefined from '../pages/matchmaking/MmActiveCallFocusRefined';
 import MmIntroManager from '../pages/matchmaking/MmIntroManager';
 import MmHomeDashboard from '../pages/matchmaking/MmHomeDashboard';
 import TlMatchmakingJobBoard from '../pages/matchmaking/TlMatchmakingJobBoard';
-import MmPlacementConfirmation from '../pages/matchmaking/MmPlacementConfirmation';
 import MmDriverSearch from '../pages/matchmaking/MmDriverSearch';
 import MmScriptLibrary from '../pages/matchmaking/MmScriptLibrary';
 import MmJobBoard from '../pages/matchmaking/MmJobBoard';
 import MmJobDetail from '../pages/matchmaking/MmJobDetail';
 import MmTrainingHub from '../pages/matchmaking/MmTrainingHub';
 import MmPlacementHistory from '../pages/matchmaking/MmPlacementHistory';
+import MmCallHistory from '../pages/matchmaking/MmCallHistory';
+import MmSubscriptions from '../pages/matchmaking/MmSubscriptions';
+import MmCallQueue from '../pages/matchmaking/MmCallQueue';
 import GlobalOverlaysContainer from '../shared/components/business/GlobalOverlaysContainer';
 import ScoreTrends from '../pages/special-categories/ScoreTrends';
 import ScriptEditorConsole from '../pages/special-categories/ScriptEditorConsole';
@@ -240,6 +239,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="dw/dw-call-queue" element={<RoleGuard permission="calls:dial"><DwCallQueue /></RoleGuard>} />
           <Route path="dw/dw-driver-bank" element={<RoleGuard permission="calls:dial"><DwDriverBank /></RoleGuard>} />
           <Route path="dw/dw-call-history" element={<RoleGuard permission="calls:dial"><DwCallHistory /></RoleGuard>} />
+          <Route path="dw/dw-subscriptions" element={<RoleGuard permission="calls:dial"><MmSubscriptions basePath="/web-crm/dw" /></RoleGuard>} />
           <Route path="dw/dw-callback-calendar" element={<RoleGuard permission="calls:dial"><DwCallbackCalendar /></RoleGuard>} />
           <Route path="dw/dw-whatsapp-panel" element={<RoleGuard permission="calls:dial"><DwWhatsappPanel /></RoleGuard>} />
           <Route path="dw/dw-performance-stats" element={<RoleGuard permission="calls:dial"><DwPerformanceStats /></RoleGuard>} />
@@ -248,6 +248,12 @@ export const AppRoutes: React.FC = () => {
           <Route path="dw/dw-job-search" element={<RoleGuard permission="calls:dial"><DwJobSearch /></RoleGuard>} />
           <Route path="dw/dw-knowledge" element={<RoleGuard permission="calls:dial"><TruckKnowledgeHub accent="#2563EB" /></RoleGuard>} />
           <Route path="wct/wct-active-call-focus" element={<RoleGuard permission="calls:dial"><WctActiveCallFocus /></RoleGuard>} />
+          {/* MM & SC active-call focus screens MUST live under this dashboard
+              layout, not the /dialer CallerLayout: they call useSanCti(), and
+              SanCtiProvider is only mounted here. Under /dialer they threw
+              "useSanCti must be used within a SanCtiProvider" and the call died. */}
+          <Route path="mm/mm-active-call-focus-refined" element={<RoleGuard permission="calls:dial"><MmActiveCallFocusRefined /></RoleGuard>} />
+          <Route path="sc/active-call-focus-special-categories" element={<RoleGuard permission="calls:dial"><ActiveCallFocusSpecialCategories /></RoleGuard>} />
           <Route path="wct/wct-callback-calendar" element={<RoleGuard permission="calls:dial"><WctCallbackCalendar /></RoleGuard>} />
           <Route path="wct/wct-home-dashboard" element={<RoleGuard permission="calls:dial"><WctHomeDashboard /></RoleGuard>} />
           <Route path="wct/wct-training-hub" element={<RoleGuard permission="calls:dial"><WctTrainingHub /></RoleGuard>} />
@@ -259,18 +265,19 @@ export const AppRoutes: React.FC = () => {
           <Route path="wct/wct-d7-upsell-queue" element={<RoleGuard permission="calls:dial"><WctD7UpsellQueue /></RoleGuard>} />
           <Route path="wct/wct-campaign-leads" element={<RoleGuard permission="calls:dial"><WctCampaignLeads /></RoleGuard>} />
           <Route path="wct/wct-call-history" element={<RoleGuard permission="calls:dial"><WctCallHistory /></RoleGuard>} />
+          <Route path="wct/wct-subscriptions" element={<RoleGuard permission="calls:dial"><MmSubscriptions basePath="/web-crm/wct" /></RoleGuard>} />
           <Route path="wct/wct-jobs" element={<RoleGuard permission="calls:dial"><WctJobs /></RoleGuard>} />
           <Route path="mm/hr-analytics-summary" element={<RoleGuard permission="calls:dial"><HrAnalyticsSummary /></RoleGuard>} />
           <Route path="mm/mm-driver-bank" element={<RoleGuard permission="calls:dial"><MmDriverBank /></RoleGuard>} />
-          <Route path="mm/tl-overview-tr-matchmaking" element={<RoleGuard permission="calls:dial"><TlOverviewTrMatchmaking /></RoleGuard>} />
-          <Route path="mm/tl-overview-tr-matchmaking-white-bg" element={<RoleGuard permission="calls:dial"><TlOverviewTrMatchmakingWhiteBg /></RoleGuard>} />
           <Route path="mm/mm-intro-manager" element={<RoleGuard permission="calls:dial"><MmIntroManager /></RoleGuard>} />
           <Route path="mm/mm-home-dashboard" element={<RoleGuard permission="calls:dial"><MmHomeDashboard /></RoleGuard>} />
           <Route path="mm/tl-matchmaking-job-board" element={<RoleGuard permission="calls:dial"><TlMatchmakingJobBoard /></RoleGuard>} />
-          <Route path="mm/mm-placement-confirmation" element={<RoleGuard permission="calls:dial"><MmPlacementConfirmation /></RoleGuard>} />
           <Route path="mm/mm-driver-search" element={<RoleGuard permission="calls:dial"><MmDriverSearch /></RoleGuard>} />
           <Route path="mm/mm-script-library" element={<RoleGuard permission="calls:dial"><MmScriptLibrary /></RoleGuard>} />
           <Route path="mm/mm-placement-history" element={<RoleGuard permission="calls:dial"><MmPlacementHistory /></RoleGuard>} />
+          <Route path="mm/mm-call-history" element={<RoleGuard permission="calls:dial"><MmCallHistory /></RoleGuard>} />
+          <Route path="mm/mm-subscriptions" element={<RoleGuard permission="calls:dial"><MmSubscriptions basePath="/web-crm/match-making" /></RoleGuard>} />
+          <Route path="mm/mm-call-queue" element={<RoleGuard permission="calls:dial"><MmCallQueue /></RoleGuard>} />
           <Route path="mm/mm-job-board" element={<RoleGuard permission="calls:dial"><MmJobBoard /></RoleGuard>} />
           <Route path="mm/mm-job-detail" element={<RoleGuard permission="calls:dial"><MmJobDetail /></RoleGuard>} />
           <Route path="mm/mm-training-hub" element={<RoleGuard permission="calls:dial"><MmTrainingHub /></RoleGuard>} />
@@ -307,10 +314,13 @@ export const AppRoutes: React.FC = () => {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="/dialer/live-console" replace />} />
-          <Route path="live-console" element={<RoleGuard permission="calls:dial"><ActiveCallPage /></RoleGuard>} />
-          <Route path="mm/mm-active-call-focus-refined" element={<RoleGuard permission="calls:dial"><MmActiveCallFocusRefined /></RoleGuard>} />
-          <Route path="sc/active-call-focus-special-categories" element={<RoleGuard permission="calls:dial"><ActiveCallFocusSpecialCategories /></RoleGuard>} />
+          {/* The generic /dialer/live-console console was removed — calls are
+              handled by the global SanCti call bar + disposition modal, so the
+              bare /dialer path falls back to the dashboard. The MM & SC
+              active-call screens moved to the dashboard layout above (they need
+              SanCtiProvider), leaving this layout with just the redirect. */}
+          <Route index element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
 
         {/* Fallback route */}

@@ -8,6 +8,17 @@ import type { SanCtiContextType, ConferenceMember, DispositionData } from './San
 // kept out of this file so it exports only a component and stays
 // Fast-Refresh-safe during development (see comment there).
 
+/**
+ * How long SAN needs after ConfrenceToggle before it will accept a number to
+ * bridge in. Mirrors the 1.5 s the same integration already waits after
+ * ManualOn for SAN to finish writing its own state — sending the member in the
+ * same tick as the toggle races that setup and the leg is silently dropped.
+ */
+const CONFERENCE_SETTLE_MS = 1500;
+
+/** Last 10 digits — SAN reports members with assorted 0/+91 prefixes. */
+const sameNumber = (v?: string): string => (v || '').replace(/\D/g, '').slice(-10);
+
 interface SanCtiProviderProps {
   children: React.ReactNode;
   sanUsername?: string | null;
@@ -90,6 +101,16 @@ export default function SanCtiProvider({
   // wholesale rather than merged incrementally.
   const [conferenceMembers, setConferenceMembers] = useState<ConferenceMember[]>([]);
   const [conferenceDialingMembers, setConferenceDialingMembers] = useState<ConferenceMember[]>([]);
+  // ConfrenceToggle is a TOGGLE, exactly like ManualOn: sending it a second
+  // time drops SAN back out of conference mode, so the member we then ask it
+  // to dial goes nowhere. Track whether we've already switched this call into
+  // conference mode, and when — SAN needs a moment to establish it before it
+  // will accept a number to bridge in.
+  const conferenceModeRef = useRef<boolean>(false);
+  const conferenceToggleAtRef = useRef<number>(0);
+  // Mirror of conferenceMembers for the event handlers, which are registered
+  // once and would otherwise close over the first render's empty list.
+  const conferenceMembersRef = useRef<ConferenceMember[]>([]);
   // Reactive mirror of acceptingIncomingRef — drives the iframe click-overlay
   // sizing/positioning below, which needs to re-render when this flips.
   const [isAcceptingIncoming, setIsAcceptingIncoming] = useState<boolean>(false);
@@ -162,6 +183,35 @@ export default function SanCtiProvider({
   // Fallback: if SANAppReadyEvent never fires after we send {type:'ready'}, force ready after 4s.
   // Cleared when SANAppReadyEvent arrives so we don't double-fire.
   const readyFallbackRef = useRef<any>(null);
+  // Nudge timer: re-send {type:'ready'} once before the forced-ready fallback,
+  // because SAN drops the first 'ready' whenever it arrives before its own
+  // agentReady bookkeeping is set up.
+  const readyRetryRef = useRef<any>(null);
+  // ── Post-reload recovery — the "logged in but never ready" bug ──
+  // SANAppInitEvent reloads the iframe once per fresh login so SAN's module-level
+  // `logged_agent` re-initialises from localStorage. SAN does NOT reliably re-emit
+  // SANAppInitEvent on that second load, and the auto-login effect refuses to
+  // re-drive anything once agentState has left 'logged_out'. Without the ladder
+  // below the agent then sits at 'logged_in' forever — logged into SAN's mini CRM
+  // but never ready, every dial rejected ("CTI agent is not ready"), and SAN's own
+  // login modal eventually reappearing inside the iframe minutes later.
+  // Ladder, armed when the reloaded iframe finishes loading:
+  //   +6 s  no Init            → re-send {type:'ready'} (the SAN session is usually
+  //                              alive and simply never announced itself)
+  //   +14 s still not ready    → full login() again, which re-arms its own watchdog
+  const awaitingPostReloadInitRef = useRef<boolean>(false);
+  const postReloadNudgeRef = useRef<any>(null);
+  const postReloadReloginRef = useRef<any>(null);
+  // Ref mirror of isManualMode. SAN implements ManualOn via toggleManualOnOff —
+  // it is a TOGGLE, not a setter, so sending it while manual mode is already on
+  // turns it back OFF and drops the agent out of ready on SAN's side. That is the
+  // "auto unready in between conversation" symptom: SANAppReadyEvent fires after
+  // every disposition, and the old code answered every one of them with another
+  // unconditional ManualOn. Every send is now gated on this ref.
+  const isManualModeRef = useRef<boolean>(false);
+  // True once we have seen SAN confirm manual mode at least once, so the very
+  // first ManualOn (where we genuinely don't know SAN's state) still goes out.
+  const manualModeKnownRef = useRef<boolean>(false);
   // Guard: set to true when agent clicks "Accept". Blocks all state-resetting
   // SAN events (Ready, SavePage) for up to 8 s while the SIP handshake completes.
   // Cleared immediately when SANAppIncomingEvent(Answer) fires.
@@ -196,6 +246,25 @@ export default function SanCtiProvider({
       console.warn('[SAN SEND] DROPPED — iframe not ready, nothing sent:', data);
     }
   }, []);
+
+  /**
+   * Ask SAN to enter manual-dial mode, 1.5 s later so SAN has finished writing
+   * `crmstates` (toggleManualOnOff crashes reading crmstates.agent_id if we beat it).
+   *
+   * SAN's ManualOn is a toggle, so this is a no-op once manual mode is already
+   * confirmed on — re-sending it there is what silently un-readied the agent
+   * between conversations. The first send always goes out, since until
+   * SANAppManualOnOffEvent arrives we have no idea what SAN's mode actually is.
+   */
+  const requestManualOn = useCallback(() => {
+    setTimeout(() => {
+      if (manualModeKnownRef.current && isManualModeRef.current) {
+        console.log('[SAN CTI] ManualOn skipped — SAN already reports manual mode ON (re-sending would toggle it OFF)');
+        return;
+      }
+      postToSan({ type: 'ManualOn' });
+    }, 1500);
+  }, [postToSan]);
 
   // ── Helper: API call to Laravel ──
   const apiCall = useCallback(async (method: string, endpoint: string, body: any = null) => {
@@ -264,6 +333,7 @@ export default function SanCtiProvider({
   useLayoutEffect(() => { isIncomingCallRef.current = isIncomingCall; }, [isIncomingCall]);
   useLayoutEffect(() => { currentLeadTypeRef.current = currentLeadType; }, [currentLeadType]);
   useLayoutEffect(() => { agentStateRef.current = agentState; }, [agentState]);
+  useLayoutEffect(() => { isManualModeRef.current = isManualMode; }, [isManualMode]);
 
   // ── Sync pending disposition to localStorage ──
   useEffect(() => {
@@ -309,6 +379,12 @@ export default function SanCtiProvider({
     // a genuinely new session starts: mount (useRef(false)) and
     // saveCtiCredentials (new credentials).
     loginPendingRef.current = true;
+    // A login supersedes any in-flight post-reload recovery — otherwise the
+    // ladder's own re-login can land on top of this one and SAN rejects the
+    // duplicate as "already login on another machine".
+    awaitingPostReloadInitRef.current = false;
+    if (postReloadNudgeRef.current) { clearTimeout(postReloadNudgeRef.current); postReloadNudgeRef.current = null; }
+    if (postReloadReloginRef.current) { clearTimeout(postReloadReloginRef.current); postReloadReloginRef.current = null; }
     if (loginWatchdogRef.current) clearTimeout(loginWatchdogRef.current);
     loginWatchdogRef.current = setTimeout(() => {
       loginPendingRef.current = false;
@@ -461,6 +537,20 @@ export default function SanCtiProvider({
       return;
     }
 
+    // Guard: SAN silently does nothing when handed an empty or too-short number,
+    // which reads to the agent as "the call just won't start". This happens when
+    // a screen passes a masked/blank mobile. Surface it instead of failing mute,
+    // and reset so the agent can retry cleanly.
+    if (cleanNumber.length < 10) {
+      console.warn('[SAN CTI] Cannot dial — phone number missing or masked:', phoneNumber);
+      alert('This lead has no valid phone number to dial. The number may be masked — open the lead’s details or contact an admin.');
+      setCallState('idle');
+      setCurrentPhoneNumber('');
+      setCurrentLeadId(null);
+      hasDialedThisSession.current = false;
+      return;
+    }
+
     // 1. Tell SAN to dial — exactly as the SAN reference HTML does.
     postToSan({
       type: 'dial',
@@ -484,9 +574,29 @@ export default function SanCtiProvider({
       hasDialedThisSession.current = false;
     }, 60000);
 
-    // 3. Tell Laravel: call started
+    // 3. Tell Laravel: call started.
+    // /call/initiate validates user_id against the users table, so it must be a
+    // real users.id. Some screens can't supply one directly — the Driver Bank
+    // list rows don't include user_id, and manual outbound has none at all —
+    // which is what made the endpoint reject the request with "The selected user
+    // id is invalid" and skip logging the call. When we don't already have a
+    // valid id, resolve it from the phone number via the same lookup the
+    // incoming-call flow uses, then fall back to null (lead not a registered
+    // user) so the backend can still record it by phone.
+    const numericLeadId = Number(leadUserId);
+    let resolvedUserId: number | null =
+      Number.isInteger(numericLeadId) && numericLeadId > 0 ? numericLeadId : null;
+    if (!resolvedUserId && cleanNumber) {
+      try {
+        const lookup = await apiCall('GET', `/call/incoming/lookup?phone=${encodeURIComponent(phoneNumber)}`);
+        if (lookup?.found && lookup?.data?.id) {
+          resolvedUserId = Number(lookup.data.id);
+          setCurrentLeadId(resolvedUserId);
+        }
+      } catch (_) { /* fall through with null — backend resolves by phone */ }
+    }
     const result = await apiCall('POST', '/call/initiate', {
-      user_id: Number(leadUserId),
+      user_id: resolvedUserId,
       phone_number: phoneNumber,
       san_session_id: `SAN_${Date.now()}_${agentId}`,
       lead_type: leadType,
@@ -551,6 +661,8 @@ export default function SanCtiProvider({
       setIsMuted(false);
       setConferenceMembers([]);
       setConferenceDialingMembers([]);
+      conferenceMembersRef.current = [];
+      conferenceModeRef.current = false;
     } else {
       // The agent dialed this lead — always surface disposition immediately.
       // callState can't be trusted to mean "never connected": SAN has been
@@ -617,6 +729,12 @@ export default function SanCtiProvider({
    * anyone — addConferenceNumber below dials the new leg in.
    */
   const startConference = useCallback(() => {
+    if (conferenceModeRef.current) {
+      console.log('[SAN CTI] ConfrenceToggle skipped — this call is already in conference mode (re-sending would toggle it OFF)');
+      return;
+    }
+    conferenceModeRef.current = true;
+    conferenceToggleAtRef.current = Date.now();
     postToSan({ type: 'ConfrenceToggle' });
   }, [postToSan]);
 
@@ -626,9 +744,55 @@ export default function SanCtiProvider({
    * back via the SANAppConfEventjoin / conferenceDialing / SANAppConfEventLeave
    * bridged events handled below.
    */
+  /**
+   * Hold / resume ONE conference member. SAN's parent-message API exposes
+   * exactly three conference verbs — ConfrenceToggle, ConfrenceNumber and
+   * ConfHoldToggle — so this is the only per-member control that can be driven
+   * from the CRM. (Dropping a single leg exists inside SAN's own softphone as
+   * removeConferenceMember, but it is not reachable over postMessage.)
+   */
+  const holdConferenceMember = useCallback((phoneNumber: string) => {
+    const clean = sameNumber(phoneNumber);
+    if (clean.length < 10) return;
+    postToSan({ type: 'ConfHoldToggle', phone: clean });
+  }, [postToSan]);
+
+  /** Reveal SAN's softphone — its member list carries the per-leg drop button. */
+  const showSoftphone = useCallback(() => setIsCtiMinimized(false), []);
+
   const addConferenceNumber = useCallback((phoneNumber: string) => {
-    if (!phoneNumber?.trim()) return;
-    postToSan({ type: 'ConfrenceNumber', phone: phoneNumber.trim() });
+    // Sanitize exactly like dial() does. Numbers come off lead records in every
+    // shape ("+91 83839 71722", "091-8383971722"); SAN only accepts the bare
+    // 10 digits, and an unsanitized value is silently dropped — the leg never
+    // rings and no member ever appears.
+    const clean = (phoneNumber || '').replace(/\D/g, '').slice(-10);
+    if (clean.length < 10) {
+      console.warn('[SAN CTI] Conference member NOT dialed — unusable number:', phoneNumber);
+      return;
+    }
+
+    const send = () => {
+      console.log('[SAN CTI] ConfrenceNumber →', clean);
+      postToSan({ type: 'ConfrenceNumber', phone: clean });
+    };
+
+    // Make sure the call is in conference mode first, then give SAN time to
+    // establish it. Sending ConfrenceNumber in the same tick as the toggle
+    // races SAN's own setup and the member is dropped.
+    if (!conferenceModeRef.current) {
+      conferenceModeRef.current = true;
+      conferenceToggleAtRef.current = Date.now();
+      postToSan({ type: 'ConfrenceToggle' });
+    }
+
+    const settledFor = Date.now() - conferenceToggleAtRef.current;
+    const wait = Math.max(0, CONFERENCE_SETTLE_MS - settledFor);
+    if (wait > 0) {
+      console.log(`[SAN CTI] waiting ${wait}ms for SAN to enter conference mode before dialing ${clean}`);
+      setTimeout(send, wait);
+    } else {
+      send();
+    }
   }, [postToSan]);
 
   /**
@@ -797,6 +961,8 @@ export default function SanCtiProvider({
     setIsMuted(false);
     setConferenceMembers([]);
     setConferenceDialingMembers([]);
+    conferenceMembersRef.current = [];
+    conferenceModeRef.current = false;
     setIsIncomingCall(false);
     setUserInitiatedHangup(false);
     // Reset dial guard so next call starts clean
@@ -875,6 +1041,10 @@ export default function SanCtiProvider({
         case 'SANAppInitEvent':
           loginPendingRef.current = false;
           if (loginWatchdogRef.current) { clearTimeout(loginWatchdogRef.current); loginWatchdogRef.current = null; }
+          // Init arrived — the post-reload recovery ladder is no longer needed.
+          awaitingPostReloadInitRef.current = false;
+          if (postReloadNudgeRef.current) { clearTimeout(postReloadNudgeRef.current); postReloadNudgeRef.current = null; }
+          if (postReloadReloginRef.current) { clearTimeout(postReloadReloginRef.current); postReloadReloginRef.current = null; }
 
           // After a fresh login SAN's loginFormSubmit saves the session to localStorage
           // but does NOT reassign the module-level `logged_agent` variable (set once at
@@ -887,6 +1057,14 @@ export default function SanCtiProvider({
             freshLoginReloadDoneRef.current = true;
             console.log('[SAN CTI] SANAppInitEvent (first) — reloading iframe so logged_agent initialises from localStorage');
             setAgentState('logged_in');
+            // Arm the recovery ladder BEFORE the reload. SAN only re-emits
+            // SANAppInitEvent on the reloaded page when getCurrentSession()
+            // finds an intact session; when it doesn't, nothing else in this
+            // provider would ever drive the agent to ready again (the watchdog
+            // above was just cleared, and the auto-login effect skips any state
+            // other than 'logged_out'). This is what left agents logged in but
+            // permanently not-ready.
+            awaitingPostReloadInitRef.current = true;
             setIsIframeLoaded(false);
             setSanIframeKey(prev => prev + 1);
             break;
@@ -901,6 +1079,18 @@ export default function SanCtiProvider({
               // fires AFTER processing that response. Fall back after 20 s in case it never comes.
               setAgentState('logged_in');
               postToSan({ type: 'ready' });
+              // SAN silently drops a 'ready' that lands before its own agentReady
+              // bookkeeping exists, and then never asks again — the agent shows
+              // logged-in-but-not-ready with no error anywhere. Re-send once at 7 s
+              // before falling back to forcing the state.
+              if (readyRetryRef.current) clearTimeout(readyRetryRef.current);
+              readyRetryRef.current = setTimeout(() => {
+                readyRetryRef.current = null;
+                if (agentStateRef.current === 'logged_in') {
+                  console.warn('[SAN CTI] No SANAppReadyEvent after 7s — re-sending ready');
+                  postToSan({ type: 'ready' });
+                }
+              }, 7000);
               if (readyFallbackRef.current) clearTimeout(readyFallbackRef.current);
               readyFallbackRef.current = setTimeout(() => {
                 readyFallbackRef.current = null;
@@ -917,7 +1107,7 @@ export default function SanCtiProvider({
             case '3': // Already idle/ready
               setAgentState('ready');
               apiCall('POST', '/cti/status', { status: 'ready' });
-              setTimeout(() => postToSan({ type: 'ManualOn' }), 1500);
+              requestManualOn();
               break;
             case '4': // On break
               setAgentState('ready');
@@ -931,11 +1121,13 @@ export default function SanCtiProvider({
               break;
             case '10':
             case '11':
+              manualModeKnownRef.current = true;
               setIsManualMode(payload?.status === '10');
+              isManualModeRef.current = payload?.status === '10';
               setAgentState('ready');
               if (payload?.status === '11') {
                 // Delay ManualOn: crmstates.agent_id may not be set yet
-                setTimeout(() => postToSan({ type: 'ManualOn' }), 1500);
+                requestManualOn();
               }
               break;
           }
@@ -944,6 +1136,13 @@ export default function SanCtiProvider({
         // ── READY: Agent is now live ──
         case 'SANAppReadyEvent':
           if (readyFallbackRef.current) { clearTimeout(readyFallbackRef.current); readyFallbackRef.current = null; }
+          if (readyRetryRef.current) { clearTimeout(readyRetryRef.current); readyRetryRef.current = null; }
+          // Ready proves the SAN session is alive and announcing itself — the
+          // post-reload ladder must stand down or its re-login would tear down
+          // the session we just got working.
+          awaitingPostReloadInitRef.current = false;
+          if (postReloadNudgeRef.current) { clearTimeout(postReloadNudgeRef.current); postReloadNudgeRef.current = null; }
+          if (postReloadReloginRef.current) { clearTimeout(postReloadReloginRef.current); postReloadReloginRef.current = null; }
           setExtension(payload?.exten || '');
           setAgentState('ready');
           apiCall('POST', '/cti/status', { status: 'ready' });
@@ -963,8 +1162,12 @@ export default function SanCtiProvider({
               // SANAppReadyEvent fires from inside SAN's agentReady callback, sometimes
               // BEFORE crmstates is assigned in SAN's JS. Sending ManualOn immediately
               // causes toggleManualOnOff to crash reading crmstates.agent_id.
-              // Delay 1.5 s to let SAN finish its own internal state setup.
-              setTimeout(() => postToSan({ type: 'ManualOn' }), 1500);
+              // requestManualOn delays 1.5 s for that, and — critically — skips the
+              // send when SAN already reports manual mode on. SANAppReadyEvent fires
+              // again after every disposition (hasDialedThisSession is reset to false
+              // by then), so the previous unconditional send toggled manual mode back
+              // OFF between conversations and knocked the agent out of ready.
+              requestManualOn();
             }
             // If hasDialedThisSession is true but we're not in incoming call,
             // disposition modal is already open — don't reset, don't re-send ManualOn.
@@ -1153,7 +1356,12 @@ export default function SanCtiProvider({
         // ── MANUAL MODE ──
         case 'SANAppManualOnOffEvent':
           // state=11 means OFF (confusing but per HTML source)
+          manualModeKnownRef.current = true;
           setIsManualMode(payload?.state !== 11);
+          // Mirror synchronously too: requestManualOn's 1.5 s timer can be armed
+          // by an event that fires in the same tick as this one, before React has
+          // committed and run the useLayoutEffect that normally syncs this ref.
+          isManualModeRef.current = payload?.state !== 11;
           break;
 
         // ── SAN FIRES THIS WHEN A CALL ENDS (backup disposition trigger) ──
@@ -1205,6 +1413,8 @@ export default function SanCtiProvider({
             setIsMuted(false);
             setConferenceMembers([]);
             setConferenceDialingMembers([]);
+            conferenceMembersRef.current = [];
+            conferenceModeRef.current = false;
           }
           break;
         }
@@ -1234,14 +1444,30 @@ export default function SanCtiProvider({
         case 'SANAppConfEventjoin':
         case 'SANAppConfEventLeave': {
           const memberDict = payload?.conf_memeber || payload?.conf_member || {};
-          setConferenceMembers(Object.values(memberDict).filter(Boolean) as ConferenceMember[]);
+          const members = (Object.values(memberDict).filter(Boolean) as ConferenceMember[]);
+          conferenceMembersRef.current = members;
+          setConferenceMembers(members);
+
+          // A number that has joined (or whose leg has ended) is no longer
+          // "dialing". SAN drops it from its own dialing dict but does not
+          // re-send conferenceDialing, so without this the yellow "Dialing…"
+          // row for a party who already answered — or already hung up —
+          // stays on the panel for the rest of the call.
+          const settled = new Set(members.map(m => sameNumber(m.conf_member)));
+          setConferenceDialingMembers(prev =>
+            prev.filter(d => !settled.has(sameNumber(d.conf_member || d.caller_id)))
+          );
           break;
         }
 
         // ── CONFERENCE: numbers currently being dialed into the conference ──
         case 'conferenceDialing': {
           const dialingDict = payload?.conference_dialing_members || {};
-          setConferenceDialingMembers(Object.values(dialingDict).filter(Boolean) as ConferenceMember[]);
+          const joined = new Set(conferenceMembersRef.current.map(m => sameNumber(m.conf_member)));
+          setConferenceDialingMembers(
+            (Object.values(dialingDict).filter(Boolean) as ConferenceMember[])
+              .filter(d => !joined.has(sameNumber(d.conf_member || d.caller_id)))
+          );
           break;
         }
       }
@@ -1272,9 +1498,20 @@ export default function SanCtiProvider({
 
     // Keep the postMessage listener too — harmless fallback for any SAN
     // version/config that does use postMessage for some events.
-    window.addEventListener('message', handleSanEvent);
+    const onWindowMessage = (event: MessageEvent) => {
+      // Only trust messages that actually came out of the SAN iframe. Previously
+      // ANY message carrying a `type` field was accepted, and every one of them
+      // set hasSanResponseRef — the flag that cancels the login-retry interval
+      // and steers the 35 s watchdog. Unrelated postMessage traffic (dev tooling,
+      // browser extensions, other embeds) therefore silently suppressed the retry
+      // that would have recovered a dropped login.
+      const sanWindow = iframeRef.current?.contentWindow;
+      if (sanWindow && event.source && event.source !== sanWindow) return;
+      handleSanEvent(event);
+    };
+    window.addEventListener('message', onWindowMessage);
     return () => {
-      window.removeEventListener('message', handleSanEvent);
+      window.removeEventListener('message', onWindowMessage);
       bridgedEvents.forEach(name => {
         (window as any)[name] = previousHandlers[name];
       });
@@ -1282,7 +1519,7 @@ export default function SanCtiProvider({
     // callDuration, callState, userInitiatedHangup intentionally omitted — read via refs
     // (callDurationRef, callStateRef, userInitiatedHangupRef) to avoid re-registration
     // on every state change, which would cause stale-closure bugs under rapid SAN events.
-  }, [apiCall, startTimer, stopTimer, currentCallId, postToSan]);
+  }, [apiCall, startTimer, stopTimer, currentCallId, postToSan, requestManualOn]);
 
   // ── Auto-login after iframe is loaded ──
   // Guarded: only logs in if agentStateRef.current is 'logged_out' to prevent
@@ -1324,6 +1561,49 @@ export default function SanCtiProvider({
 
     return () => clearInterval(retryTimer);
   }, [login, sanUsername, isIframeLoaded, user]);
+
+  // ── Post-reload recovery ladder ──
+  // Runs only for the once-per-login iframe reload triggered by the first
+  // SANAppInitEvent (awaitingPostReloadInitRef). That reload is the single point
+  // in the whole flow where nothing else is watching: the login watchdog has been
+  // cleared, agentState has left 'logged_out' so the auto-login effect above
+  // refuses to act, and the readyFallback lives in a branch that only the SECOND
+  // SANAppInitEvent can reach. When SAN doesn't re-announce itself on the
+  // reloaded page, the agent is stranded at 'logged_in' — the mini CRM shows
+  // logged in but never ready, every dial is refused, and SAN's own login modal
+  // resurfaces minutes later. This ladder is what closes that hole.
+  useEffect(() => {
+    if (!isIframeLoaded || !awaitingPostReloadInitRef.current) return;
+    console.log('[SAN CTI] Reloaded iframe up — arming post-reload recovery (ready nudge @6s, re-login @14s)');
+
+    postReloadNudgeRef.current = setTimeout(() => {
+      postReloadNudgeRef.current = null;
+      if (!awaitingPostReloadInitRef.current || agentStateRef.current === 'ready') return;
+      // Most common case: SAN restored the session from localStorage fine but
+      // never emitted SANAppInitEvent, so we simply never asked it to go live.
+      // Asking now is enough — SANAppReadyEvent comes back and cancels step two.
+      console.warn('[SAN CTI] No SANAppInitEvent 6s after reload — nudging with {type:"ready"}');
+      postToSan({ type: 'ready' });
+    }, 6000);
+
+    postReloadReloginRef.current = setTimeout(() => {
+      postReloadReloginRef.current = null;
+      if (!awaitingPostReloadInitRef.current || agentStateRef.current === 'ready') return;
+      // The nudge went unanswered: SAN really did lose the session on reload
+      // (this is the state where its own login modal is about to pop inside the
+      // iframe). Drive a fresh login instead of waiting for the agent to notice.
+      console.warn('[SAN CTI] Still not ready 14s after reload — SAN lost the session, logging in again');
+      awaitingPostReloadInitRef.current = false;
+      hasSanResponseRef.current = false;
+      setAgentState('logged_out');
+      login();
+    }, 14000);
+
+    return () => {
+      if (postReloadNudgeRef.current) { clearTimeout(postReloadNudgeRef.current); postReloadNudgeRef.current = null; }
+      if (postReloadReloginRef.current) { clearTimeout(postReloadReloginRef.current); postReloadReloginRef.current = null; }
+    };
+  }, [isIframeLoaded, postToSan, login]);
 
   // ── Monitor SanCtiProvider lifecycle ──
   useEffect(() => {
@@ -1405,6 +1685,31 @@ export default function SanCtiProvider({
     return () => { delete (window as any).__sanCtiLogout; };
   }, [postToSan, apiCall]);
 
+  // ── Release the SAN session when the tab is closed or refreshed ──
+  // SAN allows exactly ONE live session per agent account and only frees it on
+  // an explicit logout. Closing or refreshing the CRM tab skipped
+  // AuthProvider.logout() entirely, so the session stayed held on SAN's server
+  // and the next login was rejected with "You are already login on another
+  // machine" — which is why the agent had to force-logout from SAN's admin
+  // panel before the CRM would work again.
+  // Best-effort by nature: the iframe's own logout HTTP request may be cut off
+  // mid-flight by the unload. It costs nothing when it fails (that is exactly
+  // today's behaviour) and frees the session when it lands.
+  useEffect(() => {
+    const releaseSanSession = () => {
+      if (agentStateRef.current === 'logged_out' || sanLogoutDoneRef.current) return;
+      sanLogoutDoneRef.current = true;
+      postToSan({ type: 'Logout' });
+    };
+    // pagehide covers close, reload and navigation, and (unlike beforeunload)
+    // still fires on mobile/bfcache paths. persisted=true means the page is
+    // being frozen into the bfcache and may come straight back — keep the
+    // session in that case.
+    const onPageHide = (e: PageTransitionEvent) => { if (!e.persisted) releaseSanSession(); };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [postToSan]);
+
 
   const value: SanCtiContextType = {
     // State
@@ -1440,6 +1745,8 @@ export default function SanCtiProvider({
     toggleMute,
     startConference,
     addConferenceNumber,
+    holdConferenceMember,
+    showSoftphone,
     acceptIncoming,
     logout,
     toggleManualMode,

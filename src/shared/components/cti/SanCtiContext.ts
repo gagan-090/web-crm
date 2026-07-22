@@ -24,8 +24,12 @@ export interface DispositionData {
 }
 
 export interface ConferenceMember {
+  /** The member's number as SAN reports it (may carry a 0 / +91 prefix). */
   conf_member: string;
   conf_exten?: string;
+  /** 'hold' while SAN has this leg parked — set by its confhold events. */
+  hold_status?: string;
+  mute_status?: string;
   [key: string]: any;
 }
 
@@ -60,6 +64,10 @@ export interface SanCtiContextType {
   toggleMute: () => void;
   startConference: () => void;
   addConferenceNumber: (phoneNumber: string) => void;
+  /** Hold / resume a single conference member (SAN's ConfHoldToggle). */
+  holdConferenceMember: (phoneNumber: string) => void;
+  /** Show SAN's own softphone — the only place a single leg can be dropped. */
+  showSoftphone: () => void;
   acceptIncoming: () => void;
   logout: () => void;
   toggleManualMode: () => void;

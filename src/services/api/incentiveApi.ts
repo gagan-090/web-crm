@@ -25,6 +25,8 @@ export interface MonthlyIncentive {
   multiplier: number;
   finalPayout: number;
   peerAverage: number;
+  /** Live standing among active peers on the same desk; absent for mock roles. */
+  peerRank?: { rank: number; total: number };
   daysLeft: number;
   planBreakdown: Array<{ plan: string; count: number; amount: number }>;
   lineItems: Array<{
@@ -402,15 +404,30 @@ function getRoleKey(roleStr: string): 'dwc' | 'twc' | 'sc' | 'mm' {
   return 'dwc';
 }
 
+/**
+ * Roles whose incentives come from the real engine. Driver Welcome,
+ * Transporter Welcome and Matchmaking each have a controller computing gates,
+ * TEI and the conversions ledger from live rows; only Special Categories still
+ * has no backend, so it alone falls through to the in-memory store below.
+ */
+const LIVE_INCENTIVE_BASE: Partial<Record<'dwc' | 'twc' | 'sc' | 'mm', string>> = {
+  dwc: '/web-crm/dw',
+  twc: '/web-crm/wct',
+  mm: '/web-crm/mm',
+};
+
+/** Desks that also expose a real 6-month history endpoint. */
+const LIVE_INCENTIVE_HISTORY: Partial<Record<'dwc' | 'twc' | 'sc' | 'mm', string>> = {
+  mm: '/web-crm/mm',
+};
+
 export const incentiveApi = baseApi.injectEndpoints({
   endpoints: (build) => ({
     getGateProgress: build.query<GateProgress, string>({
       async queryFn(role, _queryApi, _extraOptions, fetchWithBQ) {
         const key = getRoleKey(role);
 
-        // Driver + Transporter Welcome are backed by the real incentive engine —
-        // every other role still reads from the in-memory mock store below.
-        const realBase = key === 'dwc' ? '/web-crm/dw' : key === 'twc' ? '/web-crm/wct' : null;
+        const realBase = LIVE_INCENTIVE_BASE[key];
         if (realBase) {
           const result = await fetchWithBQ(`${realBase}/incentive/gate-progress`);
           if (result.error) return { error: result.error as any };
@@ -442,10 +459,10 @@ export const incentiveApi = baseApi.injectEndpoints({
       },
       keepUnusedDataFor: 60,
       async onCacheEntryAdded(arg, { updateCachedData, cacheEntryRemoved }) {
-        // Real dwc/twc data doesn't live in the mock store, so there's nothing
-        // to subscribe to — just wait out the cache entry's lifetime.
+        // Live-engine roles don't live in the mock store, so there's nothing to
+        // subscribe to — just wait out the cache entry's lifetime.
         const liveKey = getRoleKey(arg);
-        if (liveKey === 'dwc' || liveKey === 'twc') {
+        if (LIVE_INCENTIVE_BASE[liveKey]) {
           await cacheEntryRemoved;
           return;
         }
@@ -481,7 +498,7 @@ export const incentiveApi = baseApi.injectEndpoints({
       async queryFn({ role, period = 'this_month' }, _queryApi, _extraOptions, fetchWithBQ) {
         const key = getRoleKey(role);
 
-        const realBase = key === 'dwc' ? '/web-crm/dw' : key === 'twc' ? '/web-crm/wct' : null;
+        const realBase = LIVE_INCENTIVE_BASE[key];
         if (realBase) {
           const result = await fetchWithBQ(`${realBase}/incentive/month?period=${period}`);
           if (result.error) return { error: result.error as any };
@@ -570,7 +587,7 @@ export const incentiveApi = baseApi.injectEndpoints({
       keepUnusedDataFor: 60,
       async onCacheEntryAdded(arg, { updateCachedData, cacheEntryRemoved }) {
         const liveKey = getRoleKey(arg.role);
-        if (liveKey === 'dwc' || liveKey === 'twc') {
+        if (LIVE_INCENTIVE_BASE[liveKey]) {
           await cacheEntryRemoved;
           return;
         }
@@ -650,8 +667,20 @@ export const incentiveApi = baseApi.injectEndpoints({
       }
     }),
 
-    getIncentiveHistory: build.query<Array<{ month: string; amount: number; tei: number }>, void>({
-      queryFn: () => {
+    // Six-month trend. Roles with a live engine read their real monthly
+    // commission and TEI multiplier; the rest keep the illustrative series
+    // until their engine exists.
+    getIncentiveHistory: build.query<Array<{ month: string; amount: number; tei: number }>, string | void>({
+      async queryFn(role, _q, _e, fetchWithBQ) {
+        const key = getRoleKey(typeof role === 'string' ? role : '');
+        const realBase = LIVE_INCENTIVE_HISTORY[key];
+        if (realBase) {
+          const result = await fetchWithBQ(`${realBase}/incentive/history`);
+          if (!result.error) {
+            return { data: (result.data as any).data as Array<{ month: string; amount: number; tei: number }> };
+          }
+          // Fall through to the placeholder series if the endpoint is missing.
+        }
         return {
           data: [
             { month: 'Jan', amount: 28500, tei: 1.1 },

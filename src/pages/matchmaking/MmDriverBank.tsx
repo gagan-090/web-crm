@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   useGetDriverBankQuery,
   useGetDriverBankDetailQuery,
@@ -68,42 +68,92 @@ const availCls = (v: string) => AVAIL_OPTIONS.find(o => o.value === v)?.cls ?? '
 const availLbl = (v: string) => AVAIL_OPTIONS.find(o => o.value === v)?.label ?? v;
 
 // ── JobIdPicker ───────────────────────────────────────────────────────────────
+//
+// Server-backed: the previous version pulled the newest 100 open jobs per type
+// and filtered them in the browser, so any older job simply wasn't in the list
+// to be picked — typing its id showed "No open jobs found". The typed term now
+// goes to the API (which matches job id, title, location, transporter name,
+// TMID and mobile), and selection is kept in explicit state rather than relying
+// on blur timing.
 const JobIdPicker: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
   const [q, setQ]       = useState(value);
+  const [term, setTerm] = useState('');
   const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
 
-  const { data: regData } = useGetMmJobListingsQuery({ type: 'regular',   section: 'active', status: 'open', limit: 100 });
-  const { data: glData  } = useGetMmJobListingsQuery({ type: 'greenline', section: 'active', status: 'open', limit: 100 });
+  // Keep the box in step when the form seeds or clears the value externally.
+  useEffect(() => { setQ(value); }, [value]);
 
-  const regJobs = regData?.success && Array.isArray(regData?.data?.jobs) ? regData.data.jobs : [];
-  const glJobs  = glData?.success && Array.isArray(glData?.data?.jobs) ? glData.data.jobs : [];
-  const allJobs = [...regJobs, ...glJobs];
-  const filtered = allJobs.filter(j =>
-    !q || j.job_id?.toLowerCase().includes(q.toLowerCase()) || j.job_title?.toLowerCase().includes(q.toLowerCase())
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  // One query across both categories; the server does the matching.
+  const { data, isFetching } = useGetMmJobListingsQuery(
+    { type: 'any', section: 'active', status: 'open', search: term || undefined, limit: 40 },
+    { skip: !open }
   );
+  const jobs = data?.success && Array.isArray(data?.data?.jobs) ? data.data.jobs : [];
+
+  const select = (jobId: string) => {
+    onChange(jobId);
+    setQ(jobId);
+    setOpen(false);
+  };
 
   return (
-    <div className="relative">
-      <input
-        value={q}
-        onChange={e => { setQ(e.target.value); onChange(''); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 180)}
-        placeholder="Type to search open jobs..."
-        className="w-full border border-gray-400 px-2 py-1.5 text-xs outline-none focus:border-gray-600 bg-white"
-      />
-      {value && !open && (
-        <span className="absolute right-2 top-1.5 text-[10px] text-gray-600 font-semibold">✓ {value}</span>
-      )}
+    <div className="relative" ref={boxRef}>
+      <div className="flex items-center gap-2">
+        <input
+          value={q}
+          onChange={e => { setQ(e.target.value); if (value) onChange(''); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="Type job id, title or transporter to search open jobs…"
+          className="flex-1 border border-gray-400 px-2 py-1.5 text-xs outline-none focus:border-gray-600 bg-white"
+        />
+        {value && (
+          <span className="shrink-0 flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1">
+            <span className="material-symbols-outlined text-[13px]">check_circle</span>
+            {value}
+            <button
+              type="button"
+              onClick={() => { onChange(''); setQ(''); }}
+              className="text-emerald-700 hover:text-red-600"
+              title="Clear the selected job"
+            >
+              <span className="material-symbols-outlined text-[13px]">close</span>
+            </button>
+          </span>
+        )}
+      </div>
+
       {open && (
-        <div className="absolute z-20 w-full bg-white border border-gray-400 shadow-lg mt-0 max-h-44 overflow-y-auto">
-          {filtered.length === 0 ? (
-            <p className="px-3 py-2 text-[10px] text-gray-400 italic">No open jobs found</p>
-          ) : filtered.slice(0, 40).map(j => (
-            <button type="button" key={j.job_id}
-              onMouseDown={() => { onChange(j.job_id); setQ(j.job_id); setOpen(false); }}
-              className="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-gray-200 last:border-0 flex items-center gap-2">
-              <span className="font-bold text-gray-900 font-mono text-[10px]">{j.job_id}</span>
+        <div className="absolute z-30 w-full bg-white border border-gray-400 shadow-lg mt-0 max-h-44 overflow-y-auto">
+          {isFetching ? (
+            <p className="px-3 py-2 text-[10px] text-gray-400 italic">Searching open jobs…</p>
+          ) : jobs.length === 0 ? (
+            <p className="px-3 py-2 text-[10px] text-gray-400 italic">
+              {term ? `No open job matches “${term}”` : 'No open jobs found'}
+            </p>
+          ) : jobs.map(j => (
+            <button
+              type="button"
+              key={j.id}
+              onClick={() => select(j.job_id)}
+              className={`w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-gray-200 last:border-0 flex items-center gap-2 ${
+                j.job_id === value ? 'bg-emerald-50' : ''
+              }`}
+            >
+              <span className="font-bold text-gray-900 font-mono text-[10px] shrink-0">{j.job_id}</span>
               <span className="text-gray-500 text-[10px] truncate flex-1">{j.job_title}</span>
               {j.plan_type && (
                 <span className="text-[9px] px-1 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 shrink-0">{j.plan_type}</span>
@@ -579,7 +629,7 @@ const MmDriverBank: React.FC = () => {
                   </td>
                   <td className="py-2 px-3">
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
-                      <button title="Call" onClick={() => triggerCall(row.name, row.mobile, 'Driver Bank', row.tmid || 'DR')}
+                      <button title="Call" onClick={() => triggerCall(row.name, row.mobile, 'Driver Bank', row.tmid || 'DR', undefined, { source: 'driver-bank', driverBankId: row.id, jobId: row.job_id }, row.user_id ? Number(row.user_id) : 0)}
                         className="w-6 h-6 rounded-full bg-[#1A5276] hover:bg-[#154360] text-white flex items-center justify-center shadow-sm">
                         <span className="material-symbols-outlined text-[11px]">call</span>
                       </button>
@@ -714,7 +764,7 @@ const DriverDetailModal: React.FC<{ driverId: number; onClose: () => void }> = (
               <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Masked Mobile</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="font-mono text-gray-800 font-bold">**********</span>
-                <button onClick={() => triggerCall(driver.name, driver.mobile, 'Driver Bank', driver.tmid || 'DR')}
+                <button onClick={() => triggerCall(driver.name, driver.mobile, 'Driver Bank', driver.tmid || 'DR', undefined, { source: 'driver-bank', driverBankId: driverId, jobId: driver.job_id }, driver.user_id ? Number(driver.user_id) : 0)}
                   className="w-5 h-5 rounded-full bg-green-600 hover:bg-green-700 text-white flex items-center justify-center transition-all">
                   <span className="material-symbols-outlined text-[10px]">call</span>
                 </button>

@@ -46,7 +46,8 @@ export const baseApi = createApi({
     'DriverBank',
     'MmJobs',
     'MmApplicants',
-    'MmTransporter'
+    'MmTransporter',
+    'TlBoard'
   ],
   endpoints: () => ({}), // Endpoints will be injected by domain features
 });

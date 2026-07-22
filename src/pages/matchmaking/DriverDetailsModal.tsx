@@ -98,6 +98,9 @@ export const DriverDetailsModal: React.FC<Props> = ({ open, driverId, driverName
   const panv = d?.pan_verification;
   const aad = d?.aadhaar_verification;
   const vs = d?.verification_summary;
+  const sub = d?.subscription;
+  const appliedJobs = d?.applied_jobs ?? [];
+  const callTimeline = d?.call_timeline ?? [];
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -213,6 +216,146 @@ export const DriverDetailsModal: React.FC<Props> = ({ open, driverId, driverName
                   {vs.completed_at && <p className="text-[9px] text-gray-400 mt-0.5">Completed: {vs.completed_at}</p>}
                 </div>
               )}
+
+              {/* ── Subscription history ── */}
+              {sub && (
+                <div className="bg-white rounded-xl border border-gray-200 p-3.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#8E44AD]">Subscription</p>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded border bg-purple-50 text-[#7D3C98] border-purple-200">
+                      {sub.current_label}
+                    </span>
+                  </div>
+                  <div className="flex gap-5 mb-2">
+                    <div>
+                      <p className="text-lg font-extrabold text-gray-800">₹{sub.total_paid.toLocaleString()}</p>
+                      <p className="text-[9px] text-gray-400 font-bold uppercase">Total paid</p>
+                    </div>
+                    <div>
+                      <p className="text-lg font-extrabold text-gray-800">{sub.payment_count}</p>
+                      <p className="text-[9px] text-gray-400 font-bold uppercase">Payments</p>
+                    </div>
+                  </div>
+                  {sub.payments.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 italic">No payments on record.</p>
+                  ) : (
+                    <table className="w-full text-left text-[11px]">
+                      <thead>
+                        <tr className="text-gray-400 font-bold uppercase text-[9px] border-b border-gray-100">
+                          <th className="py-1">Plan</th><th className="py-1">Amount</th>
+                          <th className="py-1">Status</th><th className="py-1">Validity</th>
+                          <th className="py-1 text-right">Paid on</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {sub.payments.map(p => (
+                          <tr key={p.id}>
+                            <td className="py-1 font-semibold text-gray-800">{p.plan_label || '—'}</td>
+                            <td className="py-1 font-mono font-bold">₹{p.amount.toLocaleString()}</td>
+                            <td className="py-1">
+                              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
+                                p.status === 'captured' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
+                              }`}>{p.status}</span>
+                            </td>
+                            <td className="py-1 text-gray-500">{p.duration_months ? `${p.duration_months} mo` : '—'}</td>
+                            <td className="py-1 text-right font-mono text-gray-500">
+                              {p.paid_at ? new Date(p.paid_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {/* ── Applied jobs ── */}
+              <div className="bg-white rounded-xl border border-gray-200 p-3.5">
+                <p className="text-[10px] font-extrabold uppercase tracking-wider mb-2 text-[#8E44AD]">
+                  Applied Jobs <span className="text-gray-400 font-bold">({appliedJobs.length})</span>
+                </p>
+                {appliedJobs.length === 0 ? (
+                  <p className="text-[11px] text-gray-400 italic">This driver has not applied to any job.</p>
+                ) : (
+                  <div className="space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
+                    {appliedJobs.map(j => (
+                      <div key={j.application_id} className="border border-gray-100 rounded-lg p-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] text-gray-400 shrink-0">{j.job_ref || j.job_id}</span>
+                          <span className="flex-1 min-w-0 font-bold text-gray-800 text-[11px] truncate" title={j.job_title || ''}>
+                            {j.job_title || 'Untitled job'}
+                          </span>
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase shrink-0 ${
+                            j.status === 'accepted' ? 'bg-green-50 text-green-700'
+                              : j.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'
+                          }`}>{j.status || 'pending'}</span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                          {[j.transporter_name, j.job_location, j.route, j.vehicle_type, j.salary && `₹${j.salary}`]
+                            .filter(Boolean).join(' · ')}
+                        </p>
+                        <p className="text-[9px] text-gray-400">
+                          Applied {j.applied_at ? new Date(j.applied_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                          {j.rejection_remark ? ` · ${j.rejection_remark}` : ''}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Complete call timeline ── */}
+              <div className="bg-white rounded-xl border border-gray-200 p-3.5">
+                <p className="text-[10px] font-extrabold uppercase tracking-wider mb-2 text-[#8E44AD]">
+                  Call Timeline <span className="text-gray-400 font-bold">({callTimeline.length})</span>
+                </p>
+                {callTimeline.length === 0 ? (
+                  <p className="text-[11px] text-gray-400 italic">No calls logged for this driver.</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto custom-scrollbar">
+                    {callTimeline.map(c => (
+                      <div key={c.id} className="border border-gray-100 rounded-lg p-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${
+                            c.call_status === 'connected' ? 'bg-green-50 text-green-700 border-green-200'
+                              : c.call_status === 'not_connected' ? 'bg-red-50 text-red-600 border-red-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>{(c.call_status || 'pending').replace(/_/g, ' ')}</span>
+                          {c.disposition_sub && (
+                            <span className="text-[9px] font-bold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">
+                              {c.disposition_sub.replace(/[_-]+/g, ' ').replace(/\b\w/g, m => m.toUpperCase())}
+                            </span>
+                          )}
+                          {c.match_status && (
+                            <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">{c.match_status}</span>
+                          )}
+                          {c.job_id && (
+                            <span className="text-[9px] font-mono font-bold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">{c.job_id}</span>
+                          )}
+                          {c.transporter_name && (
+                            <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded">{c.transporter_name}</span>
+                          )}
+                          <span className="ml-auto text-[9px] text-gray-400 font-mono">
+                            {new Date(c.called_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        {c.feedback && <p className="text-[11px] text-gray-700 font-semibold mt-0.5">{c.feedback}</p>}
+                        {c.remarks && <p className="text-[10px] text-gray-400">{c.remarks}</p>}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[9px] text-gray-400">
+                            {c.called_by ? `by ${c.called_by}` : ''}
+                            {c.process ? ` · ${c.process}` : ''}
+                            {c.duration_seconds ? ` · ${c.duration_seconds}s` : ''}
+                          </span>
+                          {c.recording_url && (
+                            <audio src={c.recording_url} controls preload="none" className="h-6 max-w-[170px] ml-auto" />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>

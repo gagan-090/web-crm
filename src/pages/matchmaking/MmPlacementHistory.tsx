@@ -1,326 +1,312 @@
 import React, { useState } from 'react';
-import { useGetMmPlacementsQuery } from '../../services/api/webCrmApi';
+import {
+  useGetMmAgentPerformanceQuery,
+  type MmPlacementRow,
+  type MmSlaTier,
+} from '../../services/api/webCrmApi';
 
-export const MmPlacementHistory: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'thisMonth' | 'lastMonth' | 'history'>('thisMonth');
-  const [extraPlacements, setExtraPlacements] = useState(0);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const { data: placementsData } = useGetMmPlacementsQuery();
+// ── My Placements Dashboard ─────────────────────────────────────────────────
+//
+// Every figure here is computed server-side from real rows
+// (call_history_ivr ∪ jobs_match_making, joined to jobs/payments) — see
+// MmCallerController::mmAgentPerformance. Nothing on this screen is simulated.
+//
+// SLA rules: a super-premium job must be filled within 7 days of posting, a
+// premium job within 10, and each placement carries a 1-month replacement
+// liability. Whether a replacement was actually *needed* is not recorded
+// anywhere in the schema, so this screen reports the liability WINDOW only and
+// says so, rather than inventing a compliance number.
 
-  const triggerToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
+const PERIODS = [
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
+  { value: 'all', label: 'Placements History' },
+];
 
-  // Base metrics for This Month
-  const basePremium = 18;
-  const baseSuper = 6;
-  const totalBasePlacements = basePremium + baseSuper;
-  const premiumRate = 30;
-  const superRate = 50;
+const TIER_STYLES: Record<string, string> = {
+  super_premium: 'bg-orange-50 text-orange-700 border-orange-200',
+  premium: 'bg-purple-50 text-[#7D3C98] border-purple-200',
+  standard: 'bg-gray-100 text-gray-600 border-gray-200',
+  unknown: 'bg-gray-50 text-gray-400 border-gray-200',
+};
 
-  // Recalculated metrics with What-If slider
-  const simulatedSuper = baseSuper + extraPlacements;
-  const totalSimulatedPlacements = basePremium + simulatedSuper;
-  const simulatedSuperIncentive = simulatedSuper * superRate;
-  const totalIncentive = (basePremium * premiumRate) + simulatedSuperIncentive;
+const TIER_LABELS: Record<string, string> = {
+  super_premium: 'Super Premium',
+  premium: 'Premium',
+  standard: 'Standard',
+  unknown: 'Unknown',
+};
+
+const REJECTION_COLORS = ['#8E44AD', '#F39C12', '#3498DB', '#E74C3C', '#95A5A6', '#16A085', '#D35400', '#7F8C8D'];
+
+const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = '' }) => (
+  <div className={`bg-white border border-gray-200 rounded-xl p-4 ${className}`}>
+    <h3 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">{title}</h3>
+    {children}
+  </div>
+);
+
+const SlaRow: React.FC<{ label: string; tier: MmSlaTier }> = ({ label, tier }) => (
+  <div className="flex justify-between items-center gap-2 py-0.5">
+    <span className="text-gray-600 font-semibold">
+      {label} <span className="text-gray-400 font-normal">({tier.target_days}d)</span>
+    </span>
+    {tier.measured === 0 ? (
+      <span className="text-gray-300 font-semibold italic">No measurable placements</span>
+    ) : (
+      <span className="font-bold text-gray-900">
+        {tier.within_sla} / {tier.measured} within SLA
+        <span className={tier.rate !== null && tier.rate >= 90 ? 'text-green-600' : 'text-amber-600'}>
+          {' '}({tier.rate}%)
+        </span>
+      </span>
+    )}
+  </div>
+);
+
+const MmPlacementHistory: React.FC = () => {
+  const [period, setPeriod] = useState('this_month');
+  const { data, isFetching, isError, refetch } = useGetMmAgentPerformanceQuery({ period });
+
+  const d = data?.data;
+  const f = d?.fulfillments;
+  const progress = f && f.target > 0 ? Math.min((f.total / f.target) * 100, 100) : 0;
 
   return (
-    <main className="p-6 max-w-7xl mx-auto w-full overflow-y-auto max-h-[calc(100vh-60px)] space-y-6 text-xs relative">
-      
-      {/* Toast Alert */}
-      {toastMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-1.5 animate-bounce">
-          <span className="w-2 h-2 rounded-full bg-[#8E44AD]"></span>
-          {toastMessage}
-        </div>
-      )}
+    <main className="h-[calc(100vh-60px)] overflow-y-auto bg-gray-50 p-5 text-xs custom-scrollbar">
 
-      {/* Header controls strip */}
-      <div className="p-4 bg-gray-50 border border-gray-250 rounded-xl flex justify-between items-center shrink-0">
+      {/* Header + period switch */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center mb-4">
         <div>
           <h1 className="text-sm font-extrabold text-gray-800 uppercase tracking-wide">My Placements Dashboard</h1>
-          <p className="text-[10px] text-gray-400 mt-0.5">Track your monthly placements, incentive achievements, and SLA compliance metrics</p>
+          <p className="text-gray-400 mt-0.5">Placements, SLA compliance and incentive accrual — live from your call and match records.</p>
         </div>
-
-        {/* Tab Selection */}
-        <div className="flex bg-white border border-gray-200 rounded-lg p-0.5 font-bold text-gray-550 select-none">
-          {[
-            { id: 'thisMonth', label: 'This Month' },
-            { id: 'lastMonth', label: 'Last Month' },
-            { id: 'history', label: 'Placements History' }
-          ].map(t => (
+        <div className="flex bg-gray-100 rounded-lg p-0.5 shrink-0">
+          {PERIODS.map(p => (
             <button
-              key={t.id}
-              onClick={() => {
-                setActiveTab(t.id as any);
-                triggerToast(`Switched to ${t.label}`);
-              }}
-              className={`px-3.5 py-1 rounded transition-colors ${
-                activeTab === t.id ? 'bg-[#8E44AD] text-white font-extrabold' : 'hover:text-gray-800'
+              key={p.value}
+              onClick={() => setPeriod(p.value)}
+              className={`px-3 py-1.5 rounded-md font-bold transition-colors ${
+                period === p.value ? 'bg-[#8E44AD] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {t.label}
+              {p.label}
             </button>
           ))}
         </div>
       </div>
 
-      {activeTab === 'thisMonth' && (
+      {isError ? (
+        <div className="bg-white border border-red-200 rounded-xl p-8 text-center">
+          <p className="text-red-500 font-bold">Could not load your performance data.</p>
+          <button onClick={refetch} className="mt-2 px-4 py-1.5 border border-[#8E44AD] text-[#8E44AD] rounded-lg font-bold">Retry</button>
+        </div>
+      ) : isFetching && !d ? (
+        <div className="grid grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => <div key={i} className="h-28 bg-white border border-gray-200 rounded-xl animate-pulse" />)}
+        </div>
+      ) : d && f ? (
         <>
-          {/* Top Row: Cards */}
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            
-            {/* Placements Block */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Fulfillments</span>
-                <h2 className="text-xl font-extrabold text-[#8E44AD] mt-1.5">{totalBasePlacements} / 55 Target</h2>
+          {/* ── Top KPI row ── */}
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <Card title="Fulfillments">
+              <p className="text-2xl font-extrabold text-[#8E44AD]">
+                {f.total} <span className="text-gray-400 text-base font-bold">/ {f.target} Target</span>
+              </p>
+              <div className="h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
+                <div className="h-full bg-[#8E44AD] rounded-full transition-all" style={{ width: `${progress}%` }} />
               </div>
-              <div className="mt-3">
-                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="bg-[#8E44AD] h-full" style={{ width: `${(totalBasePlacements/55)*100}%` }}></div>
-                </div>
-                <div className="flex gap-2 text-[9px] font-bold text-gray-400 mt-1.5 select-none">
-                  <span className="bg-purple-50 text-purple-700 px-1 py-0.2 rounded border border-purple-100">{basePremium} PREMIUM</span>
-                  <span className="bg-orange-50 text-orange-700 px-1 py-0.2 rounded border border-orange-100">{baseSuper} SUPER PREMIUM</span>
-                </div>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(['super_premium', 'premium', 'standard', 'unknown'] as const).map(tier => {
+                  const count = tier === 'unknown' ? f.unknown_tier : f[tier];
+                  if (!count) return null;
+                  return (
+                    <span key={tier} className={`text-[9.5px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${TIER_STYLES[tier]}`}>
+                      {count} {TIER_LABELS[tier]}
+                    </span>
+                  );
+                })}
               </div>
-            </div>
+            </Card>
 
-            {/* SLA Compliance Block */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">SLA Compliance Rate</span>
-                <h2 className="text-xl font-extrabold text-green-600 mt-1.5">91.7%</h2>
-              </div>
-              <div className="space-y-1 mt-3 font-semibold text-gray-500">
-                <div className="flex justify-between">
-                  <span>Premium Fill SLA (10d):</span>
-                  <span className="font-bold text-gray-800">16 / 18 within SLA (88.9%)</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Super Premium Fill SLA (7d):</span>
-                  <span className="font-bold text-purple-750">6 / 6 within SLA (100%)</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Incentive Block */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Incentives Status</span>
-                <h2 className="text-xl font-extrabold text-gray-850 mt-1.5">₹{totalIncentive} Accrued</h2>
-              </div>
-              <div className="mt-3 flex justify-between items-center text-[9.5px] font-bold">
-                <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-250 uppercase flex items-center gap-0.5">
-                  <span className="material-symbols-outlined text-[13px]">check_circle</span>
-                  Gate Crossed ({totalBasePlacements} placements)
-                </span>
-                <span className="text-gray-400 font-semibold">Min Gate: 4 placements</span>
-              </div>
-            </div>
-
-          </section>
-
-          {/* Details Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Left: Rejection Reasons & Efficiency stats */}
-            <div className="space-y-6">
-              
-              {/* Stacked Rejection reasons chart */}
-              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3 select-none">
-                <h4 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Rejection Reasons Distribution</h4>
-                
-                {/* Horizontal stacked bar */}
-                <div className="w-full h-5 rounded overflow-hidden flex font-bold text-white text-[9px] text-center font-mono">
-                  <div className="bg-purple-600 flex items-center justify-center" style={{ width: '38%' }} title="Route doesn't suit: 38%">38%</div>
-                  <div className="bg-amber-500 flex items-center justify-center" style={{ width: '24%' }} title="Pay unacceptable: 24%">24%</div>
-                  <div className="bg-blue-500 flex items-center justify-center" style={{ width: '19%' }} title="Truck Mismatch: 19%">19%</div>
-                  <div className="bg-red-500 flex items-center justify-center" style={{ width: '12%' }} title="Already Placed: 12%">12%</div>
-                  <div className="bg-gray-400 flex items-center justify-center" style={{ width: '7%' }} title="Other: 7%">7%</div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 text-[9.5px] font-bold text-gray-500 pt-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded bg-purple-600"></span> Route doesn't suit (38%)
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded bg-amber-500"></span> Pay unacceptable (24%)
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded bg-blue-500"></span> Truck Mismatch (19%)
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded bg-red-500"></span> Already Placed (12%)
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded bg-gray-400"></span> Other reasons (7%)
-                  </div>
-                </div>
-              </div>
-
-              {/* Sourcing efficiency card */}
-              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex items-center justify-between">
-                <div>
-                  <h4 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-1">Sourcing Efficiency Metric</h4>
-                  <p className="font-semibold text-gray-600 leading-relaxed">
-                    You call an average of <span className="font-extrabold text-[#8E44AD] text-sm">4.2 drivers</span> to fill one active job posting.
+            <Card title="SLA Compliance Rate">
+              {d.sla.measured === 0 ? (
+                <>
+                  <p className="text-2xl font-extrabold text-gray-300">—</p>
+                  <p className="text-gray-400 mt-1">
+                    No placement in this period sits on a paid job with a known posting date, so fill SLA cannot be measured.
                   </p>
-                </div>
-                <span className="material-symbols-outlined text-[#8E44AD] text-3xl font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>insights</span>
+                </>
+              ) : (
+                <>
+                  <p className={`text-2xl font-extrabold ${(d.sla.overall_rate ?? 0) >= 90 ? 'text-green-600' : 'text-amber-600'}`}>
+                    {d.sla.overall_rate}%
+                  </p>
+                  <p className="text-[10px] text-gray-400">{d.sla.within_sla} of {d.sla.measured} measurable placements</p>
+                </>
+              )}
+              <div className="mt-2 space-y-0.5">
+                <SlaRow label="Super Premium Fill" tier={d.sla.by_tier.super_premium} />
+                <SlaRow label="Premium Fill" tier={d.sla.by_tier.premium} />
               </div>
+            </Card>
 
-            </div>
+            <Card title="Incentive Status">
+              <p className="text-2xl font-extrabold text-gray-800">₹{d.incentive.accrued.toLocaleString()}</p>
+              <p className="text-[10px] text-gray-400">
+                ₹{d.incentive.rate_premium}/premium · ₹{d.incentive.rate_super_premium}/super premium
+              </p>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className={`text-[10px] font-extrabold px-2 py-1 rounded border ${
+                  d.incentive.gate_crossed
+                    ? 'bg-green-50 text-green-700 border-green-200'
+                    : 'bg-gray-50 text-gray-500 border-gray-200'
+                }`}>
+                  {d.incentive.gate_crossed ? `GATE CROSSED (${f.total} PLACEMENTS)` : `GATE NOT CROSSED (${f.total}/${d.incentive.gate})`}
+                </span>
+                <span className="text-[10px] text-gray-400">Min gate: {d.incentive.gate}</span>
+              </div>
+            </Card>
+          </div>
 
-            {/* Right: What If Simulator & MoM Chart */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4">
-              <h4 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">Incentive Handover Calculator</h4>
-              
-              <div className="bg-gray-55 border border-gray-150 p-3.5 rounded-xl space-y-3">
-                <span className="text-[10px] font-bold text-gray-400 uppercase block">What-If Projected Placements Simulator</span>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center font-bold text-gray-700">
-                    <span>Add Super Premium placements:</span>
-                    <span className="text-[#8E44AD] font-extrabold text-sm">+{extraPlacements} jobs</span>
-                  </div>
-                  <input 
-                    type="range"
-                    min={0}
-                    max={30}
-                    value={extraPlacements}
-                    onChange={(e) => setExtraPlacements(Number(e.target.value))}
-                    className="w-full accent-[#8E44AD] cursor-pointer"
-                  />
-                  <div className="text-[10px] text-gray-400 font-semibold leading-relaxed">
-                    Slide to simulate adding placement events. Gate requires Count &gt; 4 placements.
-                  </div>
+          {/* ── Replacement liability + sourcing ── */}
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <Card title={`Replacement Liability (${d.sla.replacement.window_days} days)`} className="col-span-2">
+              <div className="flex gap-6">
+                <div>
+                  <p className="text-xl font-extrabold text-amber-600">{d.sla.replacement.in_window}</p>
+                  <p className="text-[10px] text-gray-400 font-bold">Still inside window</p>
+                </div>
+                <div>
+                  <p className="text-xl font-extrabold text-gray-500">{d.sla.replacement.expired}</p>
+                  <p className="text-[10px] text-gray-400 font-bold">Window expired</p>
                 </div>
               </div>
+              <p className="text-[10px] text-gray-400 mt-2 italic border-t border-gray-100 pt-2">
+                {d.sla.replacement.tracking_note}
+              </p>
+            </Card>
 
-              {/* Itemized table details */}
-              <table className="w-full text-left text-[11px] font-semibold text-gray-600">
+            <Card title="Sourcing Efficiency">
+              {d.sourcing.calls_per_placement === null ? (
+                <p className="text-gray-400">No placements in this period, so calls-per-placement cannot be computed.</p>
+              ) : (
+                <p className="text-gray-700 font-semibold leading-relaxed">
+                  You make an average of{' '}
+                  <span className="text-[#8E44AD] font-extrabold text-base">{d.sourcing.calls_per_placement} calls</span>{' '}
+                  per successful placement.
+                </p>
+              )}
+              <p className="text-[10px] text-gray-400 mt-1.5">
+                {d.sourcing.calls_made.toLocaleString()} calls · {d.sourcing.placements} placements
+              </p>
+            </Card>
+          </div>
+
+          {/* ── Rejection reasons ── */}
+          <Card title="Rejection Reasons Distribution" className="mb-4">
+            {d.rejections.total === 0 ? (
+              <p className="text-gray-400 italic">No rejected matches recorded in this period.</p>
+            ) : (
+              <>
+                <div className="flex h-6 rounded-lg overflow-hidden mb-2">
+                  {d.rejections.reasons.map((r, i) => (
+                    <div
+                      key={r.reason}
+                      className="flex items-center justify-center text-white text-[9px] font-bold"
+                      style={{ width: `${r.percent}%`, backgroundColor: REJECTION_COLORS[i % REJECTION_COLORS.length] }}
+                      title={`${r.reason}: ${r.count}`}
+                    >
+                      {r.percent >= 7 ? `${r.percent}%` : ''}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {d.rejections.reasons.map((r, i) => (
+                    <div key={r.reason} className="flex items-center gap-1.5 min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: REJECTION_COLORS[i % REJECTION_COLORS.length] }} />
+                      <span className="text-gray-600 font-semibold truncate" title={r.reason}>
+                        {r.reason} <span className="text-gray-400">({r.count})</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </Card>
+
+          {/* ── Placement ledger ── */}
+          <Card title={`Placement Records (${d.placements.length})`}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-gray-150 text-gray-400 font-bold uppercase text-[9px]">
-                    <th className="pb-1.5">Event details</th>
-                    <th className="pb-1.5 text-center">Fulfillments</th>
-                    <th className="pb-1.5 text-center">Rate</th>
-                    <th className="pb-1.5 text-right">Subtotal</th>
+                  <tr className="text-gray-400 font-bold uppercase text-[9px] border-b border-gray-200">
+                    <th className="p-2 pl-0">Placed</th>
+                    <th className="p-2">Job ID</th>
+                    <th className="p-2">Driver</th>
+                    <th className="p-2">Tier</th>
+                    <th className="p-2 text-center">Days to Fill</th>
+                    <th className="p-2 text-center">Fill SLA</th>
+                    <th className="p-2 text-center">Replacement</th>
+                    <th className="p-2 text-right pr-0">Source</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-700">
-                  <tr>
-                    <td className="py-2 font-bold text-gray-800">Premium Placements</td>
-                    <td className="py-2 text-center font-mono">{basePremium}</td>
-                    <td className="py-2 text-center font-mono">₹{premiumRate}</td>
-                    <td className="py-2 text-right font-mono font-bold">₹{basePremium * premiumRate}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 font-bold text-gray-800">Super Premium Placements (Simulated)</td>
-                    <td className="py-2 text-center font-mono">{simulatedSuper}</td>
-                    <td className="py-2 text-center font-mono">₹{superRate}</td>
-                    <td className="py-2 text-right font-mono font-bold text-[#8E44AD]">₹{simulatedSuperIncentive}</td>
-                  </tr>
-                  <tr className="border-t border-gray-250 font-extrabold">
-                    <td className="py-2 text-gray-800 text-xs">Total Simulated Payout</td>
-                    <td className="py-2 text-center font-mono text-xs">{totalSimulatedPlacements}</td>
-                    <td className="py-2"></td>
-                    <td className="py-2 text-right font-mono text-xs text-green-600">₹{totalIncentive}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-          </div>
-        </>
-      )}
-
-      {activeTab === 'lastMonth' && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm text-center py-12">
-          <span className="material-symbols-outlined text-[#8E44AD] text-4xl mb-2">history</span>
-          <p className="font-bold text-gray-800">Last Month placements Handover</p>
-          <p className="text-gray-400 mt-1">Placements: 48 jobs · SLA Compliance: 93.4% · Incentives Earned: ₹1,840</p>
-        </div>
-      )}
-
-      {activeTab === 'history' && (
-        <div className="space-y-6">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden text-xs">
-            <div className="p-3 bg-gray-50 border-b border-gray-200 font-bold text-gray-700 uppercase tracking-wider">
-              Historic PlacementsHandover ledger
-            </div>
-
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50 text-gray-400 font-bold uppercase text-[9px] border-b border-gray-150">
-                  <th className="p-3 pl-4">Month</th>
-                  <th className="p-3 text-center">Placements</th>
-                  <th className="p-3 text-center">Monthly Target</th>
-                  <th className="p-3 text-center">SLA Compliance %</th>
-                  <th className="p-3 text-right pr-4">Incentive Paid</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
-                {[
-                  { m: 'May 2026', qty: 58, tgt: 55, sla: '92.4%', pay: 2020 },
-                  { m: 'Apr 2026', qty: 52, tgt: 55, sla: '89.1%', pay: 1720 },
-                  { m: 'Mar 2026', qty: 61, tgt: 55, sla: '94.5%', pay: 2150 }
-                ].map((row, i) => (
-                  <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="p-3 pl-4 font-bold text-gray-850">{row.m}</td>
-                    <td className="p-3 text-center font-mono">{row.qty} jobs</td>
-                    <td className="p-3 text-center font-mono">{row.tgt} jobs</td>
-                    <td className="p-3 text-center font-mono">{row.sla}</td>
-                    <td className="p-3 text-right pr-4 font-mono font-bold text-green-600">₹{row.pay}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden text-xs">
-            <div className="p-3 bg-gray-50 border-b border-gray-200 font-bold text-gray-700 uppercase tracking-wider">
-              Recent Placement Records (Live Data)
-            </div>
-
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50 text-gray-400 font-bold uppercase text-[9px] border-b border-gray-150">
-                  <th className="p-3 pl-4">Date</th>
-                  <th className="p-3">Job ID</th>
-                  <th className="p-3">Transporter</th>
-                  <th className="p-3">Driver Name</th>
-                  <th className="p-3 text-right pr-4">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
-                {placementsData?.placements && placementsData.placements.length > 0 ? (
-                  placementsData.placements.map((p, i) => (
-                    <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="p-3 pl-4 font-mono">{new Date(p.created_at).toLocaleDateString()}</td>
-                      <td className="p-3 font-mono">JD-{p.job_id}</td>
-                      <td className="p-3">{p.transporter_name || 'N/A'}</td>
-                      <td className="p-3 font-bold text-gray-850">{p.driver_name || 'N/A'}</td>
-                      <td className="p-3 text-right pr-4">
-                        <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-200 text-[10px] font-extrabold uppercase">
-                          {p.match_status}
+                <tbody className="divide-y divide-gray-100">
+                  {d.placements.map((p: MmPlacementRow, i) => (
+                    <tr key={`${p.job_id}-${p.driver_id}-${i}`} className="hover:bg-gray-50/60">
+                      <td className="p-2 pl-0 font-mono text-gray-500">
+                        {p.placed_at ? new Date(p.placed_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}
+                      </td>
+                      <td className="p-2 font-mono font-bold text-gray-700">{p.job_id}</td>
+                      <td className="p-2 font-semibold text-gray-800">{p.driver_name || '—'}</td>
+                      <td className="p-2">
+                        <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${TIER_STYLES[p.tier]}`}>
+                          {TIER_LABELS[p.tier]}
+                        </span>
+                      </td>
+                      <td className="p-2 text-center font-mono font-bold text-gray-900">
+                        {p.days_to_fill ?? '—'}
+                      </td>
+                      <td className="p-2 text-center">
+                        {p.within_sla === null ? (
+                          <span className="text-gray-300" title="No SLA applies, or the job's posting date is unavailable">n/a</span>
+                        ) : (
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${
+                            p.within_sla ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'
+                          }`}>
+                            {p.within_sla ? `Met (${p.sla_target_days}d)` : `Breached (${p.sla_target_days}d)`}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2 text-center">
+                        {p.in_replacement_window ? (
+                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded uppercase">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">expired</span>
+                        )}
+                      </td>
+                      <td className="p-2 text-right pr-0">
+                        <span className="text-[9px] font-bold text-gray-400 uppercase">
+                          {p.source === 'app' ? 'TM App' : 'Web CRM'}
                         </span>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="p-6 text-center text-gray-400 italic">No live placement records recorded yet.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
+                  ))}
+                  {d.placements.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="p-6 text-center text-gray-400 italic">
+                        No placements recorded in this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      ) : null}
     </main>
   );
 };

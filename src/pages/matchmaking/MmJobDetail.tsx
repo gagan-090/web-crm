@@ -13,6 +13,7 @@ import GreenlineApplicantList from './GreenlineApplicantList';
 import MmJobBriefModal from './MmJobBriefModal';
 import MmConferenceDispositionModal from './MmConferenceDispositionModal';
 import MmAddToCallModal from './MmAddToCallModal';
+import { openJobSession } from './mmJobSession';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import {
   readPendingMmContext,
@@ -63,13 +64,16 @@ interface ApplicantCardProps {
   isGreenline: boolean;
   /** True while a transporter call for THIS job is live — enables "Add Call". */
   canConference: boolean;
+  /** Job belongs to another agent: everything stays visible, nothing may be dialled. */
+  readOnly?: boolean;
+  ownerName?: string | null;
   onCall: (driver: MmApplicant) => void;
   onAddToCall: (driver: MmApplicant) => void;
   onScreen: (driver: MmApplicant, mode: 'conduct' | 'view') => void;
   onViewDetails: (driver: MmApplicant) => void;
 }
 
-const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canConference, onCall, onAddToCall, onScreen, onViewDetails }) => {
+const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canConference, readOnly, ownerName, onCall, onAddToCall, onScreen, onViewDetails }) => {
   const [expanded, setExpanded] = useState(false);
   const timeline = driver.call_timeline ?? [];
 
@@ -112,16 +116,26 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
           </button>
           {isGreenline && (
             <button
-              onClick={e => { e.stopPropagation(); onScreen(driver, 'conduct'); }}
+              onClick={e => { e.stopPropagation(); onScreen(driver, driver.screening ? 'view' : 'conduct'); }}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1"
-              title="Conduct the Greenline screening questionnaire for this driver"
+              title={driver.screening
+                ? 'Screening already done — view answers and change the result'
+                : 'Conduct the Greenline screening questionnaire for this driver'}
             >
-              <span className="material-symbols-outlined text-xs">fact_check</span>Screen
+              <span className="material-symbols-outlined text-xs">fact_check</span>
+              {driver.screening ? 'Result' : 'Screen'}
             </button>
           )}
           {/* Transporter call in progress → conference this applicant in
               instead of starting a separate call (mobile's con-call flow). */}
-          {canConference ? (
+          {readOnly ? (
+            <span
+              className="bg-gray-100 text-gray-400 border border-gray-200 px-3 py-1.5 rounded-lg font-bold text-[10px] flex items-center gap-1 cursor-not-allowed"
+              title={`This job belongs to ${ownerName || 'another agent'} — calling is disabled`}
+            >
+              <span className="material-symbols-outlined text-xs">phone_disabled</span>View only
+            </span>
+          ) : canConference ? (
             <button
               onClick={e => { e.stopPropagation(); onAddToCall(driver); }}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1"
@@ -191,8 +205,12 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
             <div className="bg-green-50 rounded-lg p-2 border border-green-200">
               <p className="text-[9px] text-green-600 uppercase font-bold mb-1">Previously Selected For</p>
               {driver.selected_jobs.map((sj, i) => (
-                <div key={i} className="text-[10px] text-green-800 font-semibold">
-                  {sj.job_title} · {sj.job_location} · {sj.selected_at}
+                <div key={i} className="text-[10px] text-green-800 font-semibold flex flex-wrap items-center gap-x-1.5">
+                  <span className="font-mono bg-green-100 text-green-700 px-1 py-px rounded">{sj.job_id}</span>
+                  {sj.transporter_name && <span className="font-extrabold">{sj.transporter_name}</span>}
+                  <span className="font-normal text-green-700">
+                    · {sj.job_title} · {sj.job_location} · {sj.selected_at}
+                  </span>
                 </div>
               ))}
             </div>
@@ -231,6 +249,17 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
                             {entry.process}
                           </span>
                         )}
+                        {/* Which job (and whose) this call was about */}
+                        {entry.job_id && (
+                          <span className="text-[9px] font-mono font-bold text-gray-600 bg-gray-100 px-1 py-0.5 rounded">
+                            {entry.job_id}
+                          </span>
+                        )}
+                        {entry.transporter_name && (
+                          <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1 py-0.5 rounded">
+                            {entry.transporter_name}
+                          </span>
+                        )}
                       </div>
                       {entry.feedback && (
                         <p className="text-gray-700 font-semibold mt-0.5 truncate" title={entry.feedback}>{entry.feedback}</p>
@@ -267,7 +296,7 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
                   onClick={() => onScreen(driver, 'view')}
                   className="text-[9px] font-bold text-[#8E44AD] hover:underline flex items-center gap-0.5"
                 >
-                  <span className="material-symbols-outlined text-[12px]">visibility</span>View answers
+                  <span className="material-symbols-outlined text-[12px]">visibility</span>View / change result
                 </button>
               </div>
               <p className="text-[10px] text-blue-800 font-semibold">{driver.screening.result} · {driver.screening.telecaller_status || driver.screening.status}</p>
@@ -319,7 +348,21 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
 const MmJobDetail: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const jobId: string = location.state?.jobId || '';
+  // Router state is lost on a reload or a bare visit to this route, so fall
+  // back to the job remembered for this session.
+  const jobId: string = location.state?.jobId || openJobSession.get() || '';
+
+  // Remember it so the Job Board reopens this job when the agent returns.
+  useEffect(() => {
+    if (jobId) openJobSession.set(jobId);
+  }, [jobId]);
+
+  // Leaving via "← Job Board" is the one action that means "I'm done with this
+  // job" — everywhere else the job stays open.
+  const backToBoard = () => {
+    openJobSession.clear();
+    navigate('/mm/mm-job-board');
+  };
 
   const [search, setSearch] = useState('');
   const [applicantStatus, setApplicantStatus] = useState('');
@@ -412,6 +455,14 @@ const MmJobDetail: React.FC = () => {
 
   const isGreenline = !!job?.is_greenline;
 
+  // The board is system-wide, so an agent can open a job that belongs to
+  // someone else. A REGULAR job that isn't yours stays fully readable —
+  // applicants, screening, call logs — but nothing may be dialled from it.
+  // Greenline jobs are the exception: they are a shared pool every matchmaking
+  // caller works, so ownership never restricts them.
+  const jobOwnerName = job?.assigned_to_name ?? null;
+  const readOnly = !!job && job.is_mine === false && !isGreenline;
+
   // A transporter call for THIS job is live → applicants can be conferenced in
   // rather than called separately (Task 3's transporter-first direction).
   const mmCtx = readPendingMmContext();
@@ -419,6 +470,7 @@ const MmJobDetail: React.FC = () => {
     callState === 'connected' && mmCtx?.kind === 'transporter' && mmCtx.jobId === jobId;
 
   const handleCallApplicant = (driver: MmApplicant) => {
+    if (readOnly) { triggerToast(`This job belongs to ${jobOwnerName || 'another agent'} — calling is disabled.`); return; }
     callApplicant({
       jobId,
       transporterName: job?.transporter_name || '',
@@ -438,6 +490,7 @@ const MmJobDetail: React.FC = () => {
   };
 
   const handleAddApplicantToCall = (driver: MmApplicant) => {
+    if (readOnly) { triggerToast(`This job belongs to ${jobOwnerName || 'another agent'} — calling is disabled.`); return; }
     addApplicantToConference({
       driver_id: driver.driver_id,
       name: driver.name,
@@ -462,6 +515,7 @@ const MmJobDetail: React.FC = () => {
   };
 
   const handleGreenlineCall = (driver: DriverRef) => {
+    if (readOnly) { triggerToast(`This job belongs to ${jobOwnerName || 'another agent'} — calling is disabled.`); return; }
     callApplicant({
       jobId,
       transporterName: job?.transporter_name || '',
@@ -479,7 +533,7 @@ const MmJobDetail: React.FC = () => {
         <div className="text-center">
           <span className="material-symbols-outlined text-5xl mb-3 block">work_off</span>
           <p className="font-semibold">No job selected</p>
-          <button onClick={() => navigate('/mm/mm-job-board')} className="mt-3 text-[#8E44AD] font-bold hover:underline">← Back to Job Board</button>
+          <button onClick={backToBoard} className="mt-3 text-[#8E44AD] font-bold hover:underline">← Back to Job Board</button>
         </div>
       </div>
     );
@@ -499,7 +553,7 @@ const MmJobDetail: React.FC = () => {
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0">
         <button
-          onClick={() => navigate('/mm/mm-job-board')}
+          onClick={backToBoard}
           className="flex items-center gap-1 text-gray-500 hover:text-[#8E44AD] font-bold transition-colors"
         >
           <span className="material-symbols-outlined text-base">arrow_back</span>
@@ -513,13 +567,44 @@ const MmJobDetail: React.FC = () => {
             <span className="font-mono text-gray-400 text-[10px]">{job?.job_id}</span>
             <h1 className="font-extrabold text-gray-800 truncate">{job?.job_title}</h1>
             {job && (
-              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ml-auto ${job.closed_job ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700'}`}>
-                {job.closed_job ? 'CLOSED' : 'OPEN'}
+              <span className="ml-auto flex items-center gap-2">
+                {/* Whose job this is — always shown, since the board spans every agent. */}
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                    readOnly ? 'bg-amber-100 text-amber-700'
+                    : isGreenline && job.is_mine === false ? 'bg-teal-100 text-teal-700'
+                    : 'bg-emerald-100 text-emerald-700'
+                  }`}
+                  title={
+                    readOnly ? 'Assigned to another agent — read only'
+                    : isGreenline && job.is_mine === false
+                      ? 'Greenline jobs are a shared pool — any matchmaking caller can work them'
+                      : 'Assigned to you'
+                  }
+                >
+                  {job.is_mine === false
+                    ? `${isGreenline ? 'GREENLINE · ' : ''}ASSIGNED TO ${(jobOwnerName || 'ANOTHER AGENT').toUpperCase()}`
+                    : 'ASSIGNED TO YOU'}
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${job.closed_job ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700'}`}>
+                  {job.closed_job ? 'CLOSED' : 'OPEN'}
+                </span>
               </span>
             )}
           </>
         )}
       </div>
+
+      {/* Read-only strip — the job is someone else's book of work */}
+      {readOnly && (
+        <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 flex items-center gap-2 shrink-0">
+          <span className="material-symbols-outlined text-amber-600 text-[18px]">visibility</span>
+          <p className="text-[11px] font-bold text-amber-800">
+            View only — this in-system job is assigned to {jobOwnerName || 'another agent'}. Applicants and
+            screening are visible, but you cannot call the transporter or any applicant.
+          </p>
+        </div>
+      )}
 
       {/* Two-column body */}
       <div className="flex-1 flex overflow-hidden">
@@ -621,24 +706,30 @@ const MmJobDetail: React.FC = () => {
                   </div>
                 </div>
                 <button
+                  disabled={readOnly}
                   onClick={() => callTransporter({
                     jobId,
                     transporter: { id: tx.id, name: tx.name, mobile: tx.mobile, unique_id: tx.unique_id },
                     isGreenline,
                   })}
-                  className="w-full bg-[#8E44AD] hover:bg-[#7D3C98] text-white py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm"
-                  title="Dial via CTI — the job feedback form opens automatically when the call ends"
+                  className="w-full bg-[#8E44AD] hover:bg-[#7D3C98] text-white py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  title={readOnly
+                    ? `This job belongs to ${jobOwnerName || 'another agent'} — calling is disabled`
+                    : 'Dial via CTI — the job feedback form opens automatically when the call ends'}
                 >
-                  <span className="material-symbols-outlined text-sm">call</span>
-                  Call Transporter
+                  <span className="material-symbols-outlined text-sm">{readOnly ? 'phone_disabled' : 'call'}</span>
+                  {readOnly ? 'Calling disabled' : 'Call Transporter'}
                 </button>
                 {/* The brief opens automatically when the transporter confirms
                     job details; this is the manual route the mobile screen also
                     offers from every other connected option. */}
                 <button
+                  disabled={readOnly}
                   onClick={() => openJobBrief(jobId, tx.name)}
-                  className="w-full border border-[#8E44AD] text-[#8E44AD] py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 hover:bg-purple-50"
-                  title="Record the job details collected from the transporter"
+                  className="w-full border border-[#8E44AD] text-[#8E44AD] py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 hover:bg-purple-50 disabled:border-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  title={readOnly
+                    ? `This job belongs to ${jobOwnerName || 'another agent'} — read only`
+                    : 'Record the job details collected from the transporter'}
                 >
                   <span className="material-symbols-outlined text-sm">description</span>
                   Job Brief
@@ -676,6 +767,8 @@ const MmJobDetail: React.FC = () => {
           {isGreenline ? (
             <GreenlineApplicantList
               jobId={jobId}
+              readOnly={readOnly}
+              ownerName={jobOwnerName}
               onCall={handleGreenlineCall}
               onScreen={handleScreen}
               onViewDetails={handleViewDetails}
@@ -743,6 +836,8 @@ const MmJobDetail: React.FC = () => {
                     driver={driver}
                     isGreenline={isGreenline}
                     canConference={canConference}
+                    readOnly={readOnly}
+                    ownerName={jobOwnerName}
                     onCall={handleCallApplicant}
                     onAddToCall={handleAddApplicantToCall}
                     onScreen={handleScreen}
@@ -845,7 +940,7 @@ const MmJobDetail: React.FC = () => {
           driverName={screenTarget.driver.name}
           onClose={() => setScreenTarget(null)}
           onSubmitted={(res) => {
-            triggerToast(`Screening saved: ${res.score} pts (${res.decision})`);
+            triggerToast(`Screening saved — applicant ${res.status} (${res.score} pts)`);
             setApplicantPage(null);
           }}
         />

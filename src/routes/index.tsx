@@ -75,6 +75,7 @@ import DwTrainingHub from '../pages/driver-welcome/DwTrainingHub';
 import DwScriptLibrary from '../pages/driver-welcome/DwScriptLibrary';
 import DwCallQueue from '../pages/driver-welcome/DwCallQueue';
 import DwCallHistory from '../pages/driver-welcome/DwCallHistory';
+import DwIncomingCalls from '../pages/driver-welcome/DwIncomingCalls';
 import DwCallbackCalendar from '../pages/driver-welcome/DwCallbackCalendar';
 import DwActiveCallFocus from '../pages/driver-welcome/DwActiveCallFocus';
 import DwWhatsappPanel from '../pages/driver-welcome/DwWhatsappPanel';
@@ -94,7 +95,10 @@ import WctDispositionGate from '../pages/transporter-welcome/WctDispositionGate'
 import WctD7UpsellQueue from '../pages/transporter-welcome/WctD7UpsellQueue';
 import WctCampaignLeads from '../pages/transporter-welcome/WctCampaignLeads';
 import WctCallHistory from '../pages/transporter-welcome/WctCallHistory';
+import WctIncomingCalls from '../pages/transporter-welcome/WctIncomingCalls';
 import WctJobs from '../pages/transporter-welcome/WctJobs';
+import WctDriverBank from '../pages/transporter-welcome/WctDriverBank';
+import IdVerificationDesk from '../pages/shared/IdVerificationDesk';
 import HrAnalyticsSummary from '../pages/matchmaking/HrAnalyticsSummary';
 import MmDriverBank from '../pages/matchmaking/MmDriverBank';
 import MmActiveCallFocusRefined from '../pages/matchmaking/MmActiveCallFocusRefined';
@@ -104,12 +108,15 @@ import TlMatchmakingJobBoard from '../pages/matchmaking/TlMatchmakingJobBoard';
 import MmDriverSearch from '../pages/matchmaking/MmDriverSearch';
 import MmScriptLibrary from '../pages/matchmaking/MmScriptLibrary';
 import MmJobBoard from '../pages/matchmaking/MmJobBoard';
+import MmJobSearch from '../pages/matchmaking/MmJobSearch';
 import MmJobDetail from '../pages/matchmaking/MmJobDetail';
 import MmTrainingHub from '../pages/matchmaking/MmTrainingHub';
 import MmPlacementHistory from '../pages/matchmaking/MmPlacementHistory';
 import MmCallHistory from '../pages/matchmaking/MmCallHistory';
+import MmIncomingCalls from '../pages/matchmaking/MmIncomingCalls';
 import MmSubscriptions from '../pages/matchmaking/MmSubscriptions';
 import MmCallQueue from '../pages/matchmaking/MmCallQueue';
+import MmCampaignLeads from '../pages/matchmaking/MmCampaignLeads';
 import GlobalOverlaysContainer from '../shared/components/business/GlobalOverlaysContainer';
 import ScoreTrends from '../pages/special-categories/ScoreTrends';
 import ScriptEditorConsole from '../pages/special-categories/ScriptEditorConsole';
@@ -131,6 +138,8 @@ import IncentiveCommandCenter from '../pages/telecalling-head/IncentiveCommandCe
 import PayrollExport from '../pages/telecalling-head/PayrollExport';
 import IncentiveConfiguration from '../pages/admin/IncentiveConfiguration';
 import ParityEquityDashboard from '../pages/admin/ParityEquityDashboard';
+import WebRoles from '../pages/admin/WebRoles';
+import CrmThemeSwitcher from '../pages/admin/CrmThemeSwitcher';
 
 const RoleHomeRedirect: React.FC = () => {
   const { role } = usePermissions();
@@ -157,6 +166,14 @@ export const AppRoutes: React.FC = () => {
       <Routes>
         {/* Auth routes */}
         <Route path="/login" element={<LoginPage />} />
+
+        {/* Public standalone page — telecaller role management. No login and no
+            dashboard chrome: opens directly at /crm/web-roles. */}
+        <Route path="/web-roles" element={<WebRoles />} />
+
+        {/* Public standalone page — CRM theme switcher. Same arrangement as
+            web-roles: no login, no dashboard chrome, opens at /crm/theme. */}
+        <Route path="/theme" element={<CrmThemeSwitcher />} />
 
         {/* Dashboard Layout - Protected & Guarded */}
         <Route
@@ -239,6 +256,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="dw/dw-call-queue" element={<RoleGuard permission="calls:dial"><DwCallQueue /></RoleGuard>} />
           <Route path="dw/dw-driver-bank" element={<RoleGuard permission="calls:dial"><DwDriverBank /></RoleGuard>} />
           <Route path="dw/dw-call-history" element={<RoleGuard permission="calls:dial"><DwCallHistory /></RoleGuard>} />
+          <Route path="dw/dw-incoming-calls" element={<RoleGuard permission="calls:dial"><DwIncomingCalls /></RoleGuard>} />
           <Route path="dw/dw-subscriptions" element={<RoleGuard permission="calls:dial"><MmSubscriptions basePath="/web-crm/dw" /></RoleGuard>} />
           <Route path="dw/dw-callback-calendar" element={<RoleGuard permission="calls:dial"><DwCallbackCalendar /></RoleGuard>} />
           <Route path="dw/dw-whatsapp-panel" element={<RoleGuard permission="calls:dial"><DwWhatsappPanel /></RoleGuard>} />
@@ -265,8 +283,16 @@ export const AppRoutes: React.FC = () => {
           <Route path="wct/wct-d7-upsell-queue" element={<RoleGuard permission="calls:dial"><WctD7UpsellQueue /></RoleGuard>} />
           <Route path="wct/wct-campaign-leads" element={<RoleGuard permission="calls:dial"><WctCampaignLeads /></RoleGuard>} />
           <Route path="wct/wct-call-history" element={<RoleGuard permission="calls:dial"><WctCallHistory /></RoleGuard>} />
+          <Route path="wct/wct-incoming-calls" element={<RoleGuard permission="calls:dial"><WctIncomingCalls /></RoleGuard>} />
           <Route path="wct/wct-subscriptions" element={<RoleGuard permission="calls:dial"><MmSubscriptions basePath="/web-crm/wct" /></RoleGuard>} />
           <Route path="wct/wct-jobs" element={<RoleGuard permission="calls:dial"><WctJobs /></RoleGuard>} />
+          <Route path="wct/wct-driver-bank" element={<RoleGuard permission="calls:dial"><WctDriverBank /></RoleGuard>} />
+
+          {/* ID Verification desk — ONE screen, three roles. Same component
+              under each prefix so useClickToCall/SanCti keep routing by path. */}
+          <Route path="dw/dw-id-verification" element={<RoleGuard permission="calls:dial"><IdVerificationDesk /></RoleGuard>} />
+          <Route path="wct/wct-id-verification" element={<RoleGuard permission="calls:dial"><IdVerificationDesk /></RoleGuard>} />
+          <Route path="mm/mm-id-verification" element={<RoleGuard permission="calls:dial"><IdVerificationDesk /></RoleGuard>} />
           <Route path="mm/hr-analytics-summary" element={<RoleGuard permission="calls:dial"><HrAnalyticsSummary /></RoleGuard>} />
           <Route path="mm/mm-driver-bank" element={<RoleGuard permission="calls:dial"><MmDriverBank /></RoleGuard>} />
           <Route path="mm/mm-intro-manager" element={<RoleGuard permission="calls:dial"><MmIntroManager /></RoleGuard>} />
@@ -276,9 +302,12 @@ export const AppRoutes: React.FC = () => {
           <Route path="mm/mm-script-library" element={<RoleGuard permission="calls:dial"><MmScriptLibrary /></RoleGuard>} />
           <Route path="mm/mm-placement-history" element={<RoleGuard permission="calls:dial"><MmPlacementHistory /></RoleGuard>} />
           <Route path="mm/mm-call-history" element={<RoleGuard permission="calls:dial"><MmCallHistory /></RoleGuard>} />
+          <Route path="mm/mm-incoming-calls" element={<RoleGuard permission="calls:dial"><MmIncomingCalls /></RoleGuard>} />
           <Route path="mm/mm-subscriptions" element={<RoleGuard permission="calls:dial"><MmSubscriptions basePath="/web-crm/match-making" /></RoleGuard>} />
           <Route path="mm/mm-call-queue" element={<RoleGuard permission="calls:dial"><MmCallQueue /></RoleGuard>} />
+          <Route path="mm/mm-campaign-leads" element={<RoleGuard permission="calls:dial"><MmCampaignLeads /></RoleGuard>} />
           <Route path="mm/mm-job-board" element={<RoleGuard permission="calls:dial"><MmJobBoard /></RoleGuard>} />
+          <Route path="mm/mm-job-search" element={<RoleGuard permission="calls:dial"><MmJobSearch /></RoleGuard>} />
           <Route path="mm/mm-job-detail" element={<RoleGuard permission="calls:dial"><MmJobDetail /></RoleGuard>} />
           <Route path="mm/mm-training-hub" element={<RoleGuard permission="calls:dial"><MmTrainingHub /></RoleGuard>} />
           <Route path="sc/score-trends" element={<RoleGuard permission="calls:dial"><ScoreTrends /></RoleGuard>} />

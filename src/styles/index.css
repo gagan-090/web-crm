@@ -4,11 +4,54 @@
 
 @layer base {
   body {
-    @apply bg-background text-on-surface font-body-sm overflow-hidden select-none;
+    /* `select-none` here disabled text selection across the ENTIRE app, so an
+       agent couldn't copy a TMID, mobile, job id or any other value. Text is
+       selectable/copyable everywhere now; individual chrome (sidebar, buttons,
+       call bar) keeps its own `select-none` where it's applied locally. */
+    @apply bg-background text-on-surface font-body-sm overflow-hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* ── Copy any text, anywhere ──────────────────────────────────────────────────
+   Force text selection on every element so an agent can select/copy ANY value
+   on ANY screen — TMID, mobile, job id, name, label. This overrides all the
+   local `select-none` chrome (sidebar, tabs, buttons, call bar, job chips)
+   that would otherwise block selection. Kept as one global !important rule so
+   no individual `select-none` can win. */
+*,
+*::before,
+*::after {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  user-select: text !important;
+}
+
+/* ── Readability: darker text + slightly larger fonts (all roles) ─────────────
+   Low-contrast light-gray text was hard to read. Darken every light-gray TEXT
+   utility to a strong near-black and nudge the smallest font sizes up ~1px,
+   globally, so every role benefits with no per-screen edits.
+   Scope is deliberate: only `text-*` colours change (not bg-/border-gray), and
+   only `gray` — the dark chrome (CTI toolbar, caller header) uses `slate`/white
+   and is untouched, so nothing goes dark-on-dark. Placeholders (a separate
+   `placeholder-*` utility) stay muted. */
+.text-gray-300 { color: #374151 !important; } /* → gray-700 */
+.text-gray-400 { color: #1f2937 !important; } /* → gray-800 */
+.text-gray-500 { color: #111827 !important; } /* → gray-900 (near-black) */
+
+.text-\[8px\]     { font-size: 9px    !important; }
+.text-\[8\.5px\]  { font-size: 9.5px  !important; }
+.text-\[9px\]     { font-size: 10px   !important; }
+.text-\[9\.5px\]  { font-size: 10.5px !important; }
+.text-\[10px\]    { font-size: 11px   !important; }
+.text-\[10\.5px\] { font-size: 11.5px !important; }
+.text-\[11px\]    { font-size: 12px   !important; }
+.text-\[11\.5px\] { font-size: 12.5px !important; }
+.text-\[12px\]    { font-size: 13px   !important; }
+.text-\[13px\]    { font-size: 14px   !important; }
+.text-xs { font-size: 0.8125rem !important; } /* 12px → 13px */
+.text-sm { font-size: 0.9375rem !important; } /* 14px → 15px */
 
 /* Material Symbols Outlined Custom Configuration */
 .material-symbols-outlined {

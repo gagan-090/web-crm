@@ -41,15 +41,36 @@ export interface SanCtiContextType {
   breakName: string;
   isManualMode: boolean;
   isHeld: boolean;
+  /**
+   * SAN never acknowledged the last hold/unhold. isHeld still reflects what we
+   * commanded (the channel is usually genuinely in that state) — this only
+   * says we could not confirm it, so the UI can show it as unverified instead
+   * of silently flipping the label back.
+   */
+  isHoldUnconfirmed: boolean;
   isMuted: boolean;
   conferenceMembers: ConferenceMember[];
   conferenceDialingMembers: ConferenceMember[];
   callDuration: number;
+  /**
+   * SAN reported 'Answer' for this call. Authoritative "it connected" signal —
+   * unlike callDuration, which is still 0 for a call answered and dropped
+   * inside the same second. Disposition forms use it to drop the
+   * not-connected outcomes.
+   */
+  callWasAnswered: boolean;
+  /**
+   * SAN has sent no event for 60s on a call that is still dialing/ringing, so
+   * the state on the call bar is the last thing SAN said and may be stale. The
+   * call is NOT torn down for this — only the agent ends a call.
+   */
+  statusUnconfirmed: boolean;
   currentCallId: number | null;
   currentLeadId: number | string | null;
   currentPhoneNumber: string;
   currentLeadName: string;
   currentLeadTmid: string;
+  currentLeadType: string;
   currentLeadLocation: string;
   currentLeadCallStatus: string;
   isIncomingCall: boolean;

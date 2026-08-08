@@ -1,10 +1,16 @@
 import React from 'react';
 import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
+import IndependenceHeaderBanner from '../../shared/components/IndependenceHeaderBanner';
 
 export const ScHomeDashboard: React.FC = () => {
   return (
     <main className="p-gutter min-h-screen">
-<div className="max-w-container-max mx-auto space-y-lg">
+      <div className="max-w-container-max mx-auto space-y-lg">
+        {/* Independence Day Banner */}
+        <IndependenceHeaderBanner
+          title="Special Categories Dashboard"
+          subtitle="High-stakes partner onboarding, foreman recruitment & special fleet management."
+        />
 
 <div className="flex flex-col md:flex-row md:items-end justify-between border-b-2 border-primary pb-md">
 <div>

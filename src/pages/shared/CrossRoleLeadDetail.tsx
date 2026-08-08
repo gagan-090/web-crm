@@ -172,6 +172,17 @@ export const CrossRoleLeadDetail: React.FC<CrossRoleLeadDetailProps> = ({
                   </div>
                   {h.call_feedback && <div className="text-gray-700 mt-0.5">{h.call_feedback}</div>}
                   {h.call_remarks && <div className="text-gray-400 italic">{h.call_remarks}</div>}
+                  {/* Who worked this call. The timeline spans EVERY agent who
+                      has ever called this lead, not just the one looking at it,
+                      so without a name a row gives no way to tell your own
+                      attempt from a colleague's. */}
+                  <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[12px] text-gray-400">headset_mic</span>
+                    <span className="font-medium">{h.assigned_name || 'Unknown agent'}</span>
+                    {(h as any).process && (
+                      <span className="text-gray-300">· {(h as any).process}</span>
+                    )}
+                  </div>
                   {(h as any).recording_url && (
                     <audio controls src={(h as any).recording_url} className="h-7 mt-1 max-w-[180px]" />
                   )}

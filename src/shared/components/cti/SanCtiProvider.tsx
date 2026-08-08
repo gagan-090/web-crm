@@ -16,6 +16,12 @@ import type { SanCtiContextType, ConferenceMember, DispositionData } from './San
  */
 const CONFERENCE_SETTLE_MS = 1500;
 
+/**
+ * How long to wait for SAN to acknowledge a HoldCall/UnholdCall before
+ * re-sending it once, and (at 2×) before flagging the state as unconfirmed.
+ */
+const HOLD_ACK_MS = 5000;
+
 /** Last 10 digits — SAN reports members with assorted 0/+91 prefixes. */
 const sameNumber = (v?: string): string => (v || '').replace(/\D/g, '').slice(-10);
 
@@ -94,7 +100,26 @@ export default function SanCtiProvider({
   const [currentLeadTmid, setCurrentLeadTmid] = useState<string>(pending ? pending.currentLeadTmid : '');
   const [currentLeadType, setCurrentLeadType] = useState<string>(pending ? (pending.currentLeadType || 'driver') : 'driver');
   const [callDuration, setCallDuration] = useState<number>(pending ? pending.callDuration : 0);
+  // TRUE once SAN reported exten_status 'Answer' for this call (outgoing or
+  // incoming). This is the authoritative "the call connected" signal — the
+  // duration counter is not: a call answered and dropped inside the same second
+  // still reads 0s. The disposition form uses it to REMOVE the not-connected
+  // outcomes, so an answered call can never be filed as Ringing / No Answer /
+  // Switched Off — which is how call_history_ivr ended up holding rows that
+  // claimed both at once. Survives a reload via the pending record below.
+  const [callWasAnswered, setCallWasAnswered] = useState<boolean>(
+    pending ? !!pending.callWasAnswered || pending.callDuration > 0 : false
+  );
+  // SAN has gone quiet on a live call (no event for 60s after the dial), so the
+  // state shown on the call bar is the last one SAN reported and may be stale.
+  // The bar says so instead of showing a confident "Dialing..." forever.
+  // Cleared by the next SAN event, by a new dial and by call teardown.
+  const [statusUnconfirmed, setStatusUnconfirmed] = useState<boolean>(false);
   const [isHeld, setIsHeld] = useState<boolean>(false);
+  // True when SAN never acknowledged the last hold/unhold. The call bar shows
+  // this rather than the bar silently flipping its own label back — see
+  // toggleHold for why a silent revert was worse than an unconfirmed badge.
+  const [isHoldUnconfirmed, setIsHoldUnconfirmed] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   // Keyed by conf_member (SAN's own member id) — SANAppConfEventjoin/Leave
   // send the full current member dict on every event, so these are replaced
@@ -141,6 +166,12 @@ export default function SanCtiProvider({
 
   // ── Dialing Timeout (fallback if SAN never responds) ──
   const dialingTimeoutRef = useRef<any>(null);
+  // SAN reported Answer before /call/initiate returned the call row id, so the
+  // 'answered' update could not be sent yet. dial() flushes it on arrival.
+  const answeredBeforeCallIdRef = useRef<boolean>(false);
+  // Set synchronously by dial() to close the window before setCallState
+  // ('dialing') commits — see dial() for the duplicate-dial race this stops.
+  const dialInFlightRef = useRef<boolean>(false);
 
   // ── Manual Call Ending Tracking ──
   const [userInitiatedHangup, setUserInitiatedHangup] = useState<boolean>(false);
@@ -219,13 +250,29 @@ export default function SanCtiProvider({
   const acceptingIncomingTimerRef = useRef<any>(null);
   // Ref to hold the active incoming call payload to pass during IncAccept
   const activeIncomingPayloadRef = useRef<any>(null);
+  // True once /call/incoming/initiate has been fired for the current incoming
+  // call, so a repeated SAN "Answer" event can't log a second row. Reset when
+  // the call ends (idle) or a new incoming call rings.
+  const incomingLoggedRef = useRef<boolean>(false);
+  // The call_history_ivr id the ring-time log came back with. Held in a ref,
+  // not read off currentCallId state: SAN's "Answer" event routinely arrives
+  // before React has re-rendered with the id, and the Answer branch needs it
+  // synchronously to mark the row connected.
+  const incomingCallIdRef = useRef<number | null>(null);
+  // call_id whose wrap-up has already been handed to SAN. A retry after a
+  // failed Laravel save must not send SAN a second SubmitDisposition — see
+  // submitDisposition.
+  const sanDispositionSentForCallRef = useRef<number | string | null>(null);
 
   // ── Hold confirmation tracking ──
   // Incremented on every hold confirmation from SAN (SANAppHoldEvent or
-  // SANAppOutgoingEvent exten_status:'Hold'). toggleHold's revert timer uses
-  // it to detect whether SAN ever acknowledged the request.
+  // SANAppOutgoingEvent exten_status:'Hold'). toggleHold's watchdogs compare
+  // against it to detect whether SAN ever acknowledged the request.
   const holdEventSeqRef = useRef<number>(0);
-  const holdRevertTimerRef = useRef<any>(null);
+  // First watchdog: re-sends the same hold verb once if SAN stayed silent.
+  const holdRetryTimerRef = useRef<any>(null);
+  // Second watchdog: flags the state as unconfirmed if SAN is still silent.
+  const holdConfirmTimerRef = useRef<any>(null);
 
   // ── Explicit SAN logout coordination (window.__sanCtiLogout) ──
   // Resolver for an in-flight explicit SAN logout — resolved early by
@@ -255,9 +302,19 @@ export default function SanCtiProvider({
    * confirmed on — re-sending it there is what silently un-readied the agent
    * between conversations. The first send always goes out, since until
    * SANAppManualOnOffEvent arrives we have no idea what SAN's mode actually is.
+   *
+   * Only ONE send may ever be in flight: a second call cancels the first one's
+   * pending timer. The skip-if-already-on guard alone was not enough, because
+   * wrap-up calls this twice 1s apart (see submitDisposition) — if SAN's
+   * SANAppManualOnOffEvent took longer than that 1s to come back, both timers
+   * fired with the guard still reading "off" and the pair of ManualOn toggles
+   * cancelled out, leaving the agent un-ready mid-shift.
    */
+  const manualOnTimerRef = useRef<any>(null);
   const requestManualOn = useCallback(() => {
-    setTimeout(() => {
+    if (manualOnTimerRef.current) clearTimeout(manualOnTimerRef.current);
+    manualOnTimerRef.current = setTimeout(() => {
+      manualOnTimerRef.current = null;
       if (manualModeKnownRef.current && isManualModeRef.current) {
         console.log('[SAN CTI] ManualOn skipped — SAN already reports manual mode ON (re-sending would toggle it OFF)');
         return;
@@ -267,6 +324,13 @@ export default function SanCtiProvider({
   }, [postToSan]);
 
   // ── Helper: API call to Laravel ──
+  // Stamps http_ok / http_status onto the parsed body so callers can tell a
+  // real save from a rejection. This used to return `await res.json()` for ANY
+  // response code, so a 422 ("The selected user id is invalid") or a 500 came
+  // back looking exactly like a success — which is how a failed disposition
+  // could close its own modal and move the agent on to the next lead.
+  // Existing fields are left untouched, so callers that only read `.data` are
+  // unaffected.
   const apiCall = useCallback(async (method: string, endpoint: string, body: any = null) => {
     if (!bearerToken) return null;
     try {
@@ -280,12 +344,37 @@ export default function SanCtiProvider({
       };
       if (body) opts.body = JSON.stringify(body);
       const res = await fetch(`${apiBaseUrl}${endpoint}`, opts);
-      return await res.json();
+
+      let json: any = null;
+      try { json = await res.json(); } catch (_) { /* empty / non-JSON body */ }
+
+      // Only merge into plain objects — a top-level array response must stay
+      // an array for the callers that iterate it.
+      const mergeable = json !== null && typeof json === 'object' && !Array.isArray(json);
+      if (!mergeable) return json;
+
+      if (!res.ok) {
+        console.error(`[SAN CTI] API ${res.status} ${endpoint}:`, json);
+        return { ...json, status: false, http_ok: false, http_status: res.status };
+      }
+      return { ...json, http_ok: true, http_status: res.status };
     } catch (err) {
       console.error(`[SAN CTI] API error ${endpoint}:`, err);
       return null;
     }
   }, [bearerToken, apiBaseUrl]);
+
+  /** Best-effort human message out of a Laravel error body. */
+  const apiErrorMessage = (result: any, fallback: string): string => {
+    if (!result) return 'Could not reach the server. Check your connection and try again.';
+    const errors = result.errors;
+    if (errors && typeof errors === 'object') {
+      const first = Object.values(errors)[0];
+      if (Array.isArray(first) && first[0]) return String(first[0]);
+      if (typeof first === 'string') return first;
+    }
+    return result.message || fallback;
+  };
 
   // ── Start call timer ──
   const startTimer = useCallback(() => {
@@ -301,6 +390,18 @@ export default function SanCtiProvider({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+  }, []);
+
+  /**
+   * Stop both hold watchdogs (see toggleHold) and clear the unconfirmed flag.
+   * Called from every end-of-call reset: a timer left armed from the previous
+   * call would otherwise fire part-way into the next one and re-send a stale
+   * hold verb.
+   */
+  const clearHoldWatchers = useCallback(() => {
+    if (holdRetryTimerRef.current) { clearTimeout(holdRetryTimerRef.current); holdRetryTimerRef.current = null; }
+    if (holdConfirmTimerRef.current) { clearTimeout(holdConfirmTimerRef.current); holdConfirmTimerRef.current = null; }
+    setIsHoldUnconfirmed(false);
   }, []);
 
   // Keep callDurationRef in sync so the SAN event handler can read it without
@@ -328,7 +429,14 @@ export default function SanCtiProvider({
 
   // Sync live-value refs before paint so the persistent SAN message handler always
   // reads current state even when React hasn't re-registered the listener yet.
-  useLayoutEffect(() => { callStateRef.current = callState; }, [callState]);
+  useLayoutEffect(() => {
+    callStateRef.current = callState;
+    // Any committed callState means callStateRef is now authoritative and the
+    // ordinary guard in dial() takes over, so the synchronous one can stand
+    // down. (Every dial() path that sets it also changes callState — to
+    // 'dialing' on success, back to 'idle' on the masked-number bail-out.)
+    dialInFlightRef.current = false;
+  }, [callState]);
   useLayoutEffect(() => { userInitiatedHangupRef.current = userInitiatedHangup; }, [userInitiatedHangup]);
   useLayoutEffect(() => { isIncomingCallRef.current = isIncomingCall; }, [isIncomingCall]);
   useLayoutEffect(() => { currentLeadTypeRef.current = currentLeadType; }, [currentLeadType]);
@@ -347,6 +455,7 @@ export default function SanCtiProvider({
         isIncomingCall,
         callDuration,
         currentLeadType,
+        callWasAnswered,
       };
       localStorage.setItem('san_pending_disposition', JSON.stringify(data));
     } else if (callState === 'idle') {
@@ -361,6 +470,7 @@ export default function SanCtiProvider({
     currentLeadTmid,
     isIncomingCall,
     callDuration,
+    callWasAnswered,
   ]);
 
   // ═══════════════════════════════════════════════════════════
@@ -390,44 +500,12 @@ export default function SanCtiProvider({
       loginPendingRef.current = false;
       loginWatchdogRef.current = null;
       if (agentStateRef.current !== 'ready' && agentStateRef.current !== 'logged_in') {
-        if (hasSanResponseRef.current) {
-          // SAN responded but SANAppInitEvent hasn't fired yet.
-          // The SANAppInitEvent handler already knows the fix: reload the iframe so
-          // SAN's init.js re-runs getCurrentSession() and initializes the module-level
-          // `logged_agent` from localStorage. Without that reload, dialCall() and
-          // dispositionFormSubmit() crash with "Cannot read properties of undefined
-          // (reading 'agent_id')" / "Object.keys(null)" even after agent appears ready.
-          if (!freshLoginReloadDoneRef.current) {
-            // First occurrence — reload the iframe exactly as SANAppInitEvent does.
-            // Keep agentState as 'logged_out' so the auto-login effect re-fires on
-            // the new iframe load and starts a fresh 35s watchdog. isIframeLoaded
-            // must go false first: the effect keys off it, and the new iframe's
-            // onLoad is what flips it back to true.
-            freshLoginReloadDoneRef.current = true;
-            console.warn('[SAN CTI] Login watchdog (35s): SANAppInitEvent pending — reloading iframe to force logged_agent init. ManualOn suppressed.');
-            setIsIframeLoaded(false);
-            setSanIframeKey(prev => prev + 1);
-          } else {
-            // Already reloaded once and still no SANAppInitEvent. SAN responded
-            // to the postMessage channel but its login API never succeeded —
-            // in practice this is SAN rejecting the credentials, most often
-            // "You are already login on another machine" (SAN allows ONE live
-            // session per agent account; a session held by another origin —
-            // e.g. a localhost dev tab — blocks this one). SAN only surfaces
-            // that error as a toast inside its own iframe, so un-hide the
-            // panel and stay logged_out instead of faking 'ready' (dialing
-            // would silently do nothing).
-            console.warn('[SAN CTI] Login watchdog (35s): SANAppInitEvent still pending after reload — SAN login was rejected (likely "already login on another machine"). Showing SAN panel.');
-            setAgentState('logged_out');
-            setIsCtiMinimized(false);
-          }
-        } else {
-          console.warn('[SAN CTI] Login watchdog (35s): no SANAppInitEvent and no SAN response — login failed');
-          setAgentState('logged_out');
-          setIsCtiMinimized(false);
-        }
+        console.warn('[SAN CTI] Login watchdog (6s): login incomplete — showing SAN softphone login panel');
+        setAgentState('logged_out');
+        setIsCtiMinimized(false);
+        apiCall('POST', '/cti/status', { status: 'logged_out' });
       }
-    }, 35000);
+    }, 6000);
     postToSan({
       type: 'login',
       user_name: sanUsername,
@@ -483,18 +561,38 @@ export default function SanCtiProvider({
    * @param {string} [leadType] - Type of lead e.g. 'driver' or 'social_media'
    */
   const dial = useCallback(async (phoneNumber: string, leadUserId: number | string, name?: string, tmid?: string, leadType: string = 'driver') => {
-    if (agentState !== 'ready') {
-      console.warn('[SAN CTI] Cannot dial, agent is not ready. Current state:', agentState);
+    // Re-entrancy guard, set SYNCHRONOUSLY. setCallState('dialing') below does
+    // not take effect until React commits, so two calls landing in the same
+    // tick — an impatient double-click on Call Now (nothing visible happens for
+    // ~1s), or a screen that dials while navigating to the focus page — both
+    // read callState as 'idle', both pass the guard, and both post a dial to
+    // SAN and a row to /call/initiate. That is the "call keeps initiating"
+    // symptom: repeated dial attempts against a channel SAN is already
+    // setting up. Cleared on the next committed callState (see the layout
+    // effect that syncs callStateRef), by which point the state machine itself
+    // blocks duplicates.
+    if (dialInFlightRef.current) {
+      console.warn('[SAN CTI] Dial IGNORED — a dial is already in flight for this agent');
       return;
     }
-    if (callState !== 'idle') {
-      console.warn('[SAN CTI] Cannot dial — already in a call state:', callState);
-      if (callState === 'disposition_pending') {
+    // Read live state through the refs, not the closure. dial() is handed out
+    // on window._sanDial and captured by consumers, so the closure's agentState
+    // / callState can be a render behind — which let a dial through while a
+    // call was already up.
+    if (agentStateRef.current !== 'ready') {
+      console.warn('[SAN CTI] Cannot dial, agent is not ready. Current state:', agentStateRef.current);
+      return;
+    }
+    const liveCallState = callStateRef.current;
+    if (liveCallState !== 'idle') {
+      console.warn('[SAN CTI] Cannot dial — already in a call state:', liveCallState);
+      if (liveCallState === 'disposition_pending') {
         alert('Please submit the feedback for the previous call first.');
         setShowDispositionForm(true);
       }
       return;
     }
+    dialInFlightRef.current = true;
 
     setCurrentPhoneNumber(phoneNumber);
     setCurrentLeadId(leadUserId);
@@ -504,9 +602,27 @@ export default function SanCtiProvider({
     setCallState('dialing');
     setIsIncomingCall(false);
     setUserInitiatedHangup(false);
+    // Every new call starts with a clean conference slate. If the previous
+    // call's end-of-call reset didn't fire, conferenceModeRef could still be
+    // true — and then this call's "Add Call" would see "already in conference
+    // mode" and SKIP the ConfrenceToggle, so SAN never enters conference mode
+    // and the added party is dialed into nothing (button reads "Added" but no
+    // member ever joins). Resetting here guarantees the toggle actually fires.
+    conferenceModeRef.current = false;
+    conferenceMembersRef.current = [];
+    setConferenceMembers([]);
+    setConferenceDialingMembers([]);
     // Mark that the agent has actively dialed in this session — enables disposition modal on hangup
     hasDialedThisSession.current = true;
+    // New call → nothing answered yet. Must be cleared here or the previous
+    // call's Answer would keep the not-connected outcomes hidden on this one.
+    setCallWasAnswered(false);
+    setStatusUnconfirmed(false);
+    answeredBeforeCallIdRef.current = false;
     lastDialTime.current = Date.now();
+    // New call → SAN has not been told this call's wrap-up yet.
+    sanDispositionSentForCallRef.current = null;
+    clearHoldWatchers();
 
     // Detect if we should use simulated call flow (offline or local/mock environment)
     const isSimulated = !window.navigator.onLine || bearerToken === 'mock_sanctum_token_12345';
@@ -558,20 +674,28 @@ export default function SanCtiProvider({
       uniqueId: leadUserId && leadUserId !== 0 ? String(leadUserId) : '',
     });
 
-    // 2. Start a dialing timeout: if no SAN event comes in 60s, auto-reset to idle
+    // 2. Watchdog: if SAN has sent no event 60s after the dial, the call bar can
+    //    no longer be trusted to show the real state.
+    //
+    //    It used to RESET everything here — callState to 'idle', call id, lead
+    //    id, phone and hasDialedThisSession all wiped. That is what made the
+    //    call bar "suddenly disappear" mid-call: SAN going quiet does not mean
+    //    the call ended, and agents were left talking to a lead with no bar, no
+    //    Hangup button and no way to log anything. Worse, clearing
+    //    hasDialedThisSession disarmed the disposition form, so when SAN's
+    //    Hangup finally arrived the call was torn down silently and the
+    //    call_history_ivr row kept whatever placeholder it was created with.
+    //
+    //    Now nothing is torn down. The call context stays exactly as it is, the
+    //    bar stays on screen with an honest "status unconfirmed" label, and
+    //    Hangup still works — which routes through hangup() and always opens
+    //    the disposition form. Only the agent ends a call now, never a timer.
     if (dialingTimeoutRef.current) clearTimeout(dialingTimeoutRef.current);
     dialingTimeoutRef.current = setTimeout(() => {
-      setCallState(prev => {
-        if (prev === 'dialing' || prev === 'ringing') {
-          console.warn('[SAN CTI] Dialing timeout — SAN never responded. Resetting to idle.');
-          return 'idle';
-        }
-        return prev;
-      });
-      setCurrentCallId(null);
-      setCurrentLeadId(null);
-      setCurrentPhoneNumber('');
-      hasDialedThisSession.current = false;
+      if (callStateRef.current === 'dialing' || callStateRef.current === 'ringing') {
+        console.warn('[SAN CTI] No SAN event 60s after dial — status is unconfirmed. Keeping the call bar up.');
+        setStatusUnconfirmed(true);
+      }
     }, 60000);
 
     // 3. Tell Laravel: call started.
@@ -604,8 +728,18 @@ export default function SanCtiProvider({
 
     if (result?.data?.call_id) {
       setCurrentCallId(result.data.call_id);
+      // SAN answered while this request was still in flight — send the update
+      // it could not send then, so the row is marked connected rather than
+      // keeping the not-connected placeholder it was created with.
+      if (answeredBeforeCallIdRef.current) {
+        answeredBeforeCallIdRef.current = false;
+        apiCall('POST', '/call/update', {
+          call_id: result.data.call_id,
+          event: 'answered',
+        });
+      }
     }
-  }, [callState, postToSan, apiCall, agentId, bearerToken, agentState, startTimer]);
+  }, [callState, postToSan, apiCall, agentId, bearerToken, agentState, startTimer, clearHoldWatchers]);
 
   const startMockCall = useCallback((leadName = 'Simulated Driver', phoneNumber = '+91 99999 88888', tmid = 'DR-9999') => {
     setCurrentPhoneNumber(phoneNumber);
@@ -616,6 +750,7 @@ export default function SanCtiProvider({
     setAgentState('on_call');
     setCurrentCallId(-999); // Magic ID for mock calls
     setCallDuration(45);
+    setCallWasAnswered(true); // a mock call is, by definition, a connected one
     hasDialedThisSession.current = true;
     setUserInitiatedHangup(false);
   }, []);
@@ -646,6 +781,8 @@ export default function SanCtiProvider({
     // Tell SAN to hang up.
     postToSan({ type: 'Hangup' });
     stopTimer();
+    // The channel is gone — a pending hold retry must not fire into the next call.
+    clearHoldWatchers();
 
     if (!hasDialedThisSession.current) {
       // Nothing was genuinely dialed this session — safe to fully reset.
@@ -657,6 +794,8 @@ export default function SanCtiProvider({
       setCurrentLeadName('');
       setCurrentLeadTmid('');
       setCallDuration(0);
+      setCallWasAnswered(false);
+      setStatusUnconfirmed(false);
       setIsHeld(false);
       setIsMuted(false);
       setConferenceMembers([]);
@@ -675,7 +814,7 @@ export default function SanCtiProvider({
       setCallState('disposition_pending');
       setShowDispositionForm(true);
     }
-  }, [currentCallId, postToSan, stopTimer]);
+  }, [currentCallId, postToSan, stopTimer, clearHoldWatchers]);
 
   /**
    * Toggle hold — REAL channel-level hold.
@@ -687,26 +826,49 @@ export default function SanCtiProvider({
    * {set:'1'|'0'} and as SANAppOutgoingEvent {exten_status:'Hold', hold:1|0}
    * — verified live in the agent console.
    *
-   * The UI flips optimistically; if NO confirmation event arrives within 5s
-   * (older SAN builds shipped with HoldUnhold commented out, in which case
-   * the HoldCall message is silently dropped), the state reverts so the bar
-   * never claims a hold that didn't happen. holdEventSeqRef counts every
-   * hold confirmation; the revert timer only fires if the count hasn't
-   * moved since the toggle.
+   * The UI flips optimistically. SAN does not always send its confirmation
+   * back to the parent even when the hold genuinely took effect server-side
+   * (the caller really is on hold music), so an unconfirmed hold is NOT
+   * evidence that nothing happened.
+   *
+   * This used to flip the label back to "on call" after 5s of silence. That
+   * was actively harmful: the caller stayed held while the bar told the agent
+   * they were live, the agent resumed talking into hold music, and their next
+   * click — computed from the now-wrong isHeld — sent HoldCall on an already
+   * held channel. So the commanded state is kept, and the two watchdogs below
+   * do something useful instead:
+   *   +5s  silent → re-send the same verb once. HoldCall/UnholdCall are
+   *                 explicit set:'1'/'0' commands, not a toggle, so a repeat
+   *                 is idempotent and recovers a message SAN simply dropped.
+   *   +10s silent → keep the state, raise isHoldUnconfirmed so the bar can
+   *                 say "unconfirmed" rather than lie in either direction.
+   * holdEventSeqRef counts every hold confirmation; a watchdog is a no-op if
+   * the count moved (SAN answered) or the call is no longer connected.
    */
   const toggleHold = useCallback(() => {
     const next = !isHeld;
-    postToSan({ type: next ? 'HoldCall' : 'UnholdCall' });
+    const verb = next ? 'HoldCall' : 'UnholdCall';
+    postToSan({ type: verb });
     setIsHeld(next);
+    setIsHoldUnconfirmed(false);
+
     const seqAtToggle = holdEventSeqRef.current;
-    if (holdRevertTimerRef.current) clearTimeout(holdRevertTimerRef.current);
-    holdRevertTimerRef.current = setTimeout(() => {
-      holdRevertTimerRef.current = null;
-      if (holdEventSeqRef.current === seqAtToggle && callStateRef.current === 'connected') {
-        console.warn('[SAN CTI] Hold/Unhold not confirmed by SAN within 5s — reverting UI state');
-        setIsHeld(!next);
-      }
-    }, 5000);
+    if (holdRetryTimerRef.current) clearTimeout(holdRetryTimerRef.current);
+    if (holdConfirmTimerRef.current) clearTimeout(holdConfirmTimerRef.current);
+
+    holdRetryTimerRef.current = setTimeout(() => {
+      holdRetryTimerRef.current = null;
+      if (holdEventSeqRef.current !== seqAtToggle || callStateRef.current !== 'connected') return;
+      console.warn(`[SAN CTI] ${verb} unconfirmed after ${HOLD_ACK_MS}ms — re-sending once`);
+      postToSan({ type: verb });
+    }, HOLD_ACK_MS);
+
+    holdConfirmTimerRef.current = setTimeout(() => {
+      holdConfirmTimerRef.current = null;
+      if (holdEventSeqRef.current !== seqAtToggle || callStateRef.current !== 'connected') return;
+      console.warn('[SAN CTI] Hold state never confirmed by SAN — keeping the commanded state and flagging it unconfirmed');
+      setIsHoldUnconfirmed(true);
+    }, HOLD_ACK_MS * 2);
   }, [isHeld, postToSan]);
 
   /**
@@ -755,6 +917,18 @@ export default function SanCtiProvider({
     const clean = sameNumber(phoneNumber);
     if (clean.length < 10) return;
     postToSan({ type: 'ConfHoldToggle', phone: clean });
+
+    // SAN toggles that leg's audio but NEVER pushes the new hold state back to
+    // the parent — the member dict only arrives on join/leave events — so the
+    // row's Hold/Resume label and status never changed. Reflect the flip
+    // optimistically here (and in the ref the event handlers read from).
+    const flip = (list: ConferenceMember[]) => list.map(m =>
+      sameNumber(m.conf_member) === clean
+        ? { ...m, hold_status: m.hold_status === 'hold' ? 'active' : 'hold' }
+        : m
+    );
+    conferenceMembersRef.current = flip(conferenceMembersRef.current);
+    setConferenceMembers(prev => flip(prev));
   }, [postToSan]);
 
   /** Reveal SAN's softphone — its member list carries the per-leg drop button. */
@@ -887,7 +1061,14 @@ export default function SanCtiProvider({
       (opt) => opt.toLowerCase().replace(/\s+/g, '_') === dispositionData.disposition?.toLowerCase()
     ) || SAN_DISPOSITION_FALLBACK[dispositionData.disposition || ''] || dispositionData.disposition;
 
-    if (currentCallId !== -999) {
+    // Sent at most ONCE per call. When the Laravel save below fails the agent
+    // retries from the same open modal; re-posting SubmitDisposition would be
+    // a second wrap-up for a call SAN has already closed, which their own
+    // handler answers with "Agent not Login" and then crashes on.
+    const sanAlreadyToldForThisCall = sanDispositionSentForCallRef.current === currentCallId;
+
+    if (currentCallId !== -999 && !sanAlreadyToldForThisCall) {
+      sanDispositionSentForCallRef.current = currentCallId;
       postToSan({
         type: 'SubmitDisposition',
         disposition: sanDisposition,
@@ -912,9 +1093,18 @@ export default function SanCtiProvider({
     } else if (isIncomingCall) {
       // Use incoming feedback endpoint for incoming calls
       result = await apiCall('POST', '/call/incoming/feedback', {
-        call_id: currentCallId,
+        call_id: currentCallId ?? incomingCallIdRef.current,
+        // Lets the backend rebuild the row when neither this call_id nor the
+        // agent's current_call_id survived — otherwise the whole disposition
+        // was rejected and the call left no trace at all.
+        caller_phone: currentPhoneNumber,
+        // The modal's level-1 values are exactly 'connected' | 'not_connected'
+        // | 'callback_later'. This used to test for 'callback', which nothing
+        // ever sends, so every incoming callback was filed as not_connected —
+        // it only ever landed in the callback queue because the backend
+        // re-derives the status when a callback_at comes with it.
         call_status: dispositionData.disposition === 'connected' ? 'connected' :
-          dispositionData.disposition === 'callback' ? 'callback_later' : 'not_connected',
+          dispositionData.disposition === 'callback_later' ? 'callback_later' : 'not_connected',
         call_feedback: dispositionData.disposition || 'Connected',
         call_remarks: dispositionData.notes || null,
         call_duration: callDurationRef.current,
@@ -942,21 +1132,52 @@ export default function SanCtiProvider({
       });
     }
 
-    // 3. Reset call state
+    // 3. Did Laravel actually save it?
+    //
+    // Everything below this point tears the call down: the modal closes, the
+    // lead context is wiped, hasDialedThisSession is cleared and the
+    // 'san_pending_disposition' localStorage record goes with it (the
+    // callState → 'idle' effect removes it). Running that on a REJECTED save
+    // is how a disposition could vanish with no error anywhere — the agent saw
+    // the next lead load and assumed it went through. The common rejections
+    // are a 422 on user_id / disposition and a dropped connection.
+    //
+    // So on failure: keep the modal open, keep the call context, keep the
+    // pending record, and throw so the modal can show the reason and let the
+    // agent retry. SAN was already told (once) — only our own save is retried.
+    const saveFailed = !result || result.http_ok === false || result.status === false;
+    if (saveFailed) {
+      const message = apiErrorMessage(result, 'Disposition could not be saved.');
+      console.error('[SAN CTI] Disposition NOT saved — keeping the form open for retry:', result);
+      throw new Error(message);
+    }
+
+    // 4. Reset call state & re-synchronize SAN agent ready state
     setShowDispositionForm(false);
     setCallState('idle');
-    // Don't rely solely on SAN's own SANAppReadyEvent to flip this back —
-    // if SAN doesn't fire it reliably after every call, agentState gets stuck
-    // at 'on_call' forever, which silently blocks the auto-dial effect on
-    // every lead after the first one. Disposition submission is the one point
-    // we can guarantee fires at the true end of every call cycle.
     setAgentState('ready');
+    postToSan({ type: 'ready' });
+    apiCall('POST', '/cti/status', { status: 'ready' });
+    // One requestManualOn per wrap-up. It self-cancels a previously armed send
+    // (see requestManualOn), so the 1s re-verify below can no longer land a
+    // SECOND ManualOn — which, ManualOn being a toggle on SAN's side, flipped
+    // manual mode back OFF and dropped the agent out of ready between calls.
+    requestManualOn();
+    // Fast re-verify to ensure SAN backend state didn't get stuck in wrap-up
+    setTimeout(() => {
+      postToSan({ type: 'ready' });
+      requestManualOn();
+    }, 1000);
+    sanDispositionSentForCallRef.current = null;
+    clearHoldWatchers();
     setCurrentCallId(null);
     setCurrentLeadId(null);
     setCurrentPhoneNumber('');
     setCurrentLeadName('');
     setCurrentLeadTmid('');
     setCallDuration(0);
+    setCallWasAnswered(false);
+    setStatusUnconfirmed(false);
     setIsHeld(false);
     setIsMuted(false);
     setConferenceMembers([]);
@@ -991,7 +1212,7 @@ export default function SanCtiProvider({
       call_duration: callDurationRef.current,
     };
     // callDuration intentionally omitted — use callDurationRef.current instead
-  }, [postToSan, apiCall, currentCallId, currentLeadId, currentLeadTmid, currentLeadName, currentPhoneNumber, isIncomingCall, sanDispositionOptions]);
+  }, [postToSan, apiCall, currentCallId, currentLeadId, currentLeadTmid, currentLeadName, currentPhoneNumber, isIncomingCall, sanDispositionOptions, requestManualOn, clearHoldWatchers]);
 
   // ═══════════════════════════════════════════════════════════
   // SAN EVENT LISTENERS
@@ -1019,18 +1240,11 @@ export default function SanCtiProvider({
           }
 
           if (isFailure) {
-            if (loginPendingRef.current) {
-              // SAN fires {success:false} as an INTERMEDIATE ack before their HTTP request completes.
-              // Real outcome arrives via SANAppInitEvent. Ignore this interim event.
-              console.log('[SAN CTI] Login intermediate ack (success=false) — awaiting SANAppInitEvent');
-              break;
-            }
-            // Not during a pending login — genuine failure (e.g., wrong creds on retry)
-            console.warn('[SAN CTI] Login failed:', evData);
+            console.warn('[SAN CTI] Login failed / rejected by SAN (e.g. "already login on another machine"):', evData);
+            loginPendingRef.current = false;
             if (loginWatchdogRef.current) { clearTimeout(loginWatchdogRef.current); loginWatchdogRef.current = null; }
             setAgentState('logged_out');
-            // SAN shows the actual reason (wrong password / "already login on
-            // another machine") only inside its own iframe — make it visible.
+            // INSTANTLY un-hide the SAN softphone panel so mini CRM login modal is visible to the agent!
             setIsCtiMinimized(false);
             apiCall('POST', '/cti/status', { status: 'logged_out' });
           }
@@ -1087,22 +1301,23 @@ export default function SanCtiProvider({
               readyRetryRef.current = setTimeout(() => {
                 readyRetryRef.current = null;
                 if (agentStateRef.current === 'logged_in') {
-                  console.warn('[SAN CTI] No SANAppReadyEvent after 7s — re-sending ready');
+                  console.warn('[SAN CTI] Fast retry: re-sending ready @1s');
                   postToSan({ type: 'ready' });
                 }
-              }, 7000);
+              }, 1000);
               if (readyFallbackRef.current) clearTimeout(readyFallbackRef.current);
               readyFallbackRef.current = setTimeout(() => {
                 readyFallbackRef.current = null;
                 setAgentState(prev => {
                   if (prev === 'logged_in') {
-                    console.warn('[SAN CTI] readyFallback: SANAppReadyEvent never fired after 20s — forcing ready');
+                    console.warn('[SAN CTI] readyFallback: forcing ready state @3s');
                     apiCall('POST', '/cti/status', { status: 'ready' });
+                    requestManualOn();
                     return 'ready';
                   }
                   return prev;
                 });
-              }, 20000);
+              }, 3000);
               break;
             case '3': // Already idle/ready
               setAgentState('ready');
@@ -1184,12 +1399,15 @@ export default function SanCtiProvider({
             clearTimeout(dialingTimeoutRef.current);
             dialingTimeoutRef.current = null;
           }
+          // SAN is talking again — whatever the bar shows below is current.
+          setStatusUnconfirmed(false);
 
           if (extenStatus === 'Dialing' || extenStatus === 'Ringing') {
             setCallState('ringing');
             setAgentState('on_call');
           } else if (extenStatus === 'Answer') {
             setCallState('connected');
+            setCallWasAnswered(true);
             startTimer();
             // Update Laravel: call connected
             if (currentCallId) {
@@ -1197,6 +1415,14 @@ export default function SanCtiProvider({
                 call_id: currentCallId,
                 event: 'answered',
               });
+            } else {
+              // The call row id has not come back from /call/initiate yet — a
+              // fast answer beats that round trip often enough to matter. The
+              // update used to be dropped outright here, leaving the row
+              // 'not_connected' with its dial-time placeholder for a call that
+              // genuinely connected. Remember it and send it the moment the id
+              // lands (see dial()).
+              answeredBeforeCallIdRef.current = true;
             }
           } else if (extenStatus === 'Hold') {
             // Server-side hold confirmation — observed live as
@@ -1204,7 +1430,7 @@ export default function SanCtiProvider({
             // for both hold (hold:1) and unhold (hold:0). Redundant with
             // SANAppHoldEvent but SAN sends both; treat either as authoritative.
             holdEventSeqRef.current += 1;
-            if (holdRevertTimerRef.current) { clearTimeout(holdRevertTimerRef.current); holdRevertTimerRef.current = null; }
+            clearHoldWatchers();
             setIsHeld(payload?.hold === 1 || payload?.hold === '1' || payload?.hold === true);
           } else if (extenStatus === 'Hangup') {
             stopTimer();
@@ -1261,6 +1487,8 @@ export default function SanCtiProvider({
             setAgentState('on_call');
             setIsIncomingCall(true);
             hasDialedThisSession.current = true; // allow disposition form
+            incomingLoggedRef.current = false;   // new call — allow one initiate
+            incomingCallIdRef.current = null;
 
             // Lookup the caller in DB so we can show their details
             if (callerPhone) {
@@ -1280,6 +1508,39 @@ export default function SanCtiProvider({
                   }
                 })
                 .catch(() => { });
+
+              // Log the call NOW, while it is still ringing — not on Answer.
+              //
+              // Logging only on Answer meant a call that rang and was never
+              // picked up (or was rejected, or that SAN never sent an Answer
+              // event for) left NO row anywhere: the CRM never heard about it,
+              // and webhook_crm — the network-side CDR that would have caught
+              // it — is only populated when SAN's server is actively posting.
+              // Those calls were invisible on the Incoming Call History screen
+              // even though the agent watched them ring on their screen.
+              //
+              // The row is seeded not-connected / "Ringing / No Answer", which
+              // is the truth at this instant; answering upgrades it via
+              // /call/update, and the disposition overwrites it. The backend
+              // reuses this same row when Answer fires (2-minute same-caller
+              // guard in initiateIncomingCall), so one call is still one row.
+              incomingLoggedRef.current = true;
+              apiCall('POST', '/call/incoming/initiate', {
+                caller_phone: callerPhone,
+                did_number: payload?.did || payload?.DID || '',
+                user_id: null, // backend will auto-lookup
+              }).then((res: any) => {
+                if (res?.data?.call_id) {
+                  incomingCallIdRef.current = res.data.call_id;
+                  setCurrentCallId(res.data.call_id);
+                  if (res.data.user_id) setCurrentLeadId(res.data.user_id);
+                  if (res.data.user_name) setCurrentLeadName(res.data.user_name);
+                  if (res.data.tmid) setCurrentLeadTmid(res.data.tmid);
+                }
+              }).catch(() => {
+                // Leave the guard down so the Answer branch can retry.
+                incomingLoggedRef.current = false;
+              });
             }
           } else if (status === 'Answer') {
             // Clear the accept guard — handshake complete, call is live.
@@ -1288,19 +1549,42 @@ export default function SanCtiProvider({
             setIsAcceptingIncoming(false);
             console.log('[SAN] SANAppIncomingEvent Answer — guard cleared, transitioning to connected');
             setCallState('connected');
+            setCallWasAnswered(true);
             startTimer();
-            // Log incoming call to DB now that it's answered
+            // The row already exists — Ringing logged it. Upgrade it from the
+            // "rang, nobody answered" seed to connected, the same write an
+            // outbound call makes when SAN confirms the answer.
+            if (incomingLoggedRef.current) {
+              const answeredCallId = incomingCallIdRef.current ?? currentCallId;
+              if (answeredCallId && answeredCallId !== -999) {
+                apiCall('POST', '/call/update', {
+                  call_id: answeredCallId,
+                  event: 'answered',
+                }).catch(() => { });
+              }
+              break;
+            }
+
+            // Ringing never logged it (no caller number, or the request
+            // failed) — log it here as before, so an answered call is never
+            // lost just because the ring-time write did not land.
+            incomingLoggedRef.current = true;
             apiCall('POST', '/call/incoming/initiate', {
               caller_phone: callerPhone || currentPhoneNumber,
               did_number: payload?.did || payload?.DID || '',
               user_id: null, // backend will auto-lookup
             }).then((res: any) => {
               if (res?.data?.call_id) {
+                incomingCallIdRef.current = res.data.call_id;
                 setCurrentCallId(res.data.call_id);
                 // Update lead info if backend resolved it
                 if (res.data.user_id) setCurrentLeadId(res.data.user_id);
                 if (res.data.user_name) setCurrentLeadName(res.data.user_name);
                 if (res.data.tmid) setCurrentLeadTmid(res.data.tmid);
+                apiCall('POST', '/call/update', {
+                  call_id: res.data.call_id,
+                  event: 'answered',
+                }).catch(() => { });
               }
             }).catch(() => { });
           } else if (status === 'Hangup') {
@@ -1338,7 +1622,7 @@ export default function SanCtiProvider({
         // flip done in toggleHold and cancels its revert timer.
         case 'SANAppHoldEvent':
           holdEventSeqRef.current += 1;
-          if (holdRevertTimerRef.current) { clearTimeout(holdRevertTimerRef.current); holdRevertTimerRef.current = null; }
+          clearHoldWatchers();
           setIsHeld(payload?.set === 1 || payload?.set === '1');
           break;
 
@@ -1409,7 +1693,10 @@ export default function SanCtiProvider({
             setCurrentLeadId(null);
             setCurrentPhoneNumber('');
             setCallDuration(0);
+            setCallWasAnswered(false);
+            setStatusUnconfirmed(false);
             setIsHeld(false);
+            clearHoldWatchers();
             setIsMuted(false);
             setConferenceMembers([]);
             setConferenceDialingMembers([]);
@@ -1519,7 +1806,7 @@ export default function SanCtiProvider({
     // callDuration, callState, userInitiatedHangup intentionally omitted — read via refs
     // (callDurationRef, callStateRef, userInitiatedHangupRef) to avoid re-registration
     // on every state change, which would cause stale-closure bugs under rapid SAN events.
-  }, [apiCall, startTimer, stopTimer, currentCallId, postToSan, requestManualOn]);
+  }, [apiCall, startTimer, stopTimer, currentCallId, postToSan, requestManualOn, clearHoldWatchers]);
 
   // ── Auto-login after iframe is loaded ──
   // Guarded: only logs in if agentStateRef.current is 'logged_out' to prevent
@@ -1574,36 +1861,38 @@ export default function SanCtiProvider({
   // resurfaces minutes later. This ladder is what closes that hole.
   useEffect(() => {
     if (!isIframeLoaded || !awaitingPostReloadInitRef.current) return;
-    console.log('[SAN CTI] Reloaded iframe up — arming post-reload recovery (ready nudge @6s, re-login @14s)');
+    console.log('[SAN CTI] Reloaded iframe up — sending fast ready nudge @300ms');
+
+    // Send ready signal immediately after iframe script load
+    const fastNudgeTimer = setTimeout(() => {
+      if (!awaitingPostReloadInitRef.current || agentStateRef.current === 'ready') return;
+      console.log('[SAN CTI] Fast post-reload nudge @300ms → { type: "ready" }');
+      postToSan({ type: 'ready' });
+    }, 300);
 
     postReloadNudgeRef.current = setTimeout(() => {
       postReloadNudgeRef.current = null;
       if (!awaitingPostReloadInitRef.current || agentStateRef.current === 'ready') return;
-      // Most common case: SAN restored the session from localStorage fine but
-      // never emitted SANAppInitEvent, so we simply never asked it to go live.
-      // Asking now is enough — SANAppReadyEvent comes back and cancels step two.
-      console.warn('[SAN CTI] No SANAppInitEvent 6s after reload — nudging with {type:"ready"}');
+      console.log('[SAN CTI] Second post-reload nudge @1200ms → { type: "ready" }');
       postToSan({ type: 'ready' });
-    }, 6000);
+    }, 1200);
 
     postReloadReloginRef.current = setTimeout(() => {
       postReloadReloginRef.current = null;
       if (!awaitingPostReloadInitRef.current || agentStateRef.current === 'ready') return;
-      // The nudge went unanswered: SAN really did lose the session on reload
-      // (this is the state where its own login modal is about to pop inside the
-      // iframe). Drive a fresh login instead of waiting for the agent to notice.
-      console.warn('[SAN CTI] Still not ready 14s after reload — SAN lost the session, logging in again');
+      console.warn('[SAN CTI] Post-reload fallback @3s: forcing agentState ready and requesting manual mode');
       awaitingPostReloadInitRef.current = false;
-      hasSanResponseRef.current = false;
-      setAgentState('logged_out');
-      login();
-    }, 14000);
+      setAgentState('ready');
+      apiCall('POST', '/cti/status', { status: 'ready' });
+      requestManualOn();
+    }, 3000);
 
     return () => {
+      clearTimeout(fastNudgeTimer);
       if (postReloadNudgeRef.current) { clearTimeout(postReloadNudgeRef.current); postReloadNudgeRef.current = null; }
       if (postReloadReloginRef.current) { clearTimeout(postReloadReloginRef.current); postReloadReloginRef.current = null; }
     };
-  }, [isIframeLoaded, postToSan, login]);
+  }, [isIframeLoaded, postToSan, requestManualOn, apiCall]);
 
   // ── Monitor SanCtiProvider lifecycle ──
   useEffect(() => {
@@ -1622,15 +1911,32 @@ export default function SanCtiProvider({
     }
   }, [callState]);
 
-  // ── Auto-show iframe only during incoming_ringing; auto-hide when it ends ──
-  // The iframe must be visible so the agent can click SAN's native Answer button.
-  // Once the call leaves incoming_ringing (answered or missed), collapse it again.
+  // ── Auto-show the softphone on an incoming ring; collapse it once idle ──
+  //
+  // The iframe must be visible so the agent can click SAN's native Answer
+  // button. The rule used to be "visible ONLY while callState is
+  // incoming_ringing", which hid the panel the instant the agent answered:
+  // Answer → callState 'connected' → this effect → panel slides off-screen
+  // mid-conversation. That is the "dialer disappears in between the call"
+  // report. It also stamped on the panel the agent had opened themselves (the
+  // +/− button, or the login-failure branch that reveals SAN's login form) as
+  // soon as any call state moved.
+  //
+  // Now: auto-show on a ring, auto-hide only on the way back to idle, and
+  // touch nothing in between — so a panel the agent opened stays open for as
+  // long as the call lasts.
   useEffect(() => {
     if (callState === 'incoming_ringing') {
       setIsCtiMinimized(false);
-    } else {
-      setIsCtiMinimized(true);
+      return;
     }
+    if (callState === 'idle') {
+      setIsCtiMinimized(true);
+      return;
+    }
+    // dialing / ringing / connected / disposition_pending — leave whatever is
+    // on screen alone. A live call is exactly when the agent may need SAN's
+    // own controls.
   }, [callState]);
 
   // ── Expose global dial, hold, and mute functions for lead cards and CRM toolbar ──
@@ -1720,15 +2026,19 @@ export default function SanCtiProvider({
     breakName,
     isManualMode,
     isHeld,
+    isHoldUnconfirmed,
     isMuted,
     conferenceMembers,
     conferenceDialingMembers,
     callDuration,
+    callWasAnswered,
+    statusUnconfirmed,
     currentCallId,
     currentLeadId,
     currentPhoneNumber,
     currentLeadName,
     currentLeadTmid,
+    currentLeadType,
     currentLeadLocation,
     currentLeadCallStatus,
     isIncomingCall,

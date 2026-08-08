@@ -18,6 +18,9 @@ import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { DriverForm } from '../matchmaking/MmDriverBank';
 import CrossRoleLeadDetail from '../shared/CrossRoleLeadDetail';
+import RevivalOffersList from '../../shared/components/business/RevivalOffersList';
+import RegistrationDateFilter from '../../shared/components/business/RegistrationDateFilter';
+import type { RegDateRange } from '../../shared/components/business/RegistrationDateFilter';
 
 const SkeletonCard = () => (
   <div className="p-3 border-l-4 border-gray-200 bg-white animate-pulse space-y-2">
@@ -63,6 +66,11 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
   const tabStorageKey = `${deskKey}_queue_tab`;
 
   // Search, Tab, Sort & Pagination States
+  // The Revival tab lists COUPONS, not queue leads, so it is tracked apart from
+  // activeTab — widening QueueType would force every queue endpoint to handle a
+  // type none of them can serve.
+  const [showRevival, setShowRevival] = useState(false);
+
   const [activeTab, setActiveTab] = useState<QueueType>(
     (sessionStorage.getItem(tabStorageKey) as QueueType) || 'fresh'
   );
@@ -124,6 +132,11 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
   const [filterRoute, setFilterRoute] = useState<string>('');
   const [filterStateId, setFilterStateId] = useState<string>(''); // empty for all
 
+  // Registration-date window (users.Created_at). Lives outside the collapsible
+  // advanced-filter panel because it is used constantly — an agent working
+  // "this week's signups" shouldn't have to open a panel every time.
+  const [regDates, setRegDates] = useState<RegDateRange>({});
+
   const activeFilters = {
     subscribed: filterSubscribed !== 'all' ? filterSubscribed : undefined,
     pan: filterPan !== 'all' ? filterPan : undefined,
@@ -133,6 +146,8 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
     profile_complete: filterProfileComplete !== 'all' ? filterProfileComplete : undefined,
     route: filterRoute || undefined,
     state_id: filterStateId ? Number(filterStateId) : undefined,
+    reg_from: regDates.reg_from,
+    reg_to: regDates.reg_to,
   };
 
   const handleFilterChange = (setter: any, val: any) => {
@@ -149,6 +164,7 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
     setFilterProfileComplete('all');
     setFilterRoute('');
     setFilterStateId('');
+    setRegDates({});
     setCurrentPage(1);
   };
 
@@ -180,7 +196,7 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
     per_page: 20
   }, activeFilters, queueRole, leadRole);
 
-  const { counts, isFetching: isCountsFetching, refetch: refetchCounts } = useQueueCountsCache(queueRole, leadRole);
+  const { counts, isFetching: isCountsFetching, refetch: refetchCounts } = useQueueCountsCache(queueRole, leadRole, activeFilters);
 
   const handleRefresh = () => {
     refetchQueue();
@@ -278,6 +294,7 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
     if (activeTab === 'uncalled') return 'border-[#E67E22]'; // Orange
     if (activeTab === 'callbacks') return l.overdue ? 'border-[#E74C3C]' : 'border-[#F1C40F]'; // Red or Yellow
     if (activeTab === 'called') return 'border-[#27AE60]'; // Green
+    if (activeTab === 'agree') return 'border-[#16A34A]'; // Deep green — money on the table
     return 'border-gray-200';
   };
 
@@ -303,8 +320,77 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
     dial(lead.mobile, cleanId, lead.name, lead.tmid, isSocial ? 'social_media' : leadRole);
   };
 
+  // Guards the quick action against being fired in a burst.
+  //
+  // A ref, NOT state: a native <select> that has focus fires `change` on every
+  // arrow-key press, and a held key repeats at the OS rate (~30/sec). Because
+  // the handler resets e.target.value back to the placeholder, each repeat
+  // re-selects the SAME action — and React would not have re-rendered between
+  // them, so a useState flag reads stale `false` every time and blocks nothing.
+  // A ref is written synchronously and is the only thing that stops the burst.
+  //
+  // Observed on production 2026-07-30 11:00:25–11:00:41: 418 identical "Wrong
+  // Number" dispositions, peaking at 33 rows/second, marching down 10
+  // consecutive leads as each one was removed from the queue and the next
+  // auto-selected.
+  const quickActionInFlight = useRef(false);
+
+  /**
+   * Dial a lead straight out of the global search results.
+   *
+   * Global search reaches the WHOLE user base, including leads assigned to
+   * another agent or to nobody — selecting one only ever opened their profile,
+   * so an agent who found the right person still had no way to call them.
+   * Assignment governs whose QUEUE a lead sits in; it does not govern who may
+   * phone them, and the call is logged against whoever placed it either way.
+   */
+  const handleGlobalSearchCall = (res: any) => {
+    if (!res?.mobile) { triggerToast('This lead has no phone number on file.'); return; }
+    if (agentState !== 'ready') {
+      triggerToast(agentState === 'logged_out'
+        ? 'CTI login failed — check the SAN softphone panel (bottom-left).'
+        : 'CTI agent is not ready yet — please wait a moment and try again.');
+      return;
+    }
+    if (callState !== 'idle') {
+      triggerToast('Finish or hang up the current call before dialing another lead.');
+      return;
+    }
+
+    const isSocial = res.source === 'social_media';
+    // Open the panel for this lead too, so the agent has the profile in front
+    // of them while the call connects and the disposition modal knows the lead.
+    const finalId = isSocial ? `sm-${res.id}` : res.id;
+    const r = String(res.role || 'driver').toLowerCase();
+    const nextRole = (LEAD_ROLES as readonly string[]).includes(r) ? (r as LeadRole) : 'driver';
+    setLeadRole(nextRole);
+    setSelectedId(finalId);
+    setIsGlobalSearchOpen(false);
+    setGlobalSearchInput('');
+
+    dial(res.mobile, Number(res.id), res.name, res.tmid, isSocial ? 'social_media' : nextRole);
+    triggerToast(`Dialing ${res.name || res.mobile}…`);
+  };
+
   const handleQuickAction = async (action: string) => {
     if (!selectedId) return;
+    if (quickActionInFlight.current) return;
+
+    // These write an irreversible disposition and drop the lead out of the
+    // queue, so they are confirmed rather than applied straight off a change
+    // event — which is all a stray keypress on the closed dropdown produces.
+    const lead = leads.find((l: any) => String(l.id) === String(selectedId));
+    const labels: Record<string, string> = {
+      wrong_number: 'Wrong Number',
+      already_subscribed: 'Already Subscribed',
+      escalate: 'Escalate to Funnel',
+    };
+    if (!window.confirm(
+      `Mark ${lead?.name || 'this lead'} as "${labels[action] || action}"?\n\n`
+      + 'This files a call disposition and removes the lead from your queue.'
+    )) return;
+
+    quickActionInFlight.current = true;
     try {
       let callStatus = 'connected';
       let callFeedback = 'Agree for Subscription';
@@ -341,6 +427,8 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
       triggerToast(`Lead status updated: ${callFeedback}`);
     } catch (err) {
       triggerToast('Failed to apply quick action.');
+    } finally {
+      quickActionInFlight.current = false;
     }
   };
 
@@ -486,9 +574,22 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs font-mono text-gray-600 bg-gray-100 px-1 rounded">{res.tmid}</div>
-                      <div className="text-[11px] font-medium text-[#27AE60] mt-0.5">{res.mobile ? res.mobile.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2') : '**********'}</div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <div className="text-xs font-mono text-gray-600 bg-gray-100 px-1 rounded">{res.tmid}</div>
+                        <div className="text-[11px] font-medium text-[#27AE60] mt-0.5">{res.mobile ? res.mobile.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2') : '**********'}</div>
+                      </div>
+                      {/* Call this lead whether or not they are assigned to
+                          this agent. stopPropagation so the row's own click
+                          (open profile) doesn't also fire. */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleGlobalSearchCall(res); }}
+                        disabled={!res.mobile}
+                        title={res.mobile ? `Call ${res.name}` : 'No phone number on file'}
+                        className="shrink-0 w-8 h-8 rounded-full bg-[#27AE60] hover:bg-[#219653] text-white flex items-center justify-center shadow-sm active:scale-95 transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">call</span>
+                      </button>
                     </div>
                   </div>
                 ))
@@ -502,7 +603,9 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
         {/* Tab & Sort Header */}
         <div className="p-3 border-b border-gray-200 shrink-0 bg-white">
           <div className="flex justify-between items-center mb-3">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Queue Routing</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-[#17376B] uppercase tracking-wider">Queue Routing</span>
+            </div>
             <div className="flex items-center gap-1.5">
               <input 
                 type="text"
@@ -531,6 +634,11 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                 <span className="material-symbols-outlined text-[16px]">filter_alt</span>
               </button>
             </div>
+          </div>
+
+          {/* Registration date window — applies to every tab below. */}
+          <div className="mb-3">
+            <RegistrationDateFilter value={regDates} onChange={setRegDates} accent="#27AE60" />
           </div>
 
           {/* Lead-role toggle — every kind of lead this desk can be assigned */}
@@ -688,13 +796,25 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                   </span>
                 )
               },
-              { id: 'called', label: `Today (${counts?.called_today ?? 0})` }
+              { id: 'called', label: `Today (${counts?.called_today ?? 0})` },
+              // Conversion pipeline — every lead dispositioned "Agree for
+              // Subscription" (any wording), all time, so the agent can work
+              // the payment follow-ups without digging through call history.
+              {
+                id: 'agree',
+                label: (
+                  <span className="flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[13px]">verified</span>
+                    Agree ({counts?.agree_subscription ?? 0})
+                  </span>
+                )
+              }
             ].map(tab => (
               <button
                 key={tab.id}
-                onClick={() => { setActiveTab(tab.id as any); setCurrentPage(1); }}
+                onClick={() => { setShowRevival(false); setActiveTab(tab.id as any); setCurrentPage(1); }}
                 className={`px-3 py-1.5 rounded-md text-[11px] font-semibold whitespace-nowrap border transition-all ${
-                  activeTab === tab.id
+                  !showRevival && activeTab === tab.id
                     ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-sm'
                     : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
                 }`}
@@ -702,10 +822,33 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                 {tab.label}
               </button>
             ))}
+
+            {/* Revival — the coupons this agent has already offered. Sits after
+                Agree because it is the next step of the same pipeline: agreed →
+                offered a discount → paid or lapsed. */}
+            <button
+              onClick={() => setShowRevival(true)}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold whitespace-nowrap border transition-all ${
+                showRevival
+                  ? 'bg-amber-50 text-amber-800 border-amber-300 shadow-sm'
+                  : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <span className="flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px]">local_activity</span>
+                Revival
+              </span>
+            </button>
           </div>
         </div>
 
         {/* Lead List Area */}
+        {showRevival ? (
+          <RevivalOffersList
+            selectedUserId={selectedId}
+            onSelect={(o) => setSelectedId(String(o.user_id))}
+          />
+        ) : (
         <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-gray-100">
           {isQueueLoading ? (
             <div className="divide-y divide-gray-100">
@@ -743,6 +886,14 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                   {activeTab === 'called' && l.last_feedback && (
                     <div className="text-[11px] text-gray-500 mt-1 truncate bg-gray-100 px-1.5 py-0.5 rounded italic">
                       {l.last_feedback} {l.last_remarks ? ` - ${l.last_remarks}` : ''}
+                    </div>
+                  )}
+
+                  {activeTab === 'agree' && (
+                    <div className="text-[11px] text-[#16A34A] mt-1 truncate bg-green-50 border border-green-100 px-1.5 py-0.5 rounded font-semibold"
+                      title={l.last_remarks || ''}>
+                      {l.last_feedback || 'Agreed to subscribe'}
+                      {l.agreed_at ? ` · ${new Date(String(l.agreed_at).replace(' ', 'T')).toLocaleDateString('en-GB')}` : ''}
                     </div>
                   )}
 
@@ -801,9 +952,10 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
             </div>
           )}
         </div>
+        )}
 
-        {/* Pagination Footer */}
-        {pagination.last_page > 1 && (
+        {/* Pagination Footer — queue only; the revival list paginates itself */}
+        {!showRevival && pagination.last_page > 1 && (
           <div className="p-3 border-t border-gray-200 bg-white flex justify-between items-center shrink-0">
             <button
               disabled={currentPage <= 1}

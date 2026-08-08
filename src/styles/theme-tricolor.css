@@ -1,0 +1,1688 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+   INDEPENDENCE DAY — TRICOLOR THEME
+   ─────────────────────────────────────────────────────────────────────────────
+   Active only while <html data-theme="tricolor"> is set, which main.tsx does
+   from CRM_THEME in shared/constants/config.ts. With CRM_THEME = 'default' not
+   a single rule in this file applies, so the standard skin is byte-for-byte
+   what it always was — reverting on 16 Aug is one word in config.ts.
+
+   WHY THIS IS A STYLESHEET AND NOT 200 EDITED FILES
+   The CRM paints its brand with ~1,400 hardcoded Tailwind arbitrary values
+   (bg-[#FB641B], text-[#27AE60], text-[#8E44AD] …) spread across every screen.
+   Re-colouring those in place would be a 200-file diff that is impossible to
+   review and impossible to undo cleanly. Instead the COLOUR REMAP section below
+   re-points the exact classes Tailwind generates for those values, and the
+   PREMIUM LAYER above it adds the flourishes — the tricolor ribbon, gradient
+   primaries, chakra-navy focus rings and gold hairlines — that make it read as
+   designed rather than recoloured.
+
+   PALETTE — chosen for a working CRM, not a poster: flag saffron (#FF9933) and
+   flag green (#138808) at full strength would fail contrast against white text
+   on buttons, so solid surfaces use a deeper saffron and India green, while the
+   bright flag tones are kept for ribbons and gradients where nothing sits on
+   top of them.
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+:root[data-theme="tricolor"] {
+  /* Saffron — primary actions */
+  --tm-saffron:        #E2761B;
+  --tm-saffron-deep:   #C05E10;
+  --tm-saffron-lift:   #EE8C33;   /* top of the button gradient */
+  --tm-saffron-bright: #FF9933;   /* true flag saffron — ribbons only */
+  --tm-saffron-tint:   #FFF4E8;
+
+  /* India green — success, connected calls, money in */
+  --tm-green:        #138808;
+  --tm-green-deep:   #0E6B06;
+  --tm-green-bright: #17910C;
+  --tm-green-tint:   #EDF6EA;
+
+  /* Chakra navy — chrome, headings, focus */
+  --tm-navy:      #17376B;
+  --tm-navy-deep: #0C2450;
+  --tm-navy-soft: #24508F;
+
+  /* Antique gold — hairlines and the premium accent */
+  --tm-gold:      #B8860B;
+  --tm-gold-soft: #DCBB5A;
+
+  --tm-ivory: #FFFDF8;
+}
+
+/* ── The ribbon ───────────────────────────────────────────────────────────────
+   A 3px flag along the very top edge of the app with a gold hairline under it.
+   Fixed and pointer-events:none so it sits above the sidebar and topbar without
+   ever intercepting a click or shifting a single pixel of layout. */
+[data-theme="tricolor"] body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 9999;
+  pointer-events: none;
+  background-image: linear-gradient(
+    90deg,
+    var(--tm-saffron-bright) 0%,
+    var(--tm-saffron-bright) 33.33%,
+    var(--tm-ivory) 33.33%,
+    var(--tm-ivory) 66.66%,
+    var(--tm-green) 66.66%,
+    var(--tm-green) 100%
+  );
+  box-shadow: 0 1px 0 rgb(184 134 11 / 0.45);
+}
+
+/* ── Topbar: tricolor hairline instead of a flat grey rule ─────────────────── */
+[data-theme="tricolor"] header.fixed.top-0 {
+  border-bottom: 2px solid transparent !important;
+  border-image: linear-gradient(
+      90deg,
+      var(--tm-saffron-bright) 0%,
+      var(--tm-saffron) 22%,
+      #FFFFFF 50%,
+      var(--tm-green) 78%,
+      var(--tm-green-deep) 100%
+    )
+    1 !important;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────────
+   Warm ivory rail, and the active item's 4px marker becomes a saffron→green
+   gradient (border-image paints the only side with width, i.e. the right). */
+[data-theme="tricolor"] aside.fixed.left-0 {
+  background-image: linear-gradient(180deg, var(--tm-ivory) 0%, #FFFFFF 22%);
+  border-right-color: rgb(23 55 107 / 0.10) !important;
+}
+
+[data-theme="tricolor"] aside .border-r-4.border-primary {
+  border-right-color: transparent !important;
+  border-image: linear-gradient(
+      180deg,
+      var(--tm-saffron-bright) 0%,
+      var(--tm-saffron) 40%,
+      var(--tm-green) 100%
+    )
+    1 !important;
+  background-image: linear-gradient(90deg, rgb(226 118 27 / 0.07), rgb(19 136 8 / 0.05));
+}
+
+/* ── Primary surfaces: depth instead of a flat fill ───────────────────────────
+   A restrained vertical gradient plus an inset top highlight — the difference
+   between "orange rectangle" and "premium button". Elements that carry their
+   own bg-gradient-* classes are excluded so nothing overrides a real gradient. */
+[data-theme="tricolor"] .bg-\[\#FB641B\]:not([class*="bg-gradient"]),
+[data-theme="tricolor"] .bg-secondary-container:not([class*="bg-gradient"]) {
+  background-image: linear-gradient(180deg, var(--tm-saffron-lift) 0%, var(--tm-saffron) 55%, var(--tm-saffron-deep) 100%);
+  box-shadow: 0 1px 2px rgb(12 36 80 / 0.14), inset 0 1px 0 rgb(255 255 255 / 0.20);
+}
+
+[data-theme="tricolor"] .bg-\[\#27AE60\]:not([class*="bg-gradient"]) {
+  background-image: linear-gradient(180deg, #189E0B 0%, var(--tm-green) 58%, var(--tm-green-deep) 100%);
+  box-shadow: 0 1px 2px rgb(12 36 80 / 0.14), inset 0 1px 0 rgb(255 255 255 / 0.16);
+}
+
+[data-theme="tricolor"] .bg-primary:not([class*="bg-gradient"]) {
+  background-image: linear-gradient(180deg, var(--tm-navy-soft) 0%, var(--tm-navy) 60%, var(--tm-navy-deep) 100%);
+  box-shadow: 0 1px 2px rgb(12 36 80 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.14);
+}
+
+/* Tiny fills (dots, 2–3px bars, avatars under 12px) read better flat. */
+[data-theme="tricolor"] .w-1.h-1,
+[data-theme="tricolor"] .w-1\.5.h-1\.5,
+[data-theme="tricolor"] .w-2.h-2 {
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* ── Login: the flag as the page's accent line ────────────────────────────── */
+[data-theme="tricolor"] .h-\[3px\].bg-primary {
+  background-image: linear-gradient(
+    90deg,
+    var(--tm-saffron-bright) 0%,
+    var(--tm-saffron-bright) 33.33%,
+    #FFFFFF 33.33%,
+    #FFFFFF 66.66%,
+    var(--tm-green) 66.66%,
+    var(--tm-green) 100%
+  ) !important;
+  box-shadow: 0 1px 0 rgb(184 134 11 / 0.5);
+}
+
+/* ── Gold hairlines: the premium tell ─────────────────────────────────────── */
+[data-theme="tricolor"] .flipkart-shadow {
+  box-shadow: 0 1px 3px rgb(12 36 80 / 0.10), 0 0 0 1px rgb(184 134 11 / 0.10);
+}
+
+[data-theme="tricolor"] ::selection {
+  background: rgb(226 118 27 / 0.20);
+}
+
+[data-theme="tricolor"] .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(226 118 27 / 0.35);
+}
+[data-theme="tricolor"] .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgb(226 118 27 / 0.55);
+}
+
+/* ── Independence Day chrome used by the JSX flourishes ───────────────────── */
+[data-theme="tricolor"] .tm-flag-rule {
+  background-image: linear-gradient(
+    90deg,
+    var(--tm-saffron-bright) 0%,
+    var(--tm-saffron-bright) 33.33%,
+    var(--tm-ivory) 33.33%,
+    var(--tm-ivory) 66.66%,
+    var(--tm-green) 66.66%,
+    var(--tm-green) 100%
+  );
+  box-shadow: inset 0 0 0 1px rgb(12 36 80 / 0.06);
+}
+
+[data-theme="tricolor"] .tm-id-caption {
+  color: var(--tm-navy);
+  letter-spacing: 0.14em;
+}
+
+/* ── Dark chrome ──────────────────────────────────────────────────────────────
+   India green and antique gold are chosen to carry white text on white cards.
+   On the near-black panels (CTI dialer, webhook console, monitor walls) that
+   same green drops to ~3.7:1 and stops being readable, so inside a dark
+   container the tones are lifted rather than deepened. Tailwind's green-500
+   (#22c55e), which only ever appears on those dark panels, is left alone
+   entirely for the same reason. */
+[data-theme="tricolor"] .bg-slate-950 .text-\[\#27AE60\],
+[data-theme="tricolor"] .bg-slate-900 .text-\[\#27AE60\],
+[data-theme="tricolor"] .bg-gray-900 .text-\[\#27AE60\],
+[data-theme="tricolor"] .bg-black .text-\[\#27AE60\],
+[data-theme="tricolor"] .bg-\[\#0f172a\] .text-\[\#27AE60\],
+[data-theme="tricolor"] .bg-\[\#1b1c1c\] .text-\[\#27AE60\],
+[data-theme="tricolor"] .bg-\[\#303030\] .text-\[\#27AE60\] {
+  color: #35C21F !important;
+}
+
+[data-theme="tricolor"] .bg-slate-950 .text-\[\#F39C12\],
+[data-theme="tricolor"] .bg-slate-900 .text-\[\#F39C12\],
+[data-theme="tricolor"] .bg-gray-900 .text-\[\#F39C12\],
+[data-theme="tricolor"] .bg-black .text-\[\#F39C12\],
+[data-theme="tricolor"] .bg-\[\#0f172a\] .text-\[\#F39C12\],
+[data-theme="tricolor"] .bg-\[\#1b1c1c\] .text-\[\#F39C12\],
+[data-theme="tricolor"] .bg-\[\#303030\] .text-\[\#F39C12\] {
+  color: #E3B23C !important;
+}
+
+/* A navy focus ring is invisible on slate-950 — lift it to a readable blue. */
+[data-theme="tricolor"] .bg-slate-950 .focus\:border-\[\#8E44AD\]:focus,
+[data-theme="tricolor"] .bg-slate-900 .focus\:border-\[\#8E44AD\]:focus,
+[data-theme="tricolor"] .border-slate-800.focus\:border-\[\#8E44AD\]:focus {
+  border-color: #6E93D6 !important;
+}
+
+/* ═══ COLOUR REMAP ════════════════════════════════════════════════════════════
+   Generated against the classes Tailwind emits for this codebase's brand
+   colours. Each variant keeps its own state (`hover:` only paints on :hover),
+   and slash-opacity forms keep their alpha.
+
+   Adding a NEW brand-coloured class later? The common shapes
+   (text/bg/border/ring × base/hover/focus/group-hover) are already covered for
+   every colour below; anything more exotic (a new gradient stop, a new opacity
+   step) needs a line adding here.
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+/* #154360 → #08183A · deepest blue → chakra navy darkest */
+[data-theme="tricolor"] .border-\[\#154360\],
+[data-theme="tricolor"] .focus\:border-\[\#154360\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#154360\],
+[data-theme="tricolor"] .hover\:border-\[\#154360\]:hover {
+  border-color: #08183A !important;
+}
+[data-theme="tricolor"] .bg-\[\#154360\],
+[data-theme="tricolor"] .focus\:bg-\[\#154360\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#154360\],
+[data-theme="tricolor"] .hover\:bg-\[\#154360\]:hover {
+  background-color: #08183A !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#154360\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#154360\],
+[data-theme="tricolor"] .hover\:ring-\[\#154360\]:hover,
+[data-theme="tricolor"] .ring-\[\#154360\] {
+  --tw-ring-color: #08183A !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#154360\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#154360\],
+[data-theme="tricolor"] .hover\:text-\[\#154360\]:hover,
+[data-theme="tricolor"] .text-\[\#154360\] {
+  color: #08183A !important;
+}
+
+/* #16A34A → #0E6B06 · green-600 → India green deep */
+[data-theme="tricolor"] .bg-\[\#16A34A\],
+[data-theme="tricolor"] .bg-\[\#16a34a\],
+[data-theme="tricolor"] .focus\:bg-\[\#16A34A\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#16a34a\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#16A34A\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#16a34a\],
+[data-theme="tricolor"] .hover\:bg-\[\#16A34A\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#16a34a\]:hover {
+  background-color: #0E6B06 !important;
+}
+[data-theme="tricolor"] .border-\[\#16A34A\],
+[data-theme="tricolor"] .border-\[\#16a34a\],
+[data-theme="tricolor"] .focus\:border-\[\#16A34A\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#16a34a\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#16A34A\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#16a34a\],
+[data-theme="tricolor"] .hover\:border-\[\#16A34A\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#16a34a\]:hover {
+  border-color: #0E6B06 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#16A34A\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#16a34a\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#16A34A\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#16a34a\],
+[data-theme="tricolor"] .hover\:ring-\[\#16A34A\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#16a34a\]:hover,
+[data-theme="tricolor"] .ring-\[\#16A34A\],
+[data-theme="tricolor"] .ring-\[\#16a34a\] {
+  --tw-ring-color: #0E6B06 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#16A34A\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#16a34a\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#16A34A\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#16a34a\],
+[data-theme="tricolor"] .hover\:text-\[\#16A34A\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#16a34a\]:hover,
+[data-theme="tricolor"] .text-\[\#16A34A\],
+[data-theme="tricolor"] .text-\[\#16a34a\] {
+  color: #0E6B06 !important;
+}
+
+/* #1A5276 → #0C2450 · deep blue → chakra navy deep */
+[data-theme="tricolor"] .bg-\[\#1A5276\],
+[data-theme="tricolor"] .bg-\[\#1a5276\],
+[data-theme="tricolor"] .focus\:bg-\[\#1A5276\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#1a5276\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#1A5276\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#1a5276\],
+[data-theme="tricolor"] .hover\:bg-\[\#1A5276\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#1a5276\]:hover {
+  background-color: #0C2450 !important;
+}
+[data-theme="tricolor"] .border-\[\#1A5276\],
+[data-theme="tricolor"] .border-\[\#1a5276\],
+[data-theme="tricolor"] .focus\:border-\[\#1A5276\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#1a5276\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#1A5276\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#1a5276\],
+[data-theme="tricolor"] .hover\:border-\[\#1A5276\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#1a5276\]:hover {
+  border-color: #0C2450 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#1A5276\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#1a5276\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#1A5276\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#1a5276\],
+[data-theme="tricolor"] .hover\:ring-\[\#1A5276\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#1a5276\]:hover,
+[data-theme="tricolor"] .ring-\[\#1A5276\],
+[data-theme="tricolor"] .ring-\[\#1a5276\] {
+  --tw-ring-color: #0C2450 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#1A5276\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#1a5276\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#1A5276\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#1a5276\],
+[data-theme="tricolor"] .hover\:text-\[\#1A5276\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#1a5276\]:hover,
+[data-theme="tricolor"] .text-\[\#1A5276\],
+[data-theme="tricolor"] .text-\[\#1a5276\] {
+  color: #0C2450 !important;
+}
+
+/* #1E8449 → #0E6B06 · dark green → India green deep */
+[data-theme="tricolor"] .bg-\[\#1E8449\],
+[data-theme="tricolor"] .bg-\[\#1e8449\],
+[data-theme="tricolor"] .focus\:bg-\[\#1E8449\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#1e8449\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#1E8449\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#1e8449\],
+[data-theme="tricolor"] .hover\:bg-\[\#1E8449\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#1e8449\]:hover {
+  background-color: #0E6B06 !important;
+}
+[data-theme="tricolor"] .border-\[\#1E8449\],
+[data-theme="tricolor"] .border-\[\#1e8449\],
+[data-theme="tricolor"] .focus\:border-\[\#1E8449\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#1e8449\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#1E8449\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#1e8449\],
+[data-theme="tricolor"] .hover\:border-\[\#1E8449\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#1e8449\]:hover {
+  border-color: #0E6B06 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#1E8449\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#1e8449\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#1E8449\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#1e8449\],
+[data-theme="tricolor"] .hover\:ring-\[\#1E8449\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#1e8449\]:hover,
+[data-theme="tricolor"] .ring-\[\#1E8449\],
+[data-theme="tricolor"] .ring-\[\#1e8449\] {
+  --tw-ring-color: #0E6B06 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#1E8449\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#1e8449\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#1E8449\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#1e8449\],
+[data-theme="tricolor"] .hover\:text-\[\#1E8449\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#1e8449\]:hover,
+[data-theme="tricolor"] .text-\[\#1E8449\],
+[data-theme="tricolor"] .text-\[\#1e8449\] {
+  color: #0E6B06 !important;
+}
+
+/* #219653 → #0E6B06 · dark green → India green deep */
+[data-theme="tricolor"] .border-\[\#219653\],
+[data-theme="tricolor"] .focus\:border-\[\#219653\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#219653\],
+[data-theme="tricolor"] .hover\:border-\[\#219653\]:hover {
+  border-color: #0E6B06 !important;
+}
+[data-theme="tricolor"] .bg-\[\#219653\],
+[data-theme="tricolor"] .focus\:bg-\[\#219653\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#219653\],
+[data-theme="tricolor"] .hover\:bg-\[\#219653\]:hover {
+  background-color: #0E6B06 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#219653\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#219653\],
+[data-theme="tricolor"] .hover\:text-\[\#219653\]:hover,
+[data-theme="tricolor"] .text-\[\#219653\] {
+  color: #0E6B06 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#219653\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#219653\],
+[data-theme="tricolor"] .hover\:ring-\[\#219653\]:hover,
+[data-theme="tricolor"] .ring-\[\#219653\] {
+  --tw-ring-color: #0E6B06 !important;
+}
+
+/* #27AE60 → #138808 · success / call green → India green */
+[data-theme="tricolor"] .accent-\[\#27AE60\] {
+  accent-color: #138808 !important;
+}
+[data-theme="tricolor"] .bg-\[\#27AE60\],
+[data-theme="tricolor"] .bg-\[\#27ae60\],
+[data-theme="tricolor"] .focus\:bg-\[\#27AE60\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#27ae60\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#27AE60\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#27ae60\],
+[data-theme="tricolor"] .hover\:bg-\[\#27AE60\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#27ae60\]:hover {
+  background-color: #138808 !important;
+}
+[data-theme="tricolor"] .bg-\[\#27AE60\]\/10 {
+  background-color: rgb(19 136 8 / .1) !important;
+}
+[data-theme="tricolor"] .border-\[\#27AE60\],
+[data-theme="tricolor"] .border-\[\#27ae60\],
+[data-theme="tricolor"] .focus\:border-\[\#27AE60\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#27ae60\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#27AE60\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#27ae60\],
+[data-theme="tricolor"] .hover\:border-\[\#27AE60\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#27ae60\]:hover {
+  border-color: #138808 !important;
+}
+[data-theme="tricolor"] .border-\[\#27AE60\]\/20 {
+  border-color: rgb(19 136 8 / .2) !important;
+}
+[data-theme="tricolor"] .border-\[\#27AE60\]\/30 {
+  border-color: rgb(19 136 8 / .3) !important;
+}
+[data-theme="tricolor"] .border-t-\[\#27AE60\] {
+  border-top-color: #138808 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#27AE60\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#27ae60\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#27AE60\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#27ae60\],
+[data-theme="tricolor"] .hover\:ring-\[\#27AE60\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#27ae60\]:hover,
+[data-theme="tricolor"] .ring-\[\#27AE60\],
+[data-theme="tricolor"] .ring-\[\#27ae60\] {
+  --tw-ring-color: #138808 !important;
+}
+[data-theme="tricolor"] .hover\:border-\[\#27AE60\]\/40:hover {
+  border-color: rgb(19 136 8 / .4) !important;
+}
+[data-theme="tricolor"] .ring-\[\#27AE60\]\/20 {
+  --tw-ring-color: rgb(19 136 8 / .2) !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#27AE60\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#27ae60\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#27AE60\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#27ae60\],
+[data-theme="tricolor"] .hover\:text-\[\#27AE60\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#27ae60\]:hover,
+[data-theme="tricolor"] .text-\[\#27AE60\],
+[data-theme="tricolor"] .text-\[\#27ae60\] {
+  color: #138808 !important;
+}
+
+/* #7D3C98 → #0C2450 · dark purple → chakra navy deep */
+[data-theme="tricolor"] .border-\[\#7D3C98\],
+[data-theme="tricolor"] .border-\[\#7d3c98\],
+[data-theme="tricolor"] .focus\:border-\[\#7D3C98\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#7d3c98\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#7D3C98\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#7d3c98\],
+[data-theme="tricolor"] .hover\:border-\[\#7D3C98\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#7d3c98\]:hover {
+  border-color: #0C2450 !important;
+}
+[data-theme="tricolor"] .bg-\[\#7D3C98\],
+[data-theme="tricolor"] .bg-\[\#7d3c98\],
+[data-theme="tricolor"] .focus\:bg-\[\#7D3C98\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#7d3c98\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#7D3C98\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#7d3c98\],
+[data-theme="tricolor"] .hover\:bg-\[\#7D3C98\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#7d3c98\]:hover {
+  background-color: #0C2450 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#7D3C98\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#7d3c98\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#7D3C98\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#7d3c98\],
+[data-theme="tricolor"] .hover\:ring-\[\#7D3C98\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#7d3c98\]:hover,
+[data-theme="tricolor"] .ring-\[\#7D3C98\],
+[data-theme="tricolor"] .ring-\[\#7d3c98\] {
+  --tw-ring-color: #0C2450 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#7D3C98\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#7d3c98\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#7D3C98\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#7d3c98\],
+[data-theme="tricolor"] .hover\:text-\[\#7D3C98\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#7d3c98\]:hover,
+[data-theme="tricolor"] .text-\[\#7D3C98\],
+[data-theme="tricolor"] .text-\[\#7d3c98\] {
+  color: #0C2450 !important;
+}
+[data-theme="tricolor"] .to-\[\#7D3C98\] {
+  --tw-gradient-to: #0C2450 var(--tw-gradient-to-position) !important;
+}
+
+/* #8E44AD → #17376B · purple accent → chakra navy */
+[data-theme="tricolor"] .accent-\[\#8E44AD\] {
+  accent-color: #17376B !important;
+}
+[data-theme="tricolor"] .bg-\[\#8E44AD\],
+[data-theme="tricolor"] .bg-\[\#8e44ad\],
+[data-theme="tricolor"] .focus\:bg-\[\#8E44AD\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#8e44ad\]:focus,
+[data-theme="tricolor"] .group:focus .group-focus\:bg-\[\#8E44AD\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#8E44AD\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#8e44ad\],
+[data-theme="tricolor"] .hover\:bg-\[\#8E44AD\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#8e44ad\]:hover {
+  background-color: #17376B !important;
+}
+[data-theme="tricolor"] .bg-\[\#8E44AD\]\/10 {
+  background-color: rgb(23 55 107 / .1) !important;
+}
+[data-theme="tricolor"] .bg-\[\#8E44AD\]\/20 {
+  background-color: rgb(23 55 107 / .2) !important;
+}
+[data-theme="tricolor"] .border-\[\#8E44AD\],
+[data-theme="tricolor"] .border-\[\#8e44ad\],
+[data-theme="tricolor"] .focus\:border-\[\#8E44AD\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#8e44ad\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#8E44AD\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#8e44ad\],
+[data-theme="tricolor"] .hover\:border-\[\#8E44AD\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#8e44ad\]:hover {
+  border-color: #17376B !important;
+}
+[data-theme="tricolor"] .border-\[\#8E44AD\]\/30 {
+  border-color: rgb(23 55 107 / .3) !important;
+}
+[data-theme="tricolor"] .border-\[\#8E44AD\]\/40,
+[data-theme="tricolor"] .hover\:border-\[\#8E44AD\]\/40:hover {
+  border-color: rgb(23 55 107 / .4) !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#8E44AD\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#8e44ad\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#8E44AD\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#8e44ad\],
+[data-theme="tricolor"] .hover\:ring-\[\#8E44AD\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#8e44ad\]:hover,
+[data-theme="tricolor"] .ring-\[\#8E44AD\],
+[data-theme="tricolor"] .ring-\[\#8e44ad\] {
+  --tw-ring-color: #17376B !important;
+}
+[data-theme="tricolor"] .from-\[\#8E44AD\] {
+  --tw-gradient-from: #17376B var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(23 55 107 / ) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#8E44AD\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#8e44ad\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#8E44AD\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#8e44ad\],
+[data-theme="tricolor"] .hover\:text-\[\#8E44AD\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#8e44ad\]:hover,
+[data-theme="tricolor"] .text-\[\#8E44AD\],
+[data-theme="tricolor"] .text-\[\#8e44ad\] {
+  color: #17376B !important;
+}
+
+/* #D35400 → #B4530C · dark orange → burnt saffron */
+[data-theme="tricolor"] .bg-\[\#D35400\],
+[data-theme="tricolor"] .bg-\[\#d35400\],
+[data-theme="tricolor"] .focus\:bg-\[\#D35400\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#d35400\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#D35400\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#d35400\],
+[data-theme="tricolor"] .hover\:bg-\[\#D35400\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#d35400\]:hover {
+  background-color: #B4530C !important;
+}
+[data-theme="tricolor"] .border-\[\#D35400\],
+[data-theme="tricolor"] .border-\[\#d35400\],
+[data-theme="tricolor"] .focus\:border-\[\#D35400\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#d35400\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#D35400\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#d35400\],
+[data-theme="tricolor"] .hover\:border-\[\#D35400\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#d35400\]:hover {
+  border-color: #B4530C !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#D35400\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#d35400\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#D35400\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#d35400\],
+[data-theme="tricolor"] .hover\:ring-\[\#D35400\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#d35400\]:hover,
+[data-theme="tricolor"] .ring-\[\#D35400\],
+[data-theme="tricolor"] .ring-\[\#d35400\] {
+  --tw-ring-color: #B4530C !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#D35400\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#d35400\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#D35400\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#d35400\],
+[data-theme="tricolor"] .hover\:text-\[\#D35400\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#d35400\]:hover,
+[data-theme="tricolor"] .text-\[\#D35400\],
+[data-theme="tricolor"] .text-\[\#d35400\] {
+  color: #B4530C !important;
+}
+
+/* #E05615 → #C05E10 · primary hover, alt spelling */
+[data-theme="tricolor"] .border-\[\#E05615\],
+[data-theme="tricolor"] .border-\[\#e05615\],
+[data-theme="tricolor"] .focus\:border-\[\#E05615\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#e05615\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#E05615\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#e05615\],
+[data-theme="tricolor"] .hover\:border-\[\#E05615\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#e05615\]:hover {
+  border-color: #C05E10 !important;
+}
+[data-theme="tricolor"] .bg-\[\#E05615\],
+[data-theme="tricolor"] .bg-\[\#e05615\],
+[data-theme="tricolor"] .focus\:bg-\[\#E05615\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#e05615\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#E05615\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#e05615\],
+[data-theme="tricolor"] .hover\:bg-\[\#E05615\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#e05615\]:hover {
+  background-color: #C05E10 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#E05615\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#e05615\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#E05615\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#e05615\],
+[data-theme="tricolor"] .hover\:ring-\[\#E05615\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#e05615\]:hover,
+[data-theme="tricolor"] .ring-\[\#E05615\],
+[data-theme="tricolor"] .ring-\[\#e05615\] {
+  --tw-ring-color: #C05E10 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#E05615\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#e05615\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#E05615\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#e05615\],
+[data-theme="tricolor"] .hover\:text-\[\#E05615\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#e05615\]:hover,
+[data-theme="tricolor"] .text-\[\#E05615\],
+[data-theme="tricolor"] .text-\[\#e05615\] {
+  color: #C05E10 !important;
+}
+
+/* #E08E0B → #8F6A08 · amber hover → antique gold deep */
+[data-theme="tricolor"] .border-\[\#E08E0B\],
+[data-theme="tricolor"] .border-\[\#e08e0b\],
+[data-theme="tricolor"] .focus\:border-\[\#E08E0B\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#e08e0b\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#E08E0B\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#e08e0b\],
+[data-theme="tricolor"] .hover\:border-\[\#E08E0B\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#e08e0b\]:hover {
+  border-color: #8F6A08 !important;
+}
+[data-theme="tricolor"] .bg-\[\#E08E0B\],
+[data-theme="tricolor"] .bg-\[\#e08e0b\],
+[data-theme="tricolor"] .focus\:bg-\[\#E08E0B\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#e08e0b\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#E08E0B\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#e08e0b\],
+[data-theme="tricolor"] .hover\:bg-\[\#E08E0B\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#e08e0b\]:hover {
+  background-color: #8F6A08 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#E08E0B\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#e08e0b\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#E08E0B\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#e08e0b\],
+[data-theme="tricolor"] .hover\:ring-\[\#E08E0B\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#e08e0b\]:hover,
+[data-theme="tricolor"] .ring-\[\#E08E0B\],
+[data-theme="tricolor"] .ring-\[\#e08e0b\] {
+  --tw-ring-color: #8F6A08 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#E08E0B\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#e08e0b\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#E08E0B\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#e08e0b\],
+[data-theme="tricolor"] .hover\:text-\[\#E08E0B\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#e08e0b\]:hover,
+[data-theme="tricolor"] .text-\[\#E08E0B\],
+[data-theme="tricolor"] .text-\[\#e08e0b\] {
+  color: #8F6A08 !important;
+}
+
+/* #E4540D → #C05E10 · primary hover → saffron pressed */
+[data-theme="tricolor"] .border-\[\#E4540D\],
+[data-theme="tricolor"] .border-\[\#e4540d\],
+[data-theme="tricolor"] .focus\:border-\[\#E4540D\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#e4540d\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#E4540D\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#e4540d\],
+[data-theme="tricolor"] .hover\:border-\[\#E4540D\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#e4540d\]:hover {
+  border-color: #C05E10 !important;
+}
+[data-theme="tricolor"] .bg-\[\#E4540D\],
+[data-theme="tricolor"] .bg-\[\#e4540d\],
+[data-theme="tricolor"] .focus\:bg-\[\#E4540D\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#e4540d\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#E4540D\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#e4540d\],
+[data-theme="tricolor"] .hover\:bg-\[\#E4540D\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#e4540d\]:hover {
+  background-color: #C05E10 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#E4540D\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#e4540d\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#E4540D\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#e4540d\],
+[data-theme="tricolor"] .hover\:text-\[\#E4540D\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#e4540d\]:hover,
+[data-theme="tricolor"] .text-\[\#E4540D\],
+[data-theme="tricolor"] .text-\[\#e4540d\] {
+  color: #C05E10 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#E4540D\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#e4540d\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#E4540D\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#e4540d\],
+[data-theme="tricolor"] .hover\:ring-\[\#E4540D\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#e4540d\]:hover,
+[data-theme="tricolor"] .ring-\[\#E4540D\],
+[data-theme="tricolor"] .ring-\[\#e4540d\] {
+  --tw-ring-color: #C05E10 !important;
+}
+
+/* #EAFAF1 → #EDF6EA · light green surface → khadi green */
+[data-theme="tricolor"] .bg-\[\#EAFAF1\],
+[data-theme="tricolor"] .bg-\[\#eafaf1\],
+[data-theme="tricolor"] .focus\:bg-\[\#EAFAF1\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#eafaf1\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#EAFAF1\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#eafaf1\],
+[data-theme="tricolor"] .hover\:bg-\[\#EAFAF1\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#eafaf1\]:hover {
+  background-color: #EDF6EA !important;
+}
+[data-theme="tricolor"] .bg-\[\#EAFAF1\]\/20 {
+  background-color: rgb(237 246 234 / .2) !important;
+}
+[data-theme="tricolor"] .bg-\[\#EAFAF1\]\/30 {
+  background-color: rgb(237 246 234 / .3) !important;
+}
+[data-theme="tricolor"] .bg-\[\#EAFAF1\]\/40 {
+  background-color: rgb(237 246 234 / .4) !important;
+}
+[data-theme="tricolor"] .bg-\[\#EAFAF1\]\/5 {
+  background-color: rgb(237 246 234 / .05) !important;
+}
+[data-theme="tricolor"] .border-\[\#EAFAF1\],
+[data-theme="tricolor"] .border-\[\#eafaf1\],
+[data-theme="tricolor"] .focus\:border-\[\#EAFAF1\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#eafaf1\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#EAFAF1\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#eafaf1\],
+[data-theme="tricolor"] .hover\:border-\[\#EAFAF1\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#eafaf1\]:hover {
+  border-color: #EDF6EA !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#EAFAF1\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#eafaf1\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#EAFAF1\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#eafaf1\],
+[data-theme="tricolor"] .hover\:ring-\[\#EAFAF1\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#eafaf1\]:hover,
+[data-theme="tricolor"] .ring-\[\#EAFAF1\],
+[data-theme="tricolor"] .ring-\[\#eafaf1\] {
+  --tw-ring-color: #EDF6EA !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#EAFAF1\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#eafaf1\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#EAFAF1\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#eafaf1\],
+[data-theme="tricolor"] .hover\:text-\[\#EAFAF1\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#eafaf1\]:hover,
+[data-theme="tricolor"] .text-\[\#EAFAF1\],
+[data-theme="tricolor"] .text-\[\#eafaf1\] {
+  color: #EDF6EA !important;
+}
+
+/* #F2C94C → #DCBB5A · light amber → soft gold */
+[data-theme="tricolor"] .bg-\[\#F2C94C\],
+[data-theme="tricolor"] .bg-\[\#f2c94c\],
+[data-theme="tricolor"] .focus\:bg-\[\#F2C94C\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#f2c94c\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#F2C94C\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#f2c94c\],
+[data-theme="tricolor"] .hover\:bg-\[\#F2C94C\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#f2c94c\]:hover {
+  background-color: #DCBB5A !important;
+}
+[data-theme="tricolor"] .border-\[\#F2C94C\],
+[data-theme="tricolor"] .border-\[\#f2c94c\],
+[data-theme="tricolor"] .focus\:border-\[\#F2C94C\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#f2c94c\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#F2C94C\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#f2c94c\],
+[data-theme="tricolor"] .hover\:border-\[\#F2C94C\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#f2c94c\]:hover {
+  border-color: #DCBB5A !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#F2C94C\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#f2c94c\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#F2C94C\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#f2c94c\],
+[data-theme="tricolor"] .hover\:ring-\[\#F2C94C\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#f2c94c\]:hover,
+[data-theme="tricolor"] .ring-\[\#F2C94C\],
+[data-theme="tricolor"] .ring-\[\#f2c94c\] {
+  --tw-ring-color: #DCBB5A !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#F2C94C\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#f2c94c\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#F2C94C\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#f2c94c\],
+[data-theme="tricolor"] .hover\:text-\[\#F2C94C\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#f2c94c\]:hover,
+[data-theme="tricolor"] .text-\[\#F2C94C\],
+[data-theme="tricolor"] .text-\[\#f2c94c\] {
+  color: #DCBB5A !important;
+}
+
+/* #F39C12 → #B8860B · amber → antique gold */
+[data-theme="tricolor"] .bg-\[\#F39C12\],
+[data-theme="tricolor"] .bg-\[\#f39c12\],
+[data-theme="tricolor"] .focus\:bg-\[\#F39C12\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#f39c12\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#F39C12\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#f39c12\],
+[data-theme="tricolor"] .hover\:bg-\[\#F39C12\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#f39c12\]:hover {
+  background-color: #B8860B !important;
+}
+[data-theme="tricolor"] .bg-\[\#F39C12\]\/15 {
+  background-color: rgb(184 134 11 / .15) !important;
+}
+[data-theme="tricolor"] .border-\[\#F39C12\],
+[data-theme="tricolor"] .border-\[\#f39c12\],
+[data-theme="tricolor"] .focus\:border-\[\#F39C12\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#f39c12\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#F39C12\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#f39c12\],
+[data-theme="tricolor"] .hover\:border-\[\#F39C12\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#f39c12\]:hover {
+  border-color: #B8860B !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#F39C12\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#f39c12\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#F39C12\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#f39c12\],
+[data-theme="tricolor"] .hover\:ring-\[\#F39C12\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#f39c12\]:hover,
+[data-theme="tricolor"] .ring-\[\#F39C12\],
+[data-theme="tricolor"] .ring-\[\#f39c12\] {
+  --tw-ring-color: #B8860B !important;
+}
+[data-theme="tricolor"] .from-\[\#F39C12\] {
+  --tw-gradient-from: #B8860B var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(184 134 11 / ) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#F39C12\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#f39c12\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#F39C12\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#f39c12\],
+[data-theme="tricolor"] .hover\:text-\[\#F39C12\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#f39c12\]:hover,
+[data-theme="tricolor"] .text-\[\#F39C12\],
+[data-theme="tricolor"] .text-\[\#f39c12\] {
+  color: #B8860B !important;
+}
+
+/* #FB641B → #E2761B · primary action orange → deep saffron */
+[data-theme="tricolor"] .accent-\[\#FB641B\] {
+  accent-color: #E2761B !important;
+}
+[data-theme="tricolor"] .bg-\[\#FB641B\],
+[data-theme="tricolor"] .bg-\[\#fb641b\],
+[data-theme="tricolor"] .focus\:bg-\[\#FB641B\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#fb641b\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#FB641B\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#fb641b\],
+[data-theme="tricolor"] .hover\:bg-\[\#FB641B\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#fb641b\]:hover {
+  background-color: #E2761B !important;
+}
+[data-theme="tricolor"] .bg-\[\#FB641B\]\/10 {
+  background-color: rgb(226 118 27 / .1) !important;
+}
+[data-theme="tricolor"] .bg-\[\#FB641B\]\/40 {
+  background-color: rgb(226 118 27 / .4) !important;
+}
+[data-theme="tricolor"] .border-\[\#FB641B\],
+[data-theme="tricolor"] .border-\[\#fb641b\],
+[data-theme="tricolor"] .focus\:border-\[\#FB641B\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#fb641b\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#FB641B\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#fb641b\],
+[data-theme="tricolor"] .hover\:border-\[\#FB641B\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#fb641b\]:hover {
+  border-color: #E2761B !important;
+}
+[data-theme="tricolor"] .border-\[\#FB641B\]\/20 {
+  border-color: rgb(226 118 27 / .2) !important;
+}
+[data-theme="tricolor"] .border-\[\#FB641B\]\/30 {
+  border-color: rgb(226 118 27 / .3) !important;
+}
+[data-theme="tricolor"] .border-t-\[\#FB641B\] {
+  border-top-color: #E2761B !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#FB641B\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#fb641b\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#FB641B\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#fb641b\],
+[data-theme="tricolor"] .hover\:ring-\[\#FB641B\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#fb641b\]:hover,
+[data-theme="tricolor"] .ring-\[\#FB641B\],
+[data-theme="tricolor"] .ring-\[\#fb641b\] {
+  --tw-ring-color: #E2761B !important;
+}
+[data-theme="tricolor"] .ring-\[\#FB641B\]\/20 {
+  --tw-ring-color: rgb(226 118 27 / .2) !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#FB641B\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#fb641b\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#FB641B\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#fb641b\],
+[data-theme="tricolor"] .hover\:text-\[\#FB641B\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#fb641b\]:hover,
+[data-theme="tricolor"] .text-\[\#FB641B\],
+[data-theme="tricolor"] .text-\[\#fb641b\] {
+  color: #E2761B !important;
+}
+
+/* #FFF2EB → #FFF4E8 · orange tint surface → saffron tint */
+[data-theme="tricolor"] .bg-\[\#FFF2EB\],
+[data-theme="tricolor"] .bg-\[\#fff2eb\],
+[data-theme="tricolor"] .focus\:bg-\[\#FFF2EB\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#fff2eb\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#FFF2EB\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#fff2eb\],
+[data-theme="tricolor"] .hover\:bg-\[\#FFF2EB\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#fff2eb\]:hover {
+  background-color: #FFF4E8 !important;
+}
+[data-theme="tricolor"] .bg-\[\#FFF2EB\]\/10 {
+  background-color: rgb(255 244 232 / .1) !important;
+}
+[data-theme="tricolor"] .border-\[\#FFF2EB\],
+[data-theme="tricolor"] .border-\[\#fff2eb\],
+[data-theme="tricolor"] .focus\:border-\[\#FFF2EB\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#fff2eb\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#FFF2EB\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#fff2eb\],
+[data-theme="tricolor"] .hover\:border-\[\#FFF2EB\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#fff2eb\]:hover {
+  border-color: #FFF4E8 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#FFF2EB\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#fff2eb\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#FFF2EB\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#fff2eb\],
+[data-theme="tricolor"] .hover\:ring-\[\#FFF2EB\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#fff2eb\]:hover,
+[data-theme="tricolor"] .ring-\[\#FFF2EB\],
+[data-theme="tricolor"] .ring-\[\#fff2eb\] {
+  --tw-ring-color: #FFF4E8 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#FFF2EB\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#fff2eb\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#FFF2EB\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#fff2eb\],
+[data-theme="tricolor"] .hover\:text-\[\#FFF2EB\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#fff2eb\]:hover,
+[data-theme="tricolor"] .text-\[\#FFF2EB\],
+[data-theme="tricolor"] .text-\[\#fff2eb\] {
+  color: #FFF4E8 !important;
+}
+
+/* #FFF4EC → #FFF4E8 · orange tint surface → saffron tint */
+[data-theme="tricolor"] .bg-\[\#FFF4EC\],
+[data-theme="tricolor"] .bg-\[\#fff4ec\],
+[data-theme="tricolor"] .focus\:bg-\[\#FFF4EC\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#fff4ec\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#FFF4EC\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#fff4ec\],
+[data-theme="tricolor"] .hover\:bg-\[\#FFF4EC\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#fff4ec\]:hover {
+  background-color: #FFF4E8 !important;
+}
+[data-theme="tricolor"] .border-\[\#FFF4EC\],
+[data-theme="tricolor"] .border-\[\#fff4ec\],
+[data-theme="tricolor"] .focus\:border-\[\#FFF4EC\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#fff4ec\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#FFF4EC\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#fff4ec\],
+[data-theme="tricolor"] .hover\:border-\[\#FFF4EC\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#fff4ec\]:hover {
+  border-color: #FFF4E8 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#FFF4EC\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#fff4ec\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#FFF4EC\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#fff4ec\],
+[data-theme="tricolor"] .hover\:ring-\[\#FFF4EC\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#fff4ec\]:hover,
+[data-theme="tricolor"] .ring-\[\#FFF4EC\],
+[data-theme="tricolor"] .ring-\[\#fff4ec\] {
+  --tw-ring-color: #FFF4E8 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#FFF4EC\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#fff4ec\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#FFF4EC\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#fff4ec\],
+[data-theme="tricolor"] .hover\:text-\[\#FFF4EC\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#fff4ec\]:hover,
+[data-theme="tricolor"] .text-\[\#FFF4EC\],
+[data-theme="tricolor"] .text-\[\#fff4ec\] {
+  color: #FFF4E8 !important;
+}
+
+/* #FFF9E6 → #FFF8E7 · amber tint surface */
+[data-theme="tricolor"] .bg-\[\#FFF9E6\],
+[data-theme="tricolor"] .bg-\[\#fff9e6\],
+[data-theme="tricolor"] .focus\:bg-\[\#FFF9E6\]:focus,
+[data-theme="tricolor"] .focus\:bg-\[\#fff9e6\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#FFF9E6\],
+[data-theme="tricolor"] .group:hover .group-hover\:bg-\[\#fff9e6\],
+[data-theme="tricolor"] .hover\:bg-\[\#FFF9E6\]:hover,
+[data-theme="tricolor"] .hover\:bg-\[\#fff9e6\]:hover {
+  background-color: #FFF8E7 !important;
+}
+[data-theme="tricolor"] .border-\[\#FFF9E6\],
+[data-theme="tricolor"] .border-\[\#fff9e6\],
+[data-theme="tricolor"] .focus\:border-\[\#FFF9E6\]:focus,
+[data-theme="tricolor"] .focus\:border-\[\#fff9e6\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#FFF9E6\],
+[data-theme="tricolor"] .group:hover .group-hover\:border-\[\#fff9e6\],
+[data-theme="tricolor"] .hover\:border-\[\#FFF9E6\]:hover,
+[data-theme="tricolor"] .hover\:border-\[\#fff9e6\]:hover {
+  border-color: #FFF8E7 !important;
+}
+[data-theme="tricolor"] .focus\:ring-\[\#FFF9E6\]:focus,
+[data-theme="tricolor"] .focus\:ring-\[\#fff9e6\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#FFF9E6\],
+[data-theme="tricolor"] .group:hover .group-hover\:ring-\[\#fff9e6\],
+[data-theme="tricolor"] .hover\:ring-\[\#FFF9E6\]:hover,
+[data-theme="tricolor"] .hover\:ring-\[\#fff9e6\]:hover,
+[data-theme="tricolor"] .ring-\[\#FFF9E6\],
+[data-theme="tricolor"] .ring-\[\#fff9e6\] {
+  --tw-ring-color: #FFF8E7 !important;
+}
+[data-theme="tricolor"] .focus\:text-\[\#FFF9E6\]:focus,
+[data-theme="tricolor"] .focus\:text-\[\#fff9e6\]:focus,
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#FFF9E6\],
+[data-theme="tricolor"] .group:hover .group-hover\:text-\[\#fff9e6\],
+[data-theme="tricolor"] .hover\:text-\[\#FFF9E6\]:hover,
+[data-theme="tricolor"] .hover\:text-\[\#fff9e6\]:hover,
+[data-theme="tricolor"] .text-\[\#FFF9E6\],
+[data-theme="tricolor"] .text-\[\#fff9e6\] {
+  color: #FFF8E7 !important;
+}
+
+/* primary → #17376B · CRM blue → chakra navy */
+[data-theme="tricolor"] .accent-primary {
+  accent-color: #17376B !important;
+}
+[data-theme="tricolor"] .bg-primary,
+[data-theme="tricolor"] .hover\:bg-primary:hover {
+  background-color: #17376B !important;
+}
+[data-theme="tricolor"] .bg-primary\/10,
+[data-theme="tricolor"] .hover\:bg-primary\/10:hover {
+  background-color: rgb(23 55 107 / .1) !important;
+}
+[data-theme="tricolor"] .bg-primary\/30 {
+  background-color: rgb(23 55 107 / .3) !important;
+}
+[data-theme="tricolor"] .bg-primary\/40,
+[data-theme="tricolor"] .hover\:bg-primary\/40:hover {
+  background-color: rgb(23 55 107 / .4) !important;
+}
+[data-theme="tricolor"] .bg-primary\/50 {
+  background-color: rgb(23 55 107 / .5) !important;
+}
+[data-theme="tricolor"] .border-l-primary {
+  border-left-color: #17376B !important;
+}
+[data-theme="tricolor"] .border-primary\/20 {
+  border-color: rgb(23 55 107 / .2) !important;
+}
+[data-theme="tricolor"] .border-primary\/30 {
+  border-color: rgb(23 55 107 / .3) !important;
+}
+[data-theme="tricolor"] .border-primary\/40 {
+  border-color: rgb(23 55 107 / .4) !important;
+}
+[data-theme="tricolor"] .border-primary\/5 {
+  border-color: rgb(23 55 107 / .05) !important;
+}
+[data-theme="tricolor"] .border-t-primary {
+  border-top-color: #17376B !important;
+}
+[data-theme="tricolor"] .active\:border-primary:active,
+[data-theme="tricolor"] .border-primary,
+[data-theme="tricolor"] .focus-within\:border-primary:focus-within,
+[data-theme="tricolor"] .focus\:border-primary:focus,
+[data-theme="tricolor"] .hover\:border-primary:hover {
+  border-color: #17376B !important;
+}
+[data-theme="tricolor"] .focus-within\:ring-primary:focus-within,
+[data-theme="tricolor"] .focus\:ring-primary:focus,
+[data-theme="tricolor"] .ring-primary {
+  --tw-ring-color: #17376B !important;
+}
+[data-theme="tricolor"] .bg-primary\/20,
+[data-theme="tricolor"] .hover\:bg-primary\/20:hover {
+  background-color: rgb(23 55 107 / .2) !important;
+}
+[data-theme="tricolor"] .bg-primary\/5,
+[data-theme="tricolor"] .hover\:bg-primary\/5:hover {
+  background-color: rgb(23 55 107 / .05) !important;
+}
+[data-theme="tricolor"] .hover\:bg-primary\/80:hover {
+  background-color: rgb(23 55 107 / .8) !important;
+}
+[data-theme="tricolor"] .hover\:bg-primary\/90:hover {
+  background-color: rgb(23 55 107 / .9) !important;
+}
+[data-theme="tricolor"] .ring-primary\/20 {
+  --tw-ring-color: rgb(23 55 107 / .2) !important;
+}
+[data-theme="tricolor"] .shadow-primary\/20 {
+  --tw-shadow-color: rgb(23 55 107 / .2) !important;
+}
+[data-theme="tricolor"] .group:hover .group-hover\:text-primary,
+[data-theme="tricolor"] .hover\:text-primary:hover,
+[data-theme="tricolor"] .text-primary {
+  color: #17376B !important;
+}
+
+/* primary-container → #24508F · CRM blue hover → chakra navy soft */
+[data-theme="tricolor"] .bg-primary-container\/10,
+[data-theme="tricolor"] .hover\:bg-primary-container\/10:hover {
+  background-color: rgb(36 80 143 / .1) !important;
+}
+[data-theme="tricolor"] .bg-primary-container\/20 {
+  background-color: rgb(36 80 143 / .2) !important;
+}
+[data-theme="tricolor"] .bg-primary-container\/30 {
+  background-color: rgb(36 80 143 / .3) !important;
+}
+[data-theme="tricolor"] .bg-primary-container\/5 {
+  background-color: rgb(36 80 143 / .05) !important;
+}
+[data-theme="tricolor"] .border-primary-container\/30 {
+  border-color: rgb(36 80 143 / .3) !important;
+}
+[data-theme="tricolor"] .border-primary-container,
+[data-theme="tricolor"] .focus\:border-primary-container:focus {
+  border-color: #24508F !important;
+}
+[data-theme="tricolor"] .focus\:ring-primary-container:focus,
+[data-theme="tricolor"] .ring-primary-container {
+  --tw-ring-color: #24508F !important;
+}
+[data-theme="tricolor"] .bg-primary-container,
+[data-theme="tricolor"] .hover\:bg-primary-container:hover {
+  background-color: #24508F !important;
+}
+[data-theme="tricolor"] .hover\:text-primary-container:hover,
+[data-theme="tricolor"] .text-primary-container {
+  color: #24508F !important;
+}
+
+/* primary-fixed → #DCE4F2 · blue tint → navy tint */
+[data-theme="tricolor"] .bg-primary-fixed,
+[data-theme="tricolor"] .hover\:bg-primary-fixed:hover {
+  background-color: #DCE4F2 !important;
+}
+[data-theme="tricolor"] .bg-primary-fixed\/10 {
+  background-color: rgb(220 228 242 / .1) !important;
+}
+[data-theme="tricolor"] .bg-primary-fixed\/20 {
+  background-color: rgb(220 228 242 / .2) !important;
+}
+[data-theme="tricolor"] .bg-primary-fixed\/30 {
+  background-color: rgb(220 228 242 / .3) !important;
+}
+[data-theme="tricolor"] .text-primary-fixed {
+  color: #DCE4F2 !important;
+}
+
+/* secondary → #B4530C · rust → burnt saffron */
+[data-theme="tricolor"] .bg-secondary {
+  background-color: #B4530C !important;
+}
+[data-theme="tricolor"] .bg-secondary\/10 {
+  background-color: rgb(180 83 12 / .1) !important;
+}
+[data-theme="tricolor"] .bg-secondary\/20 {
+  background-color: rgb(180 83 12 / .2) !important;
+}
+[data-theme="tricolor"] .bg-secondary\/30 {
+  background-color: rgb(180 83 12 / .3) !important;
+}
+[data-theme="tricolor"] .bg-secondary\/40 {
+  background-color: rgb(180 83 12 / .4) !important;
+}
+[data-theme="tricolor"] .bg-secondary\/50 {
+  background-color: rgb(180 83 12 / .5) !important;
+}
+[data-theme="tricolor"] .border-l-secondary {
+  border-left-color: #B4530C !important;
+}
+[data-theme="tricolor"] .border-secondary {
+  border-color: #B4530C !important;
+}
+[data-theme="tricolor"] .border-secondary\/20 {
+  border-color: rgb(180 83 12 / .2) !important;
+}
+[data-theme="tricolor"] .hover\:bg-secondary\/5:hover {
+  background-color: rgb(180 83 12 / .05) !important;
+}
+[data-theme="tricolor"] .text-secondary {
+  color: #B4530C !important;
+}
+
+/* secondary-container → #E2761B · bright orange → deep saffron */
+[data-theme="tricolor"] .bg-secondary-container,
+[data-theme="tricolor"] .hover\:bg-secondary-container:hover {
+  background-color: #E2761B !important;
+}
+[data-theme="tricolor"] .bg-secondary-container\/10 {
+  background-color: rgb(226 118 27 / .1) !important;
+}
+[data-theme="tricolor"] .bg-secondary-container\/30 {
+  background-color: rgb(226 118 27 / .3) !important;
+}
+[data-theme="tricolor"] .bg-secondary-container\/5 {
+  background-color: rgb(226 118 27 / .05) !important;
+}
+[data-theme="tricolor"] .bg-secondary-container\/80 {
+  background-color: rgb(226 118 27 / .8) !important;
+}
+[data-theme="tricolor"] .border-secondary-container {
+  border-color: #E2761B !important;
+}
+[data-theme="tricolor"] .border-secondary-container\/20 {
+  border-color: rgb(226 118 27 / .2) !important;
+}
+[data-theme="tricolor"] .hover\:text-secondary-container:hover,
+[data-theme="tricolor"] .text-secondary-container {
+  color: #E2761B !important;
+}
+
+/* surface-tint → #17376B · tint → chakra navy */
+[data-theme="tricolor"] .text-surface-tint {
+  color: #17376B !important;
+}
+
+/* tertiary → #B4530C · dark orange → burnt saffron */
+[data-theme="tricolor"] .bg-tertiary {
+  background-color: #B4530C !important;
+}
+[data-theme="tricolor"] .bg-tertiary\/10 {
+  background-color: rgb(180 83 12 / .1) !important;
+}
+[data-theme="tricolor"] .border-l-tertiary {
+  border-left-color: #B4530C !important;
+}
+[data-theme="tricolor"] .border-tertiary\/20 {
+  border-color: rgb(180 83 12 / .2) !important;
+}
+[data-theme="tricolor"] .hover\:border-tertiary:hover {
+  border-color: #B4530C !important;
+}
+[data-theme="tricolor"] .hover\:text-tertiary:hover,
+[data-theme="tricolor"] .text-tertiary {
+  color: #B4530C !important;
+}
+
+/* tertiary-container → #C05E10 · orange container → saffron pressed */
+[data-theme="tricolor"] .bg-tertiary-container,
+[data-theme="tricolor"] .hover\:bg-tertiary-container:hover {
+  background-color: #C05E10 !important;
+}
+[data-theme="tricolor"] .bg-tertiary-container\/10 {
+  background-color: rgb(192 94 16 / .1) !important;
+}
+[data-theme="tricolor"] .bg-tertiary-container\/20 {
+  background-color: rgb(192 94 16 / .2) !important;
+}
+[data-theme="tricolor"] .bg-tertiary-container\/30 {
+  background-color: rgb(192 94 16 / .3) !important;
+}
+[data-theme="tricolor"] .bg-tertiary-container\/40 {
+  background-color: rgb(192 94 16 / .4) !important;
+}
+[data-theme="tricolor"] .bg-tertiary-container\/60 {
+  background-color: rgb(192 94 16 / .6) !important;
+}
+[data-theme="tricolor"] .bg-tertiary-container\/80 {
+  background-color: rgb(192 94 16 / .8) !important;
+}
+[data-theme="tricolor"] .bg-tertiary-container\/90 {
+  background-color: rgb(192 94 16 / .9) !important;
+}
+[data-theme="tricolor"] .border-l-tertiary-container {
+  border-left-color: #C05E10 !important;
+}
+[data-theme="tricolor"] .border-tertiary-container {
+  border-color: #C05E10 !important;
+}
+[data-theme="tricolor"] .hover\:bg-tertiary-container\/5:hover {
+  background-color: rgb(192 94 16 / .05) !important;
+}
+[data-theme="tricolor"] .text-tertiary-container {
+  color: #C05E10 !important;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   ELEGANT MICRO-ANIMATIONS & GLOBAL SCREEN ENHANCEMENTS
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes tricolor-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(226, 118, 27, 0.35), 0 1px 3px rgba(12, 36, 80, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(19, 136, 8, 0.12), 0 4px 12px rgba(12, 36, 80, 0.12);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 22s linear infinite;
+}
+
+.animate-tricolor-pulse {
+  animation: tricolor-pulse 2.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Global Card & Tile Elegance across ALL Screens */
+[data-theme="tricolor"] .bg-white.border:not(header):not(aside) {
+  border-color: rgba(184, 134, 11, 0.18) !important;
+  box-shadow: 0 2px 8px -2px rgba(12, 36, 80, 0.05), 0 0 0 1px rgba(184, 134, 11, 0.08);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="tricolor"] .bg-white.border:not(header):not(aside):hover {
+  border-color: rgba(226, 118, 27, 0.32) !important;
+  box-shadow: 0 8px 22px -4px rgba(12, 36, 80, 0.09), 0 0 0 1px rgba(226, 118, 27, 0.25);
+}
+
+/* KPI Card & Tile Styling */
+[data-theme="tricolor"] .bg-purple-50,
+[data-theme="tricolor"] .bg-indigo-50 {
+  background-color: #FFF8F0 !important;
+  border-color: rgba(226, 118, 27, 0.2) !important;
+}
+
+[data-theme="tricolor"] .bg-green-50,
+[data-theme="tricolor"] .bg-emerald-50 {
+  background-color: #F2F9F0 !important;
+  border-color: rgba(19, 136, 8, 0.2) !important;
+}
+
+[data-theme="tricolor"] .bg-amber-50 {
+  background-color: #FFFDF2 !important;
+  border-color: rgba(184, 134, 11, 0.25) !important;
+}
+
+[data-theme="tricolor"] .bg-blue-50,
+[data-theme="tricolor"] .bg-sky-50 {
+  background-color: #F0F4FA !important;
+  border-color: rgba(23, 55, 107, 0.2) !important;
+}
+
+/* Global Table Enhancements Across All Screens */
+[data-theme="tricolor"] table tr:hover {
+  background-color: rgba(255, 244, 232, 0.35) !important;
+}
+
+[data-theme="tricolor"] thead tr {
+  background-color: rgba(23, 55, 107, 0.03) !important;
+  border-bottom: 2px solid rgba(226, 118, 27, 0.25) !important;
+}
+
+/* Form Input & Filter Enhancements */
+[data-theme="tricolor"] input:focus,
+[data-theme="tricolor"] select:focus,
+[data-theme="tricolor"] textarea:focus {
+  border-color: var(--tm-saffron) !important;
+  box-shadow: 0 0 0 3px rgba(226, 118, 27, 0.15) !important;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   DYNAMIC ANIMATED PAGE BACKGROUND & MIND-BLOWING UI/UX
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+@keyframes tricolor-bg-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Dynamic Animated Background Across ALL Screens & Roles
+   Uses a fixed pseudo-element on html so the gradient fills the viewport
+   without ever making body scrollable (body stays overflow:hidden). */
+[data-theme="tricolor"] html,
+[data-theme="tricolor"] body {
+  /* Prevent the body from ever growing its own scrollbar */
+  overflow: hidden !important;
+  height: 100% !important;
+}
+
+/* Soft ambient background overlay lives on html */
+[data-theme="tricolor"] html {
+  background-color: #F8FAFC !important;
+  background-image:
+    radial-gradient(circle at 10% 10%, rgba(255, 153, 51, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 90% 10%, rgba(19, 136, 8, 0.08) 0%, transparent 40%),
+    linear-gradient(135deg, #F8FAFC 0%, #FAFBFD 100%) !important;
+  background-attachment: fixed !important;
+}
+
+/* Allow body background animation to show through main layout wrappers across ALL roles */
+[data-theme="tricolor"] main,
+[data-theme="tricolor"] .bg-gray-50,
+[data-theme="tricolor"] .bg-background,
+[data-theme="tricolor"] .bg-slate-50,
+[data-theme="tricolor"] .bg-gray-100\/50,
+[data-theme="tricolor"] .bg-gray-50\/50 {
+  background-color: transparent !important;
+}
+
+/* …but NEVER inside a dialog.
+   The rule above is meant for page wrappers, where letting the festive
+   background through is the whole point. It matched by class alone, so it also
+   dissolved every modal panel built on bg-gray-50 — the driver profile modal
+   rendered fully see-through, with the page's own cards legible straight
+   through the dialog on top of them. A dialog has to be an opaque surface or
+   it cannot be read; anything inside a fixed overlay gets its surface back. */
+[data-theme="tricolor"] .fixed main,
+[data-theme="tricolor"] .fixed .bg-gray-50,
+[data-theme="tricolor"] .fixed .bg-background,
+[data-theme="tricolor"] .fixed .bg-slate-50,
+[data-theme="tricolor"] .fixed .bg-gray-100\/50,
+[data-theme="tricolor"] .fixed .bg-gray-50\/50 {
+  background-color: #F7F8FA !important;
+}
+
+/* Same for white panels. The glassmorphism rule further down puts every white
+   surface at 86% alpha, which is a pleasant frost on a card sitting on the page
+   and a defect on a DIALOG: the disposition form and the driver profile modal
+   both rendered with the screen behind them legible straight through the text.
+   A dialog is a surface you read a form on — it is opaque, everywhere.
+   Specificity (0,2,0) beats the blanket rule's (0,1,2), so this wins wherever
+   the two overlap regardless of source order. */
+[data-theme="tricolor"] .fixed .bg-white,
+[data-theme="tricolor"] .fixed.bg-white,
+[data-theme="tricolor"] .fixed .bg-white\/95,
+[data-theme="tricolor"] .fixed .bg-white\/90 {
+  background-color: #FFFFFF !important;
+  backdrop-filter: none !important;
+}
+
+/* And give the scrim enough weight to separate the dialog from the page. */
+[data-theme="tricolor"] .fixed > .bg-black\/40,
+[data-theme="tricolor"] .fixed.bg-black\/40 {
+  background-color: rgb(12 36 80 / 0.45) !important;
+}
+
+/* Hide the DashboardLayout outer wrapper's own scrollbar — queue pages (DW, WCT)
+   manage scroll internally; other pages still scroll via the same wrapper but
+   the scrollbar is hidden visually while remaining functional. */
+[data-theme="tricolor"] .bg-background.overflow-y-auto {
+  scrollbar-width: none !important;      /* Firefox */
+  -ms-overflow-style: none !important;   /* IE/Edge */
+}
+[data-theme="tricolor"] .bg-background.overflow-y-auto::-webkit-scrollbar {
+  display: none !important;              /* Chrome/Safari */
+}
+
+
+/* Elevate white cards with translucent glassmorphism + 18px rounded corners +
+   gold hairline border for all roles.
+
+   NO backdrop-filter, and NO transform on hover — deliberately.
+
+   Both properties create a STACKING CONTEXT on the element they touch, and this
+   selector matches essentially every white surface in the CRM. That trapped
+   every popover inside its own card: the matchmaking job board's search results
+   are absolutely positioned with z-40 inside the white header, and once the
+   header became a stacking context the z-40 could no longer escape it, so the
+   panels further down the page — later in DOM order, and stacking contexts
+   themselves — painted straight over the results. The dropdown was rendering
+   correctly the whole time; it was being covered.
+
+   The hover transform made it worse rather than being an edge case: the pointer
+   sits inside the header while the agent types, so the card was lifted (and a
+   stacking context) exactly when the dropdown was open.
+
+   background-color, border-radius and box-shadow create no stacking context, so
+   the glass look survives; the blur was contributing almost nothing over an 86%
+   white fill anyway, and dropping it also spares a full-surface blur repaint on
+   every scroll of a long table. Where a lift IS wanted, use .tm-tile — it is
+   opt-in per component, so it can never sit between a popover and the screen. */
+[data-theme="tricolor"] .bg-white:not(header):not(aside) {
+  background-color: rgba(255, 255, 255, 0.86) !important;
+  border-radius: 18px !important;
+  border-color: rgba(255, 153, 51, 0.18) !important;
+  box-shadow: 0 4px 20px -2px rgba(11, 61, 145, 0.05), 0 0 0 1px rgba(255, 153, 51, 0.12) !important;
+  transition: border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+[data-theme="tricolor"] .bg-white:not(header):not(aside):hover {
+  border-color: rgba(255, 153, 51, 0.35) !important;
+  box-shadow: 0 8px 25px -4px rgba(11, 61, 145, 0.1), 0 0 0 1px rgba(255, 153, 51, 0.3) !important;
+}
+
+/* Primary Enterprise Navy Buttons (#0B3D91) */
+[data-theme="tricolor"] button.bg-primary,
+[data-theme="tricolor"] button[class*="bg-[#111827]"]:not([class*="bg-[#111827]/"]),
+[data-theme="tricolor"] button[class*="bg-[#1F2937]"]:not([class*="bg-[#1F2937]/"]),
+[data-theme="tricolor"] button[class*="bg-[#17376B]"]:not([class*="bg-[#17376B]/"]) {
+  background-color: #0B3D91 !important;
+  color: #FFFFFF !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 14px rgba(11, 61, 145, 0.3) !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-theme="tricolor"] button.bg-primary:hover,
+[data-theme="tricolor"] button[class*="bg-[#111827]"]:not([class*="bg-[#111827]/"]):hover,
+[data-theme="tricolor"] button[class*="bg-[#1F2937]"]:not([class*="bg-[#1F2937]/"]):hover,
+[data-theme="tricolor"] button[class*="bg-[#17376B]"]:not([class*="bg-[#17376B]/"]):hover {
+  background-color: #082D6C !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 18px rgba(11, 61, 145, 0.4) !important;
+}
+
+/* Success Buttons (#138808 / Emerald) */
+[data-theme="tricolor"] button[class*="bg-[#27AE60]"]:not([class*="bg-[#27AE60]/"]),
+[data-theme="tricolor"] button[class*="bg-[#138808]"]:not([class*="bg-[#138808]/"]),
+[data-theme="tricolor"] button[class*="bg-[#219653]"]:not([class*="bg-[#219653]/"]) {
+  background-color: #138808 !important;
+  color: #FFFFFF !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 14px rgba(19, 136, 8, 0.3) !important;
+  transition: all 0.2s ease !important;
+}
+
+/* KPI Card Fills for All Roles */
+[data-theme="tricolor"] .bg-purple-50,
+[data-theme="tricolor"] .bg-indigo-50 {
+  background-color: rgba(255, 244, 232, 0.85) !important;
+  border-color: rgba(226, 118, 27, 0.25) !important;
+}
+
+[data-theme="tricolor"] .bg-green-50,
+[data-theme="tricolor"] .bg-emerald-50 {
+  background-color: rgba(237, 246, 234, 0.85) !important;
+  border-color: rgba(19, 136, 8, 0.25) !important;
+}
+
+[data-theme="tricolor"] .bg-amber-50 {
+  background-color: rgba(255, 253, 242, 0.85) !important;
+  border-color: rgba(184, 134, 11, 0.3) !important;
+}
+
+[data-theme="tricolor"] .bg-blue-50,
+[data-theme="tricolor"] .bg-sky-50 {
+  background-color: rgba(240, 244, 250, 0.85) !important;
+  border-color: rgba(11, 61, 145, 0.25) !important;
+}
+
+/* SLA Watch & Alert Callout Cards */
+[data-theme="tricolor"] .border-amber-200,
+[data-theme="tricolor"] .border-red-200 {
+  border-color: rgba(226, 118, 27, 0.35) !important;
+  box-shadow: 0 4px 14px rgba(226, 118, 27, 0.1) !important;
+}
+
+/* Shimmering Dynamic Tricolor Progress Bars */
+[data-theme="tricolor"] .bg-primary[style*="width"],
+[data-theme="tricolor"] [class*="bg-green-"][style*="width"],
+[data-theme="tricolor"] [class*="bg-emerald-"][style*="width"],
+[data-theme="tricolor"] [class*="bg-purple-"][style*="width"] {
+  background-image: linear-gradient(90deg, #FF9933 0%, #FFFFFF 50%, #138808 100%) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+[data-theme="tricolor"] .bg-primary[style*="width"]::after,
+[data-theme="tricolor"] [class*="bg-green-"][style*="width"]::after,
+[data-theme="tricolor"] [class*="bg-emerald-"][style*="width"]::after,
+[data-theme="tricolor"] [class*="bg-purple-"][style*="width"]::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 0; left: 0; right: 0; bottom: 0 !important;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent) !important;
+  animation: shimmer-sweep 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
+}
+
+/* Glassmorphic Glowing Accent Containers.
+   backdrop-filter removed for the same reason as the .bg-white rule above — it
+   makes every card a stacking context and buries any dropdown rendered inside. */
+[data-theme="tricolor"] .flipkart-shadow {
+  box-shadow: 0 4px 20px -2px rgba(11, 61, 145, 0.07), 0 0 0 1px rgba(255, 153, 51, 0.15) !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   SAN CTI DIALER MODAL & DRAWER TRI-COLOR SKIN
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+/* Floating Call Control Bar (CTI Dialer) */
+[data-theme="tricolor"] div[style*="position: fixed"][style*="bottom: 24"],
+[data-theme="tricolor"] div[style*="position: fixed"][style*="bottom: 96"] {
+  background: linear-gradient(135deg, #0C2450 0%, #17376B 100%) !important;
+  border: 1px solid rgba(184, 134, 11, 0.4) !important;
+  box-shadow: 0 12px 35px -5px rgba(12, 36, 80, 0.5), 0 0 15px rgba(255, 153, 51, 0.2) !important;
+}
+
+/* Post-Call Disposition Modal */
+[data-theme="tricolor"] div[class*="fixed"][class*="z-50"] .bg-white,
+[data-theme="tricolor"] div[class*="fixed"][class*="z-40"] .bg-white {
+  border: 1.5px solid rgba(184, 134, 11, 0.3) !important;
+  box-shadow: 0 16px 40px -8px rgba(12, 36, 80, 0.25) !important;
+}
+
+/* CTI Action Buttons */
+[data-theme="tricolor"] button[class*="bg-[#27AE60]"]:not([class*="bg-[#27AE60]/"]),
+[data-theme="tricolor"] button[class*="bg-[#219653]"]:not([class*="bg-[#219653]/"]) {
+  background-image: linear-gradient(180deg, #189E0B 0%, var(--tm-green) 58%, var(--tm-green-deep) 100%) !important;
+  box-shadow: 0 2px 8px rgba(19, 136, 8, 0.3) !important;
+}
+
+[data-theme="tricolor"] button[class*="bg-[#FB641B]"]:not([class*="bg-[#FB641B]/"]),
+[data-theme="tricolor"] button[class*="bg-[#E05615]"]:not([class*="bg-[#E05615]/"]) {
+  background-image: linear-gradient(180deg, var(--tm-saffron-lift) 0%, var(--tm-saffron) 55%, var(--tm-saffron-deep) 100%) !important;
+  box-shadow: 0 2px 8px rgba(226, 118, 27, 0.3) !important;
+}
+
+
+

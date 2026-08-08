@@ -621,10 +621,14 @@ export const DwCallHistory: React.FC = () => {
                       <span className="text-sm text-gray-800 font-bold">{selectedRecord.wrapup_durn}</span>
                     </div>
                   )}
-                  {selectedRecord.san_agent_name && (
+                  {selectedRecord.recording_source && (
                     <div className="col-span-2">
-                      <label className="text-[10.5px] text-gray-400 font-bold block">SAN Agent Name</label>
-                      <span className="text-sm text-gray-800 font-semibold">{selectedRecord.san_agent_name}</span>
+                      <label className="text-[10.5px] text-gray-400 font-bold block">Recording Source</label>
+                      <span className="text-sm text-gray-800 font-semibold">
+                        {selectedRecord.recording_source === 'web-ivr' ? 'SAN (web dialer)'
+                          : selectedRecord.recording_source === 'ivr' ? 'EasyGo IVR'
+                          : 'Manual upload'}
+                      </span>
                     </div>
                   )}
                   <div className="col-span-2">

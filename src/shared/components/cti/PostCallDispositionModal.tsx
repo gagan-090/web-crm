@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useSanCti } from './SanCtiContext';
+import { readPendingMmContext } from './mmCallContext';
+import { isIdvCall } from './idvCallContext';
+import CouponCodePanel from '../business/CouponCodePanel';
 import { useTriggerMockConversionMutation } from '../../../services/api/incentiveApi';
 import { useAuth } from '../../../app/providers/AuthProvider';
+import useCrmTheme from '../../theme/useCrmTheme';
+import AshokaChakra from '../AshokaChakra';
 
 interface PostCallDispositionModalProps {
   driverName?: string;
@@ -100,6 +105,7 @@ export const MM_DRIVER_CONNECTED_OPTIONS = [
   { value: 'not_interested_location',   label: 'Not Interested - Location Issue',        label_hi: 'लोकेशन की समस्या' },
   { value: 'not_interested_vehicle',    label: 'Not Interested - Vehicle Mismatch',      label_hi: 'गाड़ी टाइप मैच नहीं' },
   { value: 'not_genuine_driver',        label: 'Not a Genuine Driver',                   label_hi: 'जेन्युइन ड्राइवर नहीं' },
+  { value: 'interview_done',            label: 'Interview Done',                         label_hi: 'इंटरव्यू हो गया' },
   { value: 'placement_done',            label: 'MatchMaking Done (Placement)',           label_hi: 'मैचमेकिंग / प्लेसमेंट हो गई' },
   { value: 'will_confirm_later',        label: 'Will Confirm Later',                     label_hi: 'बाद में कन्फर्म करेंगे' },
   { value: 'rejected',                  label: 'Rejected by Driver/Transporter',         label_hi: 'रिजेक्ट हो गया' },
@@ -141,12 +147,16 @@ export default function PostCallDispositionModal({
   driverTmid,
   onDispositionComplete,
 }: PostCallDispositionModalProps) {
+  const { isTricolor: IS_TRICOLOR_THEME } = useCrmTheme();
   const {
     showDispositionForm,
     callDuration,
+    callWasAnswered,
     submitDisposition,
     currentLeadName,
     currentLeadTmid,
+    currentLeadType,
+    currentLeadId,
   } = useSanCti();
 
   const { user } = useAuth();
@@ -171,11 +181,20 @@ export default function PostCallDispositionModal({
   const [languageNoted, setLanguageNoted] = useState<string>('');
   const [feedbackStage, setFeedbackStage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  // Why the last save was rejected. submitDisposition throws instead of
+  // resetting the call when Laravel refuses the disposition, so the form stays
+  // open with everything the agent typed still in it and this explains why.
+  const [submitError, setSubmitError] = useState<string>('');
 
-  // callDuration only ever counts up once SAN confirms Answer (or the mock-call
-  // simulation), so > 0 here means the call definitely connected at some point
-  // this session — even though SAN doesn't always reliably confirm Hangup too.
-  const wasConnected = callDuration > 0;
+  // Did this call actually connect? Two independent signals, either is proof:
+  //   • callWasAnswered — SAN reported exten_status 'Answer' (authoritative);
+  //   • callDuration > 0 — the timer only ever runs after that same Answer.
+  // The duration alone is NOT enough: a call answered and dropped inside one
+  // second still reads 0s, and the agent was then free to file it as
+  // "Not Connected → Ringing / No Answer" on a row the backend had already
+  // marked connected. Whenever this is true the whole not-connected branch is
+  // removed from the form, so that contradiction can no longer be entered.
+  const wasConnected = callWasAnswered || callDuration > 0;
 
   // Reset form when modal opens. Pre-select "Connected" when we already know
   // it connected — selecting "Not Connected" would just be factually wrong.
@@ -191,27 +210,68 @@ export default function PostCallDispositionModal({
       setPaymentId('');
       setLanguageNoted('');
       setFeedbackStage('');
+      setSubmitError('');
     }
   }, [showDispositionForm]);
 
   if (!showDispositionForm) return null;
 
-  // Role detection
-  const isDriverWelcome = user?.role?.includes('DW') || user?.role?.includes('Welcome');
-  const isTransporterWelcome = user?.role?.includes('TW') || user?.role?.includes('Transporter');
-  const isMatchmaking = user?.role?.includes('MM') || user?.role?.includes('Match');
+  // The ID Verification desk files its own disposition — its sub-dispositions
+  // (court-check consent, document mismatch…) exist nowhere in this form, and
+  // the welcome-call options below cannot describe a verification call at all.
+  // That desk's modal opens off the same showDispositionForm flag.
+  if (isIdvCall(currentLeadId)) return null;
 
-  // Matchmaking call context (kind + greenline) — written to localStorage by
-  // useMmCallFlow on dial, read here to pick the right connected sub-options.
-  let mmCtx: { kind?: string; isGreenline?: boolean } | null = null;
-  if (isMatchmaking) {
-    try { mmCtx = JSON.parse(localStorage.getItem('mm_pending_call_context') || 'null'); } catch { mmCtx = null; }
-  }
+  // Which disposition form to show is decided by THE CALL, not by the agent's
+  // desk. A Matchmaking agent places two completely different kinds of call:
+  //
+  //   • job-matching calls, dialled from a job (MmJobDetail / applicant list /
+  //     Greenline) through useMmCallFlow, which stamps mm_pending_call_context
+  //     with the job id and the lead it dialled. Nothing else writes it.
+  //   • onboarding calls — My Queue, global search, Campaign Leads, call
+  //     history. There is no job on the other end of these, so the agent needs
+  //     the welcome-call feedback (Agree for Subscription, Already Subscribed,
+  //     Wrong Number…), exactly as a Driver/Transporter Welcome caller gets.
+  //
+  // Keying the form on the MM role alone put the job-matching options
+  // ("Interested in the Job", "Salary Too Low"…) on every queue call, where
+  // none of them can be answered. The leadId check matters as much as the
+  // presence check: the context is only cleared by a completed disposition on
+  // an MM page, so one abandoned job call would otherwise leave a record behind
+  // that hijacks every later dial.
+  const isCampaignCall = currentLeadType === 'social_media';
+  const isMatchmakingRole = user?.role?.includes('MM') || user?.role?.includes('Match');
+
+  const mmPendingCtx = isMatchmakingRole ? readPendingMmContext() : null;
+  const isJobMatchingCall = !!mmPendingCtx?.jobId
+    && String(mmPendingCtx.leadId ?? '') === String(currentLeadId ?? '');
+  const isMatchmaking = isMatchmakingRole && !isCampaignCall && isJobMatchingCall;
+
+  // On an onboarding call the script follows the LEAD's own role — a
+  // transporter gets the transporter welcome flow, everything else the driver
+  // one — which is how the dedicated DW/WCT desks already behave.
+  const isTransporterWelcome = !isMatchmaking && (
+    user?.role?.includes('TW') || user?.role?.includes('Transporter') ||
+    (isMatchmakingRole && currentLeadType === 'transporter')
+  );
+  const isDriverWelcome = !isMatchmaking && (
+    user?.role?.includes('DW') || user?.role?.includes('Welcome') || isMatchmakingRole
+  );
+
+  // Matchmaking call context (kind + greenline) — picks the right connected
+  // sub-options. Only meaningful once the call is confirmed job-matching.
+  const mmCtx = isMatchmaking ? mmPendingCtx : null;
   const mmIsTransporterCall = mmCtx?.kind === 'transporter';
   const mmIsGreenline = !!mmCtx?.isGreenline;
+  // Greenline jobs carry their own badged "Interview Done"
+  // (greenline_interview_done), so the generic driver one is dropped there —
+  // two identically-labelled radios in one group is a coin flip for the agent.
+  const mmDriverOptions = mmIsGreenline
+    ? MM_DRIVER_CONNECTED_OPTIONS.filter(o => o.value !== 'interview_done')
+    : MM_DRIVER_CONNECTED_OPTIONS;
   const mmConnectedOptions = mmIsTransporterCall
     ? MM_TRANSPORTER_CONNECTED_OPTIONS
-    : [...MM_DRIVER_CONNECTED_OPTIONS, ...(mmIsGreenline ? MM_GREENLINE_CONNECTED_OPTIONS : [])];
+    : [...mmDriverOptions, ...(mmIsGreenline ? MM_GREENLINE_CONNECTED_OPTIONS : [])];
 
   const getCalculatedCallbackTime = (interval: string): string => {
     const now = new Date();
@@ -270,6 +330,7 @@ export default function PostCallDispositionModal({
   const handleSubmit = async (loadNext: boolean | 'stay') => {
     if (!canSubmit() || isSubmitting) return;
     setIsSubmitting(true);
+    setSubmitError('');
 
     let finalCallbackAt = null;
     let finalCallbackSub = null;
@@ -323,8 +384,13 @@ export default function PostCallDispositionModal({
       if (onDispositionComplete) {
         onDispositionComplete({ ...result, loadNext });
       }
-    } catch (err) {
+    } catch (err: any) {
+      // The call is still open and every field the agent filled in is still
+      // here — show the reason and let them press Save again. Previously this
+      // swallowed the error, the modal closed anyway and the disposition was
+      // gone with nothing to indicate it.
       console.error('[Disposition] Submit failed:', err);
+      setSubmitError(err?.message || 'Could not save this disposition. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -345,17 +411,45 @@ export default function PostCallDispositionModal({
     }}>
       <div style={{
         backgroundColor: '#fff',
-        borderRadius: 16,
+        borderRadius: 20,
         width: '95%',
-        maxWidth: 520,
+        maxWidth: 540,
         maxHeight: '92vh',
         overflow: 'auto',
         padding: 24,
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        position: 'relative',
+        boxShadow: IS_TRICOLOR_THEME 
+          ? '0 20px 50px -10px rgba(12, 36, 80, 0.3), 0 0 0 1.5px rgba(184, 134, 11, 0.35), 0 0 25px rgba(255, 153, 51, 0.15)'
+          : '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+        border: IS_TRICOLOR_THEME ? '1px solid rgba(184, 134, 11, 0.35)' : 'none',
       }}>
+        {/* Tri-Color Top Accent Line */}
+        {IS_TRICOLOR_THEME && (
+          <div style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, height: 4,
+            background: 'linear-gradient(90deg, #FF9933 0%, #FFFFFF 50%, #138808 100%)',
+            borderRadius: '20px 20px 0 0',
+          }} />
+        )}
+
         {/* Header */}
         <div style={{ marginBottom: 20, borderBottom: '1px solid #F3F4F6', paddingBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111827' }}>
+          {IS_TRICOLOR_THEME && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 800,
+                background: 'linear-gradient(90deg, rgba(255,153,51,0.2) 0%, rgba(255,255,255,0.9) 50%, rgba(19,136,8,0.2) 100%)',
+                color: '#17376B', border: '1px solid rgba(184,134,11,0.3)', textTransform: 'uppercase', letterSpacing: '0.05em'
+              }}>
+                <AshokaChakra size={12} className="text-[#17376B] animate-spin-slow" />
+                स्वतंत्रता दिवस विशेष • Call Disposition
+              </span>
+            </div>
+          )}
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: IS_TRICOLOR_THEME ? '#17376B' : '#111827' }}>
             Call Ended — Log Disposition
           </h3>
           <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
@@ -367,15 +461,15 @@ export default function PostCallDispositionModal({
         <div style={{ marginBottom: 20 }}>
           <div style={labelStyle}>Step 1: Call Outcome</div>
           {wasConnected && (
-            <div style={{ fontSize: 11, color: '#10B981', fontWeight: 600, marginBottom: 8 }}>
-              Call already connected — "Not Connected" is hidden.
+            <div style={{ fontSize: 11, color: '#138808', fontWeight: 700, marginBottom: 8 }}>
+              ✓ Call connected — "Not Connected" is hidden.
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: wasConnected ? '1fr 1fr' : '1fr 1fr 1fr', gap: 10 }}>
             {[
-              { id: 'connected', label: 'Connected', sub: 'कॉल जुड़ गया', color: '#10B981' },
-              ...(wasConnected ? [] : [{ id: 'not_connected', label: 'Not Connected', sub: 'कॉल नहीं जुड़ा', color: '#EF4444' }]),
-              { id: 'callback_later', label: 'Callback Later', sub: 'बाद में कॉल करें', color: '#3B82F6' }
+              { id: 'connected', label: 'Connected', sub: 'कॉल जुड़ गया', color: IS_TRICOLOR_THEME ? '#138808' : '#10B981' },
+              ...(wasConnected ? [] : [{ id: 'not_connected', label: 'Not Connected', sub: 'कॉल नहीं जुड़ा', color: IS_TRICOLOR_THEME ? '#E05615' : '#EF4444' }]),
+              { id: 'callback_later', label: 'Callback Later', sub: 'बाद में कॉल करें', color: IS_TRICOLOR_THEME ? '#17376B' : '#3B82F6' }
             ].map(item => (
               <button
                 key={item.id}
@@ -387,14 +481,17 @@ export default function PostCallDispositionModal({
                 style={{
                   padding: '12px 8px',
                   borderRadius: 12,
-                  border: level1 === item.id ? `2px solid ${item.color}` : '1px solid #E5E7EB',
-                  backgroundColor: level1 === item.id ? `${item.color}0A` : '#fff',
+                  border: level1 === item.id 
+                    ? `2px solid ${item.color}` 
+                    : IS_TRICOLOR_THEME ? '1px solid rgba(184, 134, 11, 0.25)' : '1px solid #E5E7EB',
+                  backgroundColor: level1 === item.id ? `${item.color}15` : '#fff',
+                  boxShadow: level1 === item.id && IS_TRICOLOR_THEME ? `0 4px 12px ${item.color}25` : 'none',
                   cursor: 'pointer',
                   textAlign: 'center',
                   transition: 'all 0.15s ease',
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937' }}>{item.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: level1 === item.id ? item.color : '#1F2937' }}>{item.label}</div>
                 <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{item.sub}</div>
               </button>
             ))}
@@ -644,6 +741,20 @@ export default function PostCallDispositionModal({
         {/* Level 3 conditional inputs based on selected Connected Outcome */}
         {level1 === 'connected' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+            {/* REVIVAL OFFER — the campaign's discount, offered at the moment
+                it converts: the subscriber just spoke to us and said no. The
+                agent picks the plan from the dropdown and the app backend
+                pushes the code to their phone before the call is even filed.
+                Collapsed by default so it never crowds the disposition. */}
+            {currentLeadId && Number(currentLeadId) > 0 && (
+              <CouponCodePanel
+                collapsible
+                userId={Number(currentLeadId)}
+                uniqueId={activeTmid}
+                leadName={activeName}
+                role={currentLeadType === 'transporter' ? 'transporter' : 'driver'}
+              />
+            )}
             
 
 
@@ -772,6 +883,24 @@ export default function PostCallDispositionModal({
           </div>
         )}
 
+        {/* Save rejected — the call is NOT closed, nothing was lost, press Save again. */}
+        {submitError && (
+          <div style={{
+            marginTop: 16, padding: '10px 12px', borderRadius: 10,
+            border: '1px solid #FCA5A5', backgroundColor: '#FEF2F2',
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#DC2626', flexShrink: 0 }}>error</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C' }}>Disposition not saved</div>
+              <div style={{ fontSize: 11, color: '#7F1D1D', marginTop: 2 }}>{submitError}</div>
+              <div style={{ fontSize: 11, color: '#7F1D1D', marginTop: 4 }}>
+                Nothing was lost — press Save again to retry.
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16, borderTop: '1px solid #F3F4F6', paddingTop: 16 }}>
           <div style={{ display: 'flex', gap: 10 }}>
@@ -781,12 +910,12 @@ export default function PostCallDispositionModal({
               style={{
                 flex: 1,
                 padding: '12px 14px',
-                borderRadius: 10,
-                border: '1px solid #D1D5DB',
+                borderRadius: 12,
+                border: IS_TRICOLOR_THEME ? '1px solid rgba(184, 134, 11, 0.4)' : '1px solid #D1D5DB',
                 backgroundColor: '#fff',
-                color: canSubmit() ? '#374151' : '#9CA3AF',
+                color: canSubmit() ? (IS_TRICOLOR_THEME ? '#17376B' : '#374151') : '#9CA3AF',
                 fontSize: 13,
-                fontWeight: 600,
+                fontWeight: 700,
                 cursor: canSubmit() ? 'pointer' : 'not-allowed',
                 transition: 'all 0.15s ease',
               }}
@@ -799,12 +928,12 @@ export default function PostCallDispositionModal({
               style={{
                 flex: 1,
                 padding: '12px 14px',
-                borderRadius: 10,
-                border: '1px solid #D1D5DB',
+                borderRadius: 12,
+                border: IS_TRICOLOR_THEME ? '1px solid rgba(184, 134, 11, 0.4)' : '1px solid #D1D5DB',
                 backgroundColor: '#fff',
-                color: canSubmit() ? '#374151' : '#9CA3AF',
+                color: canSubmit() ? (IS_TRICOLOR_THEME ? '#17376B' : '#374151') : '#9CA3AF',
                 fontSize: 13,
-                fontWeight: 600,
+                fontWeight: 700,
                 cursor: canSubmit() ? 'pointer' : 'not-allowed',
                 transition: 'all 0.15s ease',
               }}
@@ -818,15 +947,22 @@ export default function PostCallDispositionModal({
             disabled={!canSubmit() || isSubmitting}
             style={{
               width: '100%',
-              padding: '12px 14px',
-              borderRadius: 10,
+              padding: '13px 16px',
+              borderRadius: 12,
               border: 'none',
-              backgroundColor: canSubmit() ? '#111827' : '#D1D5DB',
+              background: canSubmit()
+                ? (IS_TRICOLOR_THEME
+                    ? 'linear-gradient(135deg, #FF9933 0%, #E05615 50%, #138808 100%)'
+                    : '#111827')
+                : '#D1D5DB',
+              boxShadow: canSubmit() && IS_TRICOLOR_THEME ? '0 4px 16px rgba(226, 118, 27, 0.35)' : 'none',
               color: canSubmit() ? '#fff' : '#9CA3AF',
-              fontSize: 13,
-              fontWeight: 600,
+              fontSize: 14,
+              fontWeight: 800,
               cursor: canSubmit() ? 'pointer' : 'not-allowed',
               transition: 'all 0.15s ease',
+              textTransform: 'uppercase',
+              letterSpacing: '0.03em',
             }}
           >
             {isSubmitting ? 'Saving...' : 'Save & Load Next Lead'}

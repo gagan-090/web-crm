@@ -339,7 +339,7 @@ export const MmActiveCallFocusRefined: React.FC = () => {
                           <span className="text-[9px] text-gray-400 ml-auto">⏱ {fmtDuration(r.duration_seconds)}</span>
                         </div>
                         {r.job_id && (
-                          <p className="text-[9.5px] text-gray-500 mt-0.5">Job: <span className="font-mono">{r.job_id}</span>{r.job_title ? ` · ${r.job_title}` : ''}</p>
+                          <p className="text-[9.5px] text-gray-500 mt-0.5">Job: <span className="font-mono font-bold text-black">{r.job_id}</span>{r.job_title ? ` · ${r.job_title}` : ''}</p>
                         )}
                         {r.feedback && <p className="text-[10.5px] text-gray-800 mt-0.5 font-medium">{r.feedback}</p>}
                         {r.remarks && <p className="text-[10px] text-gray-500 mt-0.5 italic">“{r.remarks}”</p>}

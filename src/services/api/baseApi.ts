@@ -47,7 +47,12 @@ export const baseApi = createApi({
     'MmJobs',
     'MmApplicants',
     'MmTransporter',
-    'TlBoard'
+    'MmConnectionRequest',
+    'TlBoard',
+    'WebRoles',
+    'CrmThemes',
+    'IdVerification',
+    'Revival'
   ],
   endpoints: () => ({}), // Endpoints will be injected by domain features
 });

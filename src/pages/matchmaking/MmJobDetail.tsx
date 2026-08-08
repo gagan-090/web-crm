@@ -9,12 +9,23 @@ import {
 import { useMmCallFlow } from './useMmCallFlow';
 import GreenlineScreeningModal from './GreenlineScreeningModal';
 import DriverDetailsModal from './DriverDetailsModal';
+import TransporterDetailsModal from './TransporterDetailsModal';
+import ResizeHandle, { useResizablePane } from '../../shared/components/ResizeHandle';
 import GreenlineApplicantList from './GreenlineApplicantList';
 import MmJobBriefModal from './MmJobBriefModal';
 import MmConferenceDispositionModal from './MmConferenceDispositionModal';
 import MmAddToCallModal from './MmAddToCallModal';
+import MmConnectionRequestModal from './MmConnectionRequestModal';
+import MmBulkConnectionModal from './MmBulkConnectionModal';
 import { openJobSession } from './mmJobSession';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
+import {
+  MM_DRIVER_CONNECTED_OPTIONS,
+  MM_TRANSPORTER_CONNECTED_OPTIONS,
+  MM_GREENLINE_CONNECTED_OPTIONS,
+  DWC_NOT_CONNECTED_OPTIONS,
+  DWC_CALLBACK_OPTIONS,
+} from '../../shared/components/cti/PostCallDispositionModal';
 import {
   readPendingMmContext,
   MM_OPEN_ADD_TO_CALL_EVENT,
@@ -44,6 +55,30 @@ const callStatusBadge = (status: string) => {
   return 'bg-amber-50 text-amber-700 border-amber-200';
 };
 
+// Agents store a disposition on the call — sometimes the human label
+// ("Driver Placement Done"), sometimes the raw code ("placement_done",
+// "interested_job"). This maps every known MM/DW disposition code to its label
+// so the feedback filter shows a clean name whatever was saved. Unknown values
+// (free text) are shown as-is.
+const FEEDBACK_LABEL_MAP: Record<string, string> = {
+  ...Object.fromEntries(
+    [
+      ...MM_DRIVER_CONNECTED_OPTIONS,
+      ...MM_TRANSPORTER_CONNECTED_OPTIONS,
+      ...MM_GREENLINE_CONNECTED_OPTIONS,
+    ].map(o => [o.value, o.label])
+  ),
+  ...Object.fromEntries([...DWC_NOT_CONNECTED_OPTIONS, ...DWC_CALLBACK_OPTIONS].map(s => [s, s])),
+  callback_later: 'Call Back Later',
+  connected: 'Connected',
+};
+
+const prettifyFeedback = (raw: string): string =>
+  FEEDBACK_LABEL_MAP[raw]
+  ?? (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(raw)
+    ? raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    : raw);
+
 // ── Query error panel (shared retry state) ──────────────────────────────────
 const ErrorPanel: React.FC<{ label: string; onRetry: () => void }> = ({ label, onRetry }) => (
   <div className="flex flex-col items-center justify-center py-8 text-gray-400">
@@ -71,36 +106,47 @@ interface ApplicantCardProps {
   onAddToCall: (driver: MmApplicant) => void;
   onScreen: (driver: MmApplicant, mode: 'conduct' | 'view') => void;
   onViewDetails: (driver: MmApplicant) => void;
+  onConnect: (driver: MmApplicant) => void;
+  /** Whether this agent may send connection requests at all (own job only). */
+  canConnect: boolean;
 }
 
-const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canConference, readOnly, ownerName, onCall, onAddToCall, onScreen, onViewDetails }) => {
+const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canConference, readOnly, ownerName, onCall, onAddToCall, onScreen, onViewDetails, onConnect, canConnect }) => {
   const [expanded, setExpanded] = useState(false);
   const timeline = driver.call_timeline ?? [];
 
   return (
     <div className={`bg-white border rounded-xl transition-shadow ${driver.is_matched ? 'border-green-300 shadow-green-50 shadow' : 'border-gray-200 hover:shadow-sm'}`}>
-      {/* Card header */}
+      {/* Card header.
+          Wraps rather than crushes: the action group is ~350px of fixed-width
+          buttons, so on a narrowed pane (the divider is drag-resizable) the old
+          single-row layout squeezed the identity block to nothing — the name
+          collapsed to "Ga…" and the TMID / state / experience line ran under the
+          status badges. flex-wrap plus a min-width on the identity block makes
+          the actions drop to their own line instead. */}
       <div
-        className="p-3 flex items-center gap-3 cursor-pointer"
+        className="p-3 flex flex-wrap items-center gap-x-3 gap-y-2 cursor-pointer"
         onClick={() => setExpanded(e => !e)}
       >
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white font-extrabold text-xs shrink-0">
           {driver.name.charAt(0).toUpperCase()}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-gray-850 text-xs truncate">{driver.name}</span>
+        <div className="flex-1 min-w-[150px]">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold text-gray-850 text-xs truncate" title={driver.name}>{driver.name}</span>
             {driver.is_matched && (
               <span className="shrink-0 text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded">MATCHED</span>
             )}
           </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="font-mono text-[10px] text-gray-400">{driver.unique_id}</span>
-            {driver.state && <span className="text-[10px] text-gray-400">· {driver.state}</span>}
-            {driver.experience && <span className="text-[10px] text-gray-400">· {driver.experience}</span>}
+          {/* Separators live on the chips themselves so a wrapped line never
+              starts with a stray "·". */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[10px] text-gray-400">
+            <span className="font-mono truncate max-w-full">{driver.unique_id}</span>
+            {driver.state && <span className="truncate">· {driver.state}</span>}
+            {driver.experience && <span className="whitespace-nowrap">· {driver.experience}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-2 shrink-0 ml-auto">
           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase ${callStatusBadge(driver.call_status)}`}>
             {driver.call_status}
           </span>
@@ -114,6 +160,18 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
           >
             <span className="material-symbols-outlined text-[18px]">visibility</span>
           </button>
+          {/* Send Connection Request — on EVERY applicant card. Who gets one is
+              the agent's decision, not something derived from an "Interested in
+              the Job" disposition, so no feedback state is consulted here. */}
+          {canConnect && (
+            <button
+              onClick={e => { e.stopPropagation(); onConnect(driver); }}
+              className="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:text-white hover:bg-green-600 hover:border-green-600 flex items-center justify-center transition-colors"
+              title="Send Connection Request to this driver"
+            >
+              <span className="material-symbols-outlined text-[18px]">forward_to_inbox</span>
+            </button>
+          )}
           {isGreenline && (
             <button
               onClick={e => { e.stopPropagation(); onScreen(driver, driver.screening ? 'view' : 'conduct'); }}
@@ -371,6 +429,14 @@ const MmJobDetail: React.FC = () => {
   const [toast, setToast] = useState<string | null>(null);
   const [screenTarget, setScreenTarget] = useState<{ driver: DriverRef; mode: 'conduct' | 'view' } | null>(null);
   const [detailsDriver, setDetailsDriver] = useState<DriverRef | null>(null);
+  // Transporter behind the eye icon in the Transporter panel.
+  const [transporterView, setTransporterView] = useState<
+    { id: number; name?: string; tmid?: string } | null
+  >(null);
+  // Drag-resizable left pane. 320px is the old fixed w-80 width.
+  const leftPane = useResizablePane('mm_job_detail_left_pane_w', 320, 260, 760);
+  const [connectDriver, setConnectDriver] = useState<DriverRef | null>(null);
+  const [showBulkConnect, setShowBulkConnect] = useState(false);
   const [showAddToCall, setShowAddToCall] = useState(false);
 
   const triggerToast = (msg: string) => {
@@ -417,7 +483,12 @@ const MmJobDetail: React.FC = () => {
     isError: appError,
     refetch: refetchApplicants,
   } = useGetMmApplicantsFullQuery(
-    { jobId, per_page: 30, cursor: applicantPage ?? undefined, search: search || undefined, status: applicantStatus || undefined },
+    // The New/Connected/Pending filter is applied client-side on the latest
+    // call status (see filteredApplicants) — the backend has no branch for
+    // 'new'/'connected', and 'connected' must mean the LATEST feedback is
+    // connected (not-connected / call-back are excluded). Only `search` is
+    // forwarded so the server keeps returning the full applicant set.
+    { jobId, per_page: 30, cursor: applicantPage ?? undefined, search: search || undefined },
     { skip: !jobId }
   );
 
@@ -439,19 +510,96 @@ const MmJobDetail: React.FC = () => {
     }
   }, [applicantsData, applicantPage]);
 
-  // Filter changes restart pagination from page 1.
+  // Search restarts server pagination from page 1. The status filter is purely
+  // client-side (below), so it must NOT reset the accumulated pages.
   useEffect(() => {
     setApplicantPage(null);
-  }, [search, applicantStatus]);
+  }, [search]);
+
+  // The feedback filter keys off `call_status`, which the backend already
+  // derives from each applicant's MOST RECENT call across every source:
+  //   New       → never called
+  //   Connected → latest call connected
+  //   Pending   → called, but the latest outcome is not-connected / call-back
+  // So "Connected" shows only applicants whose latest feedback is connected;
+  // a driver whose most recent status is not-connected or call-back stays out.
+    // Canonical feedback key for a timeline entry: the disposition code the
+    // agent picked (interested_job, placement_done…), falling back to the raw
+    // call_feedback text when no code was stored.
+  const entryFeedbackKey = (e: NonNullable<MmApplicant['call_timeline']>[number]): string =>
+    (e.disposition_sub ?? '').trim() || (e.feedback ?? '').trim();
+
+  // NOTE: connection requests deliberately do NOT consult the "Interested in
+  // the Job" disposition any more. Who to connect is the agent's call; the
+  // feedback state only drives the filter chips below.
+
+  const matchesStatus = (a: MmApplicant): boolean => {
+    // A specific agent-marked feedback (e.g. "Interested in the Job"): match
+    // only on feedback the agent submitted FOR THIS job — timeline entries
+    // tagged with this job_id. The applicant's history on other jobs is ignored.
+    if (applicantStatus.startsWith('fb:')) {
+      const target = applicantStatus.slice(3);
+      return (a.call_timeline ?? []).some(e => e.job_id === jobId && entryFeedbackKey(e) === target);
+    }
+    switch (applicantStatus) {
+      case 'new':            return a.call_status === 'New';
+      case 'connected':      return a.call_status === 'Connected';
+      case 'pending':        return a.call_status === 'Pending';
+      case 'not_interested': return a.call_status === 'Not Interested';
+      default:               return true; // 'All'
+    }
+  };
+
+  // Coarse status buckets — shared by the chips and the top of the dropdown.
+  const FEEDBACK_FILTERS: Array<{ label: string; value: string; title: string }> = [
+    { label: 'All', value: '', title: 'Show every applicant' },
+    { label: 'New', value: 'new', title: 'Never called' },
+    { label: 'Connected', value: 'connected', title: 'Latest feedback is Connected — not-connected / call-back are excluded' },
+    { label: 'Pending', value: 'pending', title: 'Called, but the latest outcome is not-connected or call-back' },
+    { label: 'Not Interested', value: 'not_interested', title: 'Latest feedback is Not Interested' },
+  ];
+
+  // Every feedback agents have marked on applicants FOR THIS JOB — drawn from
+  // call-timeline entries tagged with this job_id (an applicant's history on
+  // other jobs is excluded). So the whole vocabulary used on this job
+  // (MatchMaking Done, Driver Not Interested, Ready for Interview, …) shows up.
+  // count = how many applicants carry that feedback on this job.
+  const feedbackOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    allApplicants.forEach(a => {
+      const seen = new Set<string>();
+      (a.call_timeline ?? []).forEach(e => {
+        if (e.job_id !== jobId) return;
+        const key = (e.disposition_sub ?? '').trim() || (e.feedback ?? '').trim();
+        if (key) seen.add(key);
+      });
+      seen.forEach(k => counts.set(k, (counts.get(k) ?? 0) + 1));
+    });
+    return Array.from(counts.entries())
+      .map(([value, count]) => ({ value, label: prettifyFeedback(value), count }))
+      .sort((x, y) => x.label.localeCompare(y.label));
+  }, [allApplicants, jobId]);
 
   const filteredApplicants = useMemo(() => {
-    if (!search) return allApplicants;
-    const q = search.toLowerCase();
-    return allApplicants.filter(a =>
-      a.name.toLowerCase().includes(q) ||
-      a.unique_id.toLowerCase().includes(q)
-    );
-  }, [allApplicants, search]);
+    const q = search.trim().toLowerCase();
+    return allApplicants.filter(a => {
+      if (!matchesStatus(a)) return false;
+      if (!q) return true;
+      return a.name.toLowerCase().includes(q) || a.unique_id.toLowerCase().includes(q);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allApplicants, search, applicantStatus]);
+
+  // Shortlist picker options for the transporter modal — every applicant on the
+  // job, plain. No feedback state is carried: the agent ticks who to send to.
+  const bulkApplicantOptions = useMemo(
+    () => allApplicants.map(a => ({
+      driver_id: a.driver_id,
+      name: a.name,
+      unique_id: a.unique_id,
+    })),
+    [allApplicants]
+  );
 
   const isGreenline = !!job?.is_greenline;
 
@@ -514,6 +662,10 @@ const MmJobDetail: React.FC = () => {
     setDetailsDriver(driver);
   };
 
+  const handleConnect = (driver: DriverRef) => {
+    setConnectDriver(driver);
+  };
+
   const handleGreenlineCall = (driver: DriverRef) => {
     if (readOnly) { triggerToast(`This job belongs to ${jobOwnerName || 'another agent'} — calling is disabled.`); return; }
     callApplicant({
@@ -564,7 +716,7 @@ const MmJobDetail: React.FC = () => {
           <div className="h-4 w-48 bg-gray-200 rounded animate-pulse"></div>
         ) : (
           <>
-            <span className="font-mono text-gray-400 text-[10px]">{job?.job_id}</span>
+            <span className="font-mono font-extrabold text-gray-900 text-xs select-text">{job?.job_id}</span>
             <h1 className="font-extrabold text-gray-800 truncate">{job?.job_title}</h1>
             {job && (
               <span className="ml-auto flex items-center gap-2">
@@ -609,8 +761,14 @@ const MmJobDetail: React.FC = () => {
       {/* Two-column body */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* ── LEFT PANEL: Job Info + Transporter ───────────────────────── */}
-        <div className="w-80 shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-y-auto custom-scrollbar">
+        {/* ── LEFT PANEL: Job Info + Transporter ─────────────────────────
+            Width is drag-resizable via the handle below (border replaced by it),
+            so a long Hindi load description or a wide transporter record can be
+            read without squinting at a fixed 320px column. */}
+        <div
+          style={{ width: leftPane.width }}
+          className="shrink-0 bg-white flex flex-col overflow-y-auto custom-scrollbar"
+        >
 
           {/* Job Details */}
           <div className="p-4 space-y-3 border-b border-gray-100">
@@ -669,7 +827,19 @@ const MmJobDetail: React.FC = () => {
 
           {/* Transporter Profile */}
           <div className="p-4 space-y-3 border-b border-gray-100">
-            <h2 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Transporter</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Transporter</h2>
+              {tx?.id && (
+                <button
+                  onClick={() => setTransporterView({ id: Number(tx.id), name: tx.name, tmid: tx.unique_id })}
+                  title="View complete transporter details and full call timeline"
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-[#8E44AD] hover:bg-purple-50 px-1.5 py-0.5 rounded transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[14px]">visibility</span>
+                  Full details
+                </button>
+              )}
+            </div>
             {txLoading ? (
               <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-4 bg-gray-100 rounded animate-pulse"></div>)}</div>
             ) : txError ? (
@@ -762,8 +932,21 @@ const MmJobDetail: React.FC = () => {
           )}
         </div>
 
-        {/* ── RIGHT PANEL: Applicants ──────────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Draggable divider — replaces the left pane's old static border-r */}
+        <ResizeHandle
+          width={leftPane.width}
+          onResize={leftPane.setWidth}
+          onReset={leftPane.reset}
+          min={leftPane.min}
+          max={leftPane.max}
+          ariaLabel="Resize job and transporter panel"
+        />
+
+        {/* ── RIGHT PANEL: Applicants ────────────────────────────────────
+            min-w-0 so the flex child may shrink below its content width —
+            without it, dragging the divider right is silently clamped by the
+            applicant cards instead of actually resizing. */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {isGreenline ? (
             <GreenlineApplicantList
               jobId={jobId}
@@ -775,9 +958,12 @@ const MmJobDetail: React.FC = () => {
             />
           ) : (
           <>
-          {/* Applicant filter bar */}
-          <div className="px-4 py-2.5 bg-white border-b border-gray-200 flex items-center gap-3 shrink-0">
-            <div className="flex-1 relative">
+          {/* Applicant filter bar — wraps onto extra rows as the pane narrows.
+              Without flex-wrap the search field was squeezed down to just its
+              magnifier icon and the "Send Connection to Transporter" button was
+              pushed clean off the right edge. */}
+          <div className="px-4 py-2.5 bg-white border-b border-gray-200 flex flex-wrap items-center gap-x-3 gap-y-2 shrink-0">
+            <div className="flex-1 min-w-[160px] relative">
               <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
               <input
                 value={search}
@@ -791,15 +977,41 @@ const MmJobDetail: React.FC = () => {
                 </button>
               )}
             </div>
-            <div className="flex gap-1.5">
-              {[
-                { label: 'All', value: '' },
-                { label: 'New', value: 'new' },
-                { label: 'Connected', value: 'connected' },
-                { label: 'Pending', value: 'pending' },
-              ].map(opt => (
+            {/* Feedback filter — dropdown (keyed off the latest call status). */}
+            <div className="relative shrink-0">
+              <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[14px] pointer-events-none">filter_list</span>
+              <select
+                value={applicantStatus}
+                onChange={e => setApplicantStatus(e.target.value)}
+                title="Filter applicants by their latest call feedback"
+                className={`appearance-none pl-7 pr-7 py-1.5 rounded-lg border text-[10px] font-bold outline-none focus:ring-1 focus:ring-[#8E44AD] cursor-pointer max-w-[190px] ${applicantStatus ? 'bg-[#8E44AD] text-white border-[#8E44AD]' : 'bg-white text-gray-600 border-gray-200'}`}
+              >
+                <optgroup label="Status">
+                  {FEEDBACK_FILTERS.map(opt => (
+                    <option key={opt.value} value={opt.value} className="bg-white text-gray-700">
+                      {opt.value === '' ? 'Feedback: All' : opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+                {feedbackOptions.length > 0 && (
+                  <optgroup label="Marked feedback">
+                    {feedbackOptions.map(opt => (
+                      <option key={`fb:${opt.value}`} value={`fb:${opt.value}`} className="bg-white text-gray-700">
+                        {opt.label} ({opt.count})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              <span className={`material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-[14px] pointer-events-none ${applicantStatus ? 'text-white' : 'text-gray-400'}`}>expand_more</span>
+            </div>
+
+            {/* …and the same filter as quick chips. */}
+            <div className="flex flex-wrap gap-1.5">
+              {FEEDBACK_FILTERS.filter(o => o.value !== 'not_interested').map(opt => (
                 <button
                   key={opt.value}
+                  title={opt.title}
                   onClick={() => setApplicantStatus(opt.value)}
                   className={`px-2.5 py-1 rounded-lg font-bold border text-[10px] transition-colors ${applicantStatus === opt.value ? 'bg-[#8E44AD] text-white border-[#8E44AD]' : 'bg-white text-gray-500 border-gray-200'}`}
                 >
@@ -807,9 +1019,25 @@ const MmJobDetail: React.FC = () => {
                 </button>
               ))}
             </div>
-            <span className="text-gray-400 text-[10px] shrink-0">
-              {applicantsData?.total_applicants || 0} total
+            <span className="text-gray-400 text-[10px] shrink-0 whitespace-nowrap">
+              {applicantStatus || search
+                ? `${filteredApplicants.length} shown · ${applicantsData?.total_applicants || 0} total`
+                : `${applicantsData?.total_applicants || 0} total`}
             </span>
+
+            {/* Send the transporter a driver shortlist. Always available; the
+                agent picks the shortlist inside the modal and can opt to
+                message those drivers too. No disposition state involved. */}
+            {!readOnly && allApplicants.length > 0 && (
+              <button
+                onClick={() => setShowBulkConnect(true)}
+                title="Send the transporter a shortlist of drivers for this job — and optionally notify those drivers too"
+                className="shrink-0 flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] shadow-sm"
+              >
+                <span className="material-symbols-outlined text-[14px]">local_shipping</span>
+                Send Connection to Transporter
+              </button>
+            )}
           </div>
 
           {/* Applicant list */}
@@ -842,6 +1070,8 @@ const MmJobDetail: React.FC = () => {
                     onAddToCall={handleAddApplicantToCall}
                     onScreen={handleScreen}
                     onViewDetails={handleViewDetails}
+                    onConnect={handleConnect}
+                    canConnect={!readOnly}
                   />
                 ))}
                 {pagination?.has_more && (
@@ -869,6 +1099,44 @@ const MmJobDetail: React.FC = () => {
           driverName={detailsDriver.name}
           uniqueId={detailsDriver.unique_id}
           onClose={() => setDetailsDriver(null)}
+        />
+      )}
+
+      {transporterView && (
+        <TransporterDetailsModal
+          open
+          transporterId={transporterView.id}
+          transporterName={transporterView.name}
+          uniqueId={transporterView.tmid}
+          onClose={() => setTransporterView(null)}
+        />
+      )}
+
+      {/* Send Connection Request — notify driver / transporter / both */}
+      {connectDriver && (
+        <MmConnectionRequestModal
+          open
+          jobId={jobId}
+          driver={{
+            driver_id: connectDriver.driver_id,
+            name: connectDriver.name,
+            unique_id: connectDriver.unique_id,
+          }}
+          transporterName={tx?.name ?? job?.transporter_name ?? null}
+          hasTransporter={!!tx}
+          onClose={() => setConnectDriver(null)}
+        />
+      )}
+
+      {/* Send the transporter a driver shortlist the agent picks here */}
+      {showBulkConnect && (
+        <MmBulkConnectionModal
+          open
+          jobId={jobId}
+          applicants={bulkApplicantOptions}
+          hasTransporter={!!tx}
+          transporterName={tx?.name ?? job?.transporter_name ?? null}
+          onClose={() => setShowBulkConnect(false)}
         />
       )}
 

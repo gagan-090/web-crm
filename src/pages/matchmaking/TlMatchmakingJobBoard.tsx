@@ -246,7 +246,7 @@ export const TlMatchmakingJobBoard: React.FC = () => {
                           }`}
                         >
                           <div className="flex justify-between items-start mb-1.5 text-[9px] font-extrabold gap-2">
-                            <span className="text-gray-400 font-mono shrink-0">{job.job_id}</span>
+                            <span className="text-black font-bold font-mono shrink-0">{job.job_id}</span>
                             <div className="flex items-center gap-1">
                               {job.is_greenline && (
                                 <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">GREENLINE</span>
@@ -322,7 +322,7 @@ export const TlMatchmakingJobBoard: React.FC = () => {
           <div className="p-4 border-b border-gray-200 flex justify-between items-start bg-gray-50 shrink-0">
             <div className="min-w-0">
               <h3 className="font-extrabold text-gray-800 uppercase tracking-wide text-xs">Job Board Detail</h3>
-              <span className="text-[10px] text-gray-400 font-mono">{selectedJob.job_id}</span>
+              <span className="text-[10px] text-black font-bold font-mono">{selectedJob.job_id}</span>
             </div>
             <button onClick={() => setSelectedJob(null)} className="text-gray-400 hover:text-gray-600 font-bold px-1 text-sm">✕</button>
           </div>

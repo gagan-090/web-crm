@@ -16,9 +16,15 @@ export const WctActiveCallFocus: React.FC = () => {
   const [submitWctFeedback] = useSubmitWctFeedbackMutation();
   const {
     currentLeadId, currentCallId, currentLeadName, currentLeadTmid, currentPhoneNumber, currentLeadLocation,
-    callState, callDuration, agentState, isMuted, isHeld,
+    callState, callDuration, callWasAnswered, agentState, isMuted, isHeld,
     dial, hangup, toggleMute, toggleHold,
   } = useSanCti();
+
+  // SAN confirmed the answer (or the timer ran, which only starts after that
+  // same Answer). A connected call can never also be not-reachable/busy/switched
+  // off, so those outcomes are removed from the form — picking one wrote
+  // call_history_ivr rows that were 'connected' with a no-answer feedback.
+  const callConnected = callWasAnswered || callDuration > 0;
 
   // Prefer the live SAN CTI call context (set when the Call Queue dialed this
   // transporter); fall back to any routing state, then to neutral placeholders.
@@ -639,13 +645,23 @@ export const WctActiveCallFocus: React.FC = () => {
             {/* Outcome Step 1 */}
             <div className="space-y-3">
               <div className="text-xs font-bold text-gray-700 uppercase tracking-wider">Step 1 — Call Outcome *</div>
+              {callConnected && (
+                <div className="text-[10px] font-bold text-[#27AE60]">
+                  Call already connected — the not-reachable outcomes are hidden.
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { id: 'connected', label: 'Connected', desc: 'Call successfully answered' },
-                  { id: 'nr', label: 'Not Reachable', desc: 'No response/Switch off' },
-                  { id: 'busy', label: 'Busy', desc: 'Line busy/call declined' },
-                  { id: 'wrong', label: 'Wrong Number', desc: 'Not a transporter' },
-                  { id: 'off', label: 'Switch Off', desc: 'Switched off/No Network' }
+                  // Every one of these writes a not-connected call_status. Once
+                  // SAN has confirmed the answer they are removed, so the row
+                  // can't end up connected with a "no answer" feedback.
+                  ...(callConnected ? [] : [
+                    { id: 'nr', label: 'Not Reachable', desc: 'No response/Switch off' },
+                    { id: 'busy', label: 'Busy', desc: 'Line busy/call declined' },
+                    { id: 'wrong', label: 'Wrong Number', desc: 'Not a transporter' },
+                    { id: 'off', label: 'Switch Off', desc: 'Switched off/No Network' },
+                  ]),
                 ].map(op => (
                   <button
                     key={op.id}

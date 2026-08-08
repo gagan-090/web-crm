@@ -21,6 +21,14 @@ export interface MmConferenceParty {
 export interface PendingMmContext {
   kind: 'driver' | 'transporter';
   jobId: string;
+  /**
+   * users.id of the party dialled. The disposition modal matches this against
+   * the CTI's current lead before treating a call as matchmaking: nothing
+   * clears this record except a completed disposition on an MM page, so a
+   * context left behind by an abandoned job call would otherwise hijack the
+   * form of the next, unrelated dial (e.g. an onboarding call from My Queue).
+   */
+  leadId?: number | string;
   name: string; // who was called — for agent-facing messages
   isGreenline?: boolean;
   /**

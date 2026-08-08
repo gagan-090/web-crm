@@ -234,7 +234,7 @@ export const MmSubscriptions: React.FC<{ basePath?: string }> = ({ basePath }) =
                       </td>
                       <td className="px-4 py-2.5">
                         <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${planTone(r.plan_key)}`}>{r.plan_label}</span>
-                        {r.job_id && <div className="text-[9px] text-gray-400 mt-0.5 font-mono">job {r.job_id}</div>}
+                        {r.job_id && <div className="text-[9px] text-black font-bold mt-0.5 font-mono">job {r.job_id}</div>}
                       </td>
                       <td className="px-4 py-2.5">
                         <span className="text-[10px] font-semibold text-gray-500 capitalize">{r.source}</span>

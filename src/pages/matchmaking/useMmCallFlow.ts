@@ -42,6 +42,9 @@ const MATCH_STATUS_MAP: Record<string, string> = {
   placement_done: 'selected',
   matchmaking_done: 'selected',
   greenline_interview_done: 'selected',
+  // An interview having happened is not a placement — it keeps its own status
+  // rather than borrowing 'selected'/'pending'.
+  interview_done: 'interview_done',
   callback: 'callback',
   interested_callback: 'callback',
   rejected: 'rejected',
@@ -134,6 +137,7 @@ export function useMmCallFlow({ onToast, onLogSaved }: UseMmCallFlowOptions = {}
     writePendingMmContext({
       kind: 'transporter',
       jobId,
+      leadId: transporter.id,
       name: transporter.name,
       isGreenline: !!isGreenline,
       conferenced: [],
@@ -163,6 +167,7 @@ export function useMmCallFlow({ onToast, onLogSaved }: UseMmCallFlowOptions = {}
     writePendingMmContext({
       kind: 'driver',
       jobId,
+      leadId: driver.driver_id,
       name: driver.name,
       isGreenline: !!isGreenline,
       conferenced: [],
@@ -225,9 +230,14 @@ export function useMmCallFlow({ onToast, onLogSaved }: UseMmCallFlowOptions = {}
           job_id: detail.jobId,
         }).unwrap();
 
-        // A conferenced TRANSPORTER owes a disposition + job brief exactly like
-        // a directly-dialled one — queued until the primary call is disposed.
-        if (detail.role === 'transporter' && res?.data?.call_id) {
+        // EVERY conferenced party owes its own disposition — a driver bridged
+        // into a transporter call just as much as a transporter bridged into a
+        // driver call. Queuing only transporters meant a conferenced driver's
+        // leg never got a feedback modal, so its call_history_ivr row stayed
+        // NULL. Queue whichever party was added; the modal shows driver vs
+        // transporter options off party.role, and it surfaces once the primary
+        // call has ended.
+        if (res?.data?.call_id) {
           setConferenceDisposition({
             callId: res.data.call_id,
             party: detail,

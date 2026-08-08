@@ -64,6 +64,57 @@ export default {
         "brand-accent": "#FB641B",
         "brand-orange": "#FB641B"
       },
+      /* Motion vocabulary for the CRM. Everything here is deliberately slow and
+         small — an agent lives on these screens for eight hours, so entrances
+         are a single short fade-and-rise, never a bounce. `motion-safe:` is not
+         needed: styles/motion.css disables all of it under prefers-reduced-motion. */
+      "keyframes": {
+        "spin-slow":   { "to": { "transform": "rotate(360deg)" } },
+        "fade-in":     { "from": { "opacity": "0" }, "to": { "opacity": "1" } },
+        "fade-in-up":  {
+          "from": { "opacity": "0", "transform": "translateY(8px)" },
+          "to":   { "opacity": "1", "transform": "translateY(0)" }
+        },
+        "fade-in-down": {
+          "from": { "opacity": "0", "transform": "translateY(-8px)" },
+          "to":   { "opacity": "1", "transform": "translateY(0)" }
+        },
+        "scale-in": {
+          "from": { "opacity": "0", "transform": "scale(.96)" },
+          "to":   { "opacity": "1", "transform": "scale(1)" }
+        },
+        "slide-in-right": {
+          "from": { "opacity": "0", "transform": "translateX(16px)" },
+          "to":   { "opacity": "1", "transform": "translateX(0)" }
+        },
+        "shimmer":  { "100%": { "transform": "translateX(100%)" } },
+        "twinkle":  { "0%,100%": { "opacity": ".28" }, "50%": { "opacity": ".55" } },
+        "count-pop": {
+          "0%":   { "transform": "scale(.92)", "opacity": ".4" },
+          "60%":  { "transform": "scale(1.04)", "opacity": "1" },
+          "100%": { "transform": "scale(1)" }
+        }
+      },
+      "animation": {
+        "spin-slow":       "spin-slow 18s linear infinite",
+        "fade-in":         "fade-in .28s ease-out both",
+        "fade-in-up":      "fade-in-up .34s cubic-bezier(.22,.68,.36,1) both",
+        "fade-in-down":    "fade-in-down .34s cubic-bezier(.22,.68,.36,1) both",
+        "scale-in":        "scale-in .22s cubic-bezier(.22,.68,.36,1) both",
+        "slide-in-right":  "slide-in-right .3s cubic-bezier(.22,.68,.36,1) both",
+        "shimmer":         "shimmer 1.6s infinite",
+        "twinkle":         "twinkle 4s ease-in-out infinite",
+        "count-pop":       "count-pop .4s cubic-bezier(.22,.68,.36,1) both"
+      },
+      /* Tailwind v4 ships shadow-xs/2xs; this project is on v3, where those
+         class names silently do nothing. Defined here so the markup using them
+         actually renders a shadow. */
+      "boxShadow": {
+        "2xs": "0 1px 1px rgb(12 36 80 / 0.05)",
+        "xs":  "0 1px 2px rgb(12 36 80 / 0.08)",
+        "tile": "0 1px 2px rgb(12 36 80 / 0.06), 0 0 0 1px rgb(12 36 80 / 0.04)",
+        "tile-hover": "0 8px 24px -8px rgb(12 36 80 / 0.18), 0 0 0 1px rgb(184 134 11 / 0.16)"
+      },
       "borderRadius": {
         "DEFAULT": "0.125rem",
         "lg": "0.25rem",

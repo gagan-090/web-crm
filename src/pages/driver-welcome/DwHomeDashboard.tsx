@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGetDwDashboardQuery } from '../../services/api/webCrmApi';
 import { useGetGateProgressQuery } from '../../services/api/incentiveApi';
 import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
+import IndependenceHeaderBanner from '../../shared/components/IndependenceHeaderBanner';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import { DriverForm } from '../matchmaking/MmDriverBank';
 
@@ -26,9 +27,11 @@ interface KpiTileProps {
   iconBg: string;
   valueColor?: string;
   borderColor?: string;
+  /** Durations render as "1H 34M 25S", far too wide for the counter size. */
+  valueSize?: string;
 }
 
-const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, icon, iconColor, iconBg, valueColor = 'text-gray-800', borderColor = 'border-gray-200' }) => (
+const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, icon, iconColor, iconBg, valueColor = 'text-gray-800', borderColor = 'border-gray-200', valueSize = 'text-2xl' }) => (
   <div className={`bg-white border ${borderColor} rounded-lg p-3.5 flex flex-col gap-2 shadow-sm hover:shadow transition-shadow`}>
     <div className="flex items-center justify-between">
       <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-none">{label}</span>
@@ -37,7 +40,7 @@ const KpiTile: React.FC<KpiTileProps> = ({ label, value, sub, icon, iconColor, i
         {icon}
       </span>
     </div>
-    <div className={`text-2xl font-bold leading-tight ${valueColor}`}>{value}</div>
+    <div className={`${valueSize} font-bold leading-tight ${valueColor} whitespace-nowrap`}>{value}</div>
     {sub && <div className="text-[10px] text-gray-400 leading-none">{sub}</div>}
   </div>
 );
@@ -91,9 +94,9 @@ export const DwHomeDashboard: React.FC = () => {
   const { data: progress } = useGetGateProgressQuery('dwc', { refetchOnMountOrArgChange: true });
 
   const kpis = response?.data?.kpis || {
-    calls_pending: 0, assigned_total: 0, calls_today: 0,
+    calls_pending: 0, assigned_total: 0, calls_today: 0, unique_leads_today: 0,
     connected_today: 0, subscriptions_today: 0,
-    feedback_missing: 0, call_time: '0h 0m', monthly_revenue: 0,
+    feedback_missing: 0, call_time: '0H 0M 0S', total_active_time: '0H 0M 0S', monthly_revenue: 0,
     missed_calls: 0, incoming_missed: 0,
   };
 
@@ -102,7 +105,7 @@ export const DwHomeDashboard: React.FC = () => {
   const cdr = response?.data?.cdr_stats || {
     agent_name: null, total_calls: 0, connected: 0, missed_calls: 0,
     incoming_total: 0, incoming_missed: 0, outgoing_total: 0, outgoing_missed: 0,
-    talk_time: '0h 0m', total_duration: '0h 0m', avg_ring_seconds: 0,
+    talk_time: '0H 0M 0S', total_duration: '0H 0M 0S', avg_ring_seconds: 0,
     recent_missed: [],
   };
 
@@ -116,9 +119,11 @@ export const DwHomeDashboard: React.FC = () => {
   const callBreakdown    = response?.data?.call_breakdown    || [];
   const leaderboard      = response?.data?.leaderboard       || { my_rank: 1, total_peers: 1 };
   const cs = (response?.data as any)?.calls_summary || {
-    total_calls: 0, incoming: 0, outgoing: 0,
+    total_calls: 0, unique_leads: 0, unique_connected: 0, repeat_calls: 0,
+    incoming: 0, outgoing: 0,
     connected: 0, not_connected: 0, callback_later: 0,
-    conversions: 0, connect_rate: 0, conversion_rate: 0, call_time: '0h 0m',
+    conversions: 0, connect_rate: 0, conversion_rate: 0, call_time: '0H 0M 0S',
+    total_active_time: '0H 0M 0S', total_active_seconds: 0,
   };
 
   const monthlyRevenue         = progress?.accruedIncentive        ?? 0;
@@ -150,7 +155,13 @@ export const DwHomeDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
+      {/* Independence Day Banner */}
+      <IndependenceHeaderBanner
+        title="Driver Welcome Operations Dashboard"
+        subtitle="Onboarding and assisting commercial drivers across all Indian transport hubs."
+      />
+
+      {/* Header section */}
       <section className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-200 pb-4">
         <div>
           <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">Driver Welcome Calling Process</p>
@@ -199,17 +210,27 @@ export const DwHomeDashboard: React.FC = () => {
 
       {/* KPI Summary Tiles */}
       {isLoading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 animate-pulse">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2 animate-pulse">
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i} className="bg-gray-100 rounded-lg h-20"></div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2">
           <KpiTile
             label="Total Calls"   value={cs.total_calls}
             icon="phone"          iconBg="bg-slate-100"    iconColor="text-slate-500"
             borderColor="border-slate-200"
+            sub={`${cs.repeat_calls} repeat dials`}
+          />
+          {/* Distinct numbers dialled. Total Calls counts every dial, so a lead
+              worked five times showed as five — this is the count of leads
+              actually touched. */}
+          <KpiTile
+            label="Unique Leads"  value={cs.unique_leads}
+            icon="group"          iconBg="bg-indigo-50"   iconColor="text-indigo-500"
+            valueColor="text-indigo-700" borderColor="border-indigo-100"
+            sub={`${cs.unique_connected} reached`}
           />
           <KpiTile
             label="Outgoing"      value={cs.outgoing}
@@ -243,15 +264,22 @@ export const DwHomeDashboard: React.FC = () => {
             valueColor="text-purple-700" borderColor="border-purple-200"
             sub={cs.connected > 0 ? `${cs.conversion_rate}% of connected` : undefined}
           />
-          <KpiTile
-            label="Connect %"    value={`${cs.connect_rate}%`}
-            icon="bar_chart"      iconBg="bg-teal-50"     iconColor="text-teal-500"
-            valueColor="text-teal-700"   borderColor="border-teal-100"
-          />
+          {/* The standalone "Connect %" tile lived here; the same figure is the
+              Connected tile's sub-line, and the slot now carries Unique Leads. */}
           <KpiTile
             label="Talk Time"     value={cs.call_time || kpis.call_time}
             icon="timer"          iconBg="bg-orange-50"   iconColor="text-orange-500"
             valueColor="text-orange-700" borderColor="border-orange-100"
+            valueSize="text-lg"   sub="connected only"
+          />
+          {/* Handling time — every call worked, dial through disposition. Talk
+              Time above is 0 on calls that never connected, so on its own it
+              credits nothing for a number that rang out. */}
+          <KpiTile
+            label="Total Active Time" value={cs.total_active_time || kpis.total_active_time}
+            icon="hourglass_bottom"   iconBg="bg-indigo-50"  iconColor="text-indigo-500"
+            valueColor="text-indigo-700" borderColor="border-indigo-200"
+            valueSize="text-lg"       sub="dial → disposition"
           />
           <KpiTile
             label="Missed Calls"  value={cdr.missed_calls}
@@ -316,6 +344,16 @@ export const DwHomeDashboard: React.FC = () => {
               <span>Talk: <strong className="text-gray-600">{cdr.talk_time}</strong></span>
               <span>Total: <strong className="text-gray-600">{cdr.total_duration}</strong></span>
               <span>Avg Ring: <strong className="text-gray-600">{cdr.avg_ring_seconds}s</strong></span>
+              {/* This card is capped at the 5 latest missed calls and carries
+                  only a name + TMID. The Incoming Calls screen has every
+                  incoming call for the period with the full lead behind it. */}
+              <button
+                onClick={() => navigate('/dw/dw-incoming-calls')}
+                className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-600 hover:text-sky-700 hover:underline"
+              >
+                <span className="material-symbols-outlined text-[13px]">call_received</span>
+                All incoming calls
+              </button>
             </div>
           </div>
           {cdr.recent_missed.length === 0 ? (
@@ -387,7 +425,7 @@ export const DwHomeDashboard: React.FC = () => {
               <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${todayEarningsPercent}%` }}></div>
             </div>
             <div className="flex justify-between text-[10px] text-gray-400 mt-2 pt-2 border-t border-gray-100">
-              <span>{kpis.calls_today} calls today</span>
+              <span>{kpis.calls_today} calls · {kpis.unique_leads_today} unique</span>
               <span className="font-semibold text-indigo-600">{kpis.subscriptions_today} sales</span>
             </div>
           </div>
@@ -482,7 +520,7 @@ export const DwHomeDashboard: React.FC = () => {
               <span className="material-symbols-outlined text-[16px] text-indigo-400">phone_in_talk</span>
               Process Breakdown
             </h3>
-            <span className="text-[10px] text-gray-400">{cs.total_calls} calls · {cs.call_time || kpis.call_time}</span>
+            <span className="text-[10px] text-gray-400">{cs.total_calls} calls · {cs.unique_leads} unique · {cs.call_time || kpis.call_time}</span>
           </div>
           {callBreakdown.length > 0 ? (
             <div className="space-y-3">

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import IndependenceHeaderBanner from '../../shared/components/IndependenceHeaderBanner';
 import { useGetThDashboardQuery } from '../../services/api/webCrmApi';
 import { PageCardSkeleton } from '../../components/PageSkeleton';
 import {
@@ -287,6 +288,11 @@ export const ThHomeDashboard: React.FC = () => {
 
   return (
     <main className="bg-background p-md space-y-lg text-xs font-sans max-w-[1440px] mx-auto">
+      {/* Independence Day Banner */}
+      <IndependenceHeaderBanner
+        title="Telecalling Head Command Center"
+        subtitle="National operation overview across DW, Transporter Welcome, Matchmaking, and Special Categories."
+      />
 
       {/* 2. Revenue Command Bar */}
       {showRevLoading ? (

@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useGetWctLeadDetailQuery, useGetDwLeadDetailQuery } from '../../services/api/webCrmApi';
+import {
+  useGetWctLeadDetailQuery,
+  useGetDwLeadDetailQuery,
+  useLazyGetWctGlobalSearchQuery,
+} from '../../services/api/webCrmApi';
 import type { DwLead } from '../../services/api/webCrmApi';
 import {
   useQueueCache,
@@ -12,6 +16,8 @@ import {
 import type { QueueType, LeadRole } from '../../shared/hooks/useQueueCache';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import CrossRoleLeadDetail from '../shared/CrossRoleLeadDetail';
+import RegistrationDateFilter from '../../shared/components/business/RegistrationDateFilter';
+import type { RegDateRange } from '../../shared/components/business/RegistrationDateFilter';
 
 // Minutes since an ISO/SQL timestamp (best-effort; 0 when unparseable).
 const minutesSince = (ts?: string | null): number => {
@@ -56,9 +62,39 @@ const mapLead = (l: DwLead): TransporterLead => {
     jobsFilled: 0,
     whatsapp: !!l.mobile,
     notes: l.last_remarks || '',
+    lastFeedback: (l as any).last_feedback || '',
+    agreedAt: (l as any).agreed_at || '',
     history,
   };
 };
+
+// A global-search hit shaped into the model this screen renders. Only the
+// identity fields are known from search; the rest of the profile arrives from
+// the leadDetail query that `selectedId` drives, exactly as for a queue lead.
+const mapSearchResult = (res: any): TransporterLead => ({
+  id: String(res.id),
+  tmid: res.tmid || `TR-${res.id}`,
+  companyName: res.name || `Lead ${res.id}`,
+  contactName: res.name || 'Contact POC',
+  phone: res.mobile || '',
+  city: res.city || '',
+  state: res.state || '',
+  registeredMinutesAgo: 0,
+  slaMinutesLeft: 0,
+  fleetSize: 0,
+  callAttempts: 0,
+  segment: '—',
+  avgKmMonth: '—',
+  preferredRoutes: '—',
+  subscribedStatus: 'none',
+  jobsPosted: 0,
+  jobsFilled: 0,
+  whatsapp: !!res.mobile,
+  notes: '',
+  lastFeedback: '',
+  agreedAt: '',
+  history: [],
+});
 
 interface CallHistory {
   date: string;
@@ -88,6 +124,8 @@ interface TransporterLead {
   jobsFilled: number;
   whatsapp: boolean;
   notes: string;
+  lastFeedback: string;
+  agreedAt: string;
   history: CallHistory[];
 }
 
@@ -99,6 +137,9 @@ export const WctCallQueue: React.FC = () => {
   const [activeTab, setActiveTab] = useState<QueueType>('all');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  // Registration-date window (users.Created_at). Part of the queue cache key,
+  // so each range gets its own cached page rather than reusing another's.
+  const [regDates, setRegDates] = useState<RegDateRange>({});
   // Mixed-desk toggle: a TWC caller can work every kind of lead assigned to them
   // — transporter (this desk's native role), driver, association, foreman,
   // puncture shop, dhaba. The queue endpoints filter assigned_to = this caller +
@@ -112,23 +153,39 @@ export const WctCallQueue: React.FC = () => {
   const queueRole = endpointRoleFor(leadRole);
 
   const { data: queueData, isLoading: queueLoading, isFetching: queueFetching, refetch: refetchQueue, removeLead } =
-    useQueueCache(activeTab, { page, search, per_page: 50 }, undefined, queueRole, leadRole);
-  const { counts, refetch: refetchCounts } = useQueueCountsCache(queueRole, leadRole);
+    useQueueCache(activeTab, { page, search, per_page: 50 }, regDates, queueRole, leadRole);
+  const { counts, refetch: refetchCounts } = useQueueCountsCache(queueRole, leadRole, regDates);
 
-  useEffect(() => { setPage(1); }, [activeTab, search, leadRole]);
+  useEffect(() => { setPage(1); }, [activeTab, search, leadRole, regDates.reg_from, regDates.reg_to]);
 
   const leads: TransporterLead[] = (queueData?.leads || []).map(mapLead);
 
   const [selectedId, setSelectedId] = useState<string>('');
 
+  /**
+   * A lead opened from GLOBAL SEARCH rather than picked out of the queue.
+   *
+   * Global search reaches the whole user base, so the person found is usually
+   * assigned to someone else and is therefore NOT in `leads`. Without holding
+   * them separately, two things silently discarded the selection: `selectedLead`
+   * fell back to `leads[0]`, so the panel showed the first queue lead instead of
+   * the searched one (and both detail queries fetched that wrong id), and the
+   * auto-select effect below reset `selectedId` back to `leads[0].id` on the
+   * next queue refresh.
+   */
+  const [externalLead, setExternalLead] = useState<TransporterLead | null>(null);
+
   useEffect(() => {
+    // A globally-searched lead is not in the queue by definition — leave it be.
+    if (externalLead) return;
+
     if (leads.length > 0) {
       setSelectedId(prev => (prev && leads.some(m => m.id === prev)) ? prev : leads[0].id);
     } else {
       setSelectedId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueData]);
+  }, [queueData, externalLead]);
 
   const [sortBy, setSortBy] = useState<'sla' | 'reg' | 'callbacks'>('sla');
   const [toast, setToast] = useState<string | null>(null);
@@ -138,12 +195,16 @@ export const WctCallQueue: React.FC = () => {
   const [saveTimestamp, setSaveTimestamp] = useState<string>('');
   const saveTimerRef = useRef<any | null>(null);
 
-  const selectedLead = leads.find(l => l.id === selectedId) || leads[0];
+  // The searched lead wins: it is not in `leads`, and falling through to
+  // leads[0] is exactly what made the card open on the wrong person.
+  const selectedLead = externalLead
+    ?? leads.find(l => l.id === selectedId)
+    ?? leads[0];
 
   // Full transporter detail (profile, subscription, posted jobs, real call
   // history) for the selected lead — the same depth the Driver Welcome screen
   // shows, retargeted to transporters via WctCallerController::leadDetail.
-  const { data: detailData, isFetching: detailLoading } = useGetWctLeadDetailQuery(
+  const { data: detailData, isFetching: detailLoading, refetch: refetchDetail } = useGetWctLeadDetailQuery(
     selectedLead ? Number(selectedLead.id) : 0,
     { skip: !selectedLead || leadRole !== 'transporter' }
   );
@@ -152,7 +213,7 @@ export const WctCallQueue: React.FC = () => {
   // Cross-desk (driver) detail — fetched from the DW leadDetail endpoint when
   // the toggle is on 'Driver'. Same response shape, rendered via the shared
   // universal panel below.
-  const { data: driverDetailData, isFetching: driverDetailLoading } = useGetDwLeadDetailQuery(
+  const { data: driverDetailData, isFetching: driverDetailLoading, refetch: refetchDriverDetail } = useGetDwLeadDetailQuery(
     selectedLead ? Number(selectedLead.id) : 0,
     { skip: !selectedLead || leadRole === 'transporter' }
   );
@@ -163,6 +224,42 @@ export const WctCallQueue: React.FC = () => {
       setSaveTimestamp('');
     }
   }, [selectedId]);
+
+  // ── Global search ──────────────────────────────────────────────────────────
+  // Reaches the WHOLE user base (roles=all), not just this agent's queue, so a
+  // caller can pull up — and now phone — any transporter or driver by name,
+  // TMID or number. Mirrors the Driver Welcome / Matchmaking queue search.
+  const [globalSearchInput, setGlobalSearchInput] = useState('');
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const globalSearchRef = useRef<HTMLDivElement>(null);
+  const [triggerGlobalSearch, { data: globalSearchData, isFetching: isGlobalSearchFetching }] =
+    useLazyGetWctGlobalSearchQuery();
+
+  // Close the dropdown on any click outside it.
+  useEffect(() => {
+    const onClickOutside = (event: MouseEvent) => {
+      if (globalSearchRef.current && !globalSearchRef.current.contains(event.target as Node)) {
+        setIsGlobalSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  // Debounced — the backend ignores anything under 3 characters anyway, and
+  // firing per keystroke would hammer a LIKE query over the whole users table.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const trimmed = globalSearchInput.trim();
+      if (trimmed.length >= 3) {
+        triggerGlobalSearch({ q: trimmed, roles: 'all' });
+        setIsGlobalSearchOpen(true);
+      } else {
+        setIsGlobalSearchOpen(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [globalSearchInput, triggerGlobalSearch]);
 
   const handleNotesChange = (val: string) => {
     setNotesText(val);
@@ -191,11 +288,25 @@ export const WctCallQueue: React.FC = () => {
       invalidateQueueCache(queueRole);
       refetchCounts();
       refetchQueue();
-      if (selectedId) removeLead(Number(selectedId));
+
+      // Refresh the OPEN PROFILE too, not just the list. Without this the
+      // right-hand panel kept serving the response cached before the call, so
+      // the agent finished a call and still saw "Total Calls 0" and "No
+      // previous calls — first attempt" for a lead they had just spoken to.
+      // Only the active query has a live subscription; refetch() on a skipped
+      // one throws "Cannot refetch a query that has not been started yet".
+      if (selectedLead) {
+        if (leadRole === 'transporter') refetchDetail();
+        else refetchDriverDetail();
+      }
+
+      // A globally-searched lead was never in this queue, so there is nothing
+      // to drop — and dropping by that id would evict an unrelated row.
+      if (selectedId && !externalLead) removeLead(Number(selectedId));
     };
     window.addEventListener('san-disposition-complete', onDispositionComplete);
     return () => window.removeEventListener('san-disposition-complete', onDispositionComplete);
-  }, [selectedId, removeLead, refetchCounts, refetchQueue, queueRole]);
+  }, [selectedId, selectedLead, leadRole, externalLead, removeLead, refetchCounts, refetchQueue, refetchDetail, refetchDriverDetail, queueRole]);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -260,8 +371,45 @@ export const WctCallQueue: React.FC = () => {
     triggerToast(`Dialing ${lead.companyName}…`);
   };
 
+  /**
+   * Dial a lead found through global search.
+   *
+   * Search reaches every user in the database, including transporters and
+   * drivers assigned to another agent or to nobody. Assignment decides whose
+   * QUEUE a lead sits in, not who is allowed to phone them — the call is
+   * logged against whoever placed it regardless.
+   */
+  const handleGlobalSearchCall = (res: any) => {
+    if (!res?.mobile) { triggerToast('This lead has no phone number on file.'); return; }
+    if (agentState !== 'ready') {
+      triggerToast(agentState === 'logged_out'
+        ? 'CTI login failed — check the SAN softphone panel (bottom-left) for the reason.'
+        : 'CTI agent is not ready yet — please wait a moment and try again.');
+      return;
+    }
+    if (callState !== 'idle') {
+      triggerToast('Finish or hang up the current call before dialing another lead.');
+      return;
+    }
+
+    const isSocial = res.source === 'social_media';
+    const r = String(res.role || 'transporter').toLowerCase();
+    const nextRole = (LEAD_ROLES as readonly string[]).includes(r) ? (r as LeadRole) : 'transporter';
+
+    // Show the lead's profile alongside the call, the same as picking them
+    // from the queue does.
+    setLeadRole(nextRole);
+    setExternalLead(mapSearchResult(res));
+    setSelectedId(String(res.id));
+    setIsGlobalSearchOpen(false);
+    setGlobalSearchInput('');
+
+    dial(res.mobile, Number(res.id), res.name, res.tmid, isSocial ? 'social_media' : nextRole);
+    triggerToast(`Dialing ${res.name || res.mobile}…`);
+  };
+
   return (
-    <main className="h-[calc(100vh-80px)] flex bg-white overflow-hidden border border-gray-200 rounded-xl relative">
+    <main className="max-h-[calc(100vh-80px)] h-[calc(100vh-80px)] flex bg-white overflow-hidden border border-gray-200 rounded-xl relative">
       
       {/* Toast */}
       {toast && (
@@ -273,11 +421,96 @@ export const WctCallQueue: React.FC = () => {
 
       {/* Left Panel: Staging Call Queue */}
       <section className="w-[380px] border-r border-gray-200 flex flex-col bg-gray-50/50 shrink-0">
-        
+
+        {/* Global Search Header */}
+        <div className="p-3 border-b border-gray-200 bg-gray-50 shrink-0 relative" ref={globalSearchRef}>
+          <div className="relative w-full flex items-center">
+            <span className="material-symbols-outlined absolute left-2 text-gray-400 text-[18px]">search</span>
+            <input
+              type="text"
+              placeholder="Search ANY user — name, TMID, mobile…"
+              value={globalSearchInput}
+              onChange={(e) => setGlobalSearchInput(e.target.value)}
+              onFocus={() => { if (globalSearchInput.length >= 3) setIsGlobalSearchOpen(true); }}
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-[#FB641B] outline-none shadow-inner"
+            />
+            {isGlobalSearchFetching && (
+              <span className="material-symbols-outlined absolute right-2 text-gray-400 text-[16px] animate-spin">sync</span>
+            )}
+          </div>
+
+          {isGlobalSearchOpen && (
+            <div className="absolute top-full left-3 right-3 mt-1 bg-white border border-gray-200 shadow-xl rounded-lg z-50 max-h-[300px] overflow-y-auto divide-y divide-gray-100">
+              {isGlobalSearchFetching ? (
+                <div className="p-4 text-center text-xs text-gray-500 flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined text-[16px] animate-spin text-[#FB641B]">sync</span>
+                  Searching...
+                </div>
+              ) : globalSearchData?.data && globalSearchData.data.length > 0 ? (
+                globalSearchData.data.map((res: any) => (
+                  <div
+                    key={`${res.source}-${res.id}`}
+                    onClick={() => {
+                      const r = String(res.role || 'transporter').toLowerCase();
+                      const nextRole = (LEAD_ROLES as readonly string[]).includes(r) ? (r as LeadRole) : 'transporter';
+                      setLeadRole(nextRole);
+                      // Hold the lead outside the queue list — it isn't in it.
+                      setExternalLead(mapSearchResult(res));
+                      setSelectedId(String(res.id));
+                      setIsGlobalSearchOpen(false);
+                      setGlobalSearchInput('');
+                    }}
+                    className="p-3 cursor-pointer hover:bg-gray-50 flex justify-between items-center gap-2 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-gray-900 flex items-center gap-2 truncate">
+                        {res.name}
+                        {res.source === 'social_media' ? (
+                          <span className="bg-purple-100 text-purple-700 text-[9px] px-1.5 py-0.5 rounded border border-purple-200 shrink-0">SML</span>
+                        ) : res.role && (
+                          <span className="bg-gray-100 text-gray-600 text-[9px] px-1.5 py-0.5 rounded border border-gray-200 uppercase shrink-0">{res.role}</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5 truncate">
+                        {res.city ? `${res.city} | ` : ''}
+                        <span className={res.assigned_name === 'Unassigned' ? 'text-amber-600 font-medium' : 'text-gray-500'}>
+                          {res.assigned_name === 'Unassigned' ? 'Unassigned' : `Assigned: ${res.assigned_name}`}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <div className="text-xs font-mono text-gray-600 bg-gray-100 px-1 rounded">{res.tmid}</div>
+                        <div className="text-[11px] font-medium text-[#27AE60] mt-0.5">
+                          {res.mobile ? res.mobile.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2') : '**********'}
+                        </div>
+                      </div>
+                      {/* Call regardless of assignment. stopPropagation so the
+                          row's own click (open profile) doesn't also fire. */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleGlobalSearchCall(res); }}
+                        disabled={!res.mobile}
+                        title={res.mobile ? `Call ${res.name}` : 'No phone number on file'}
+                        className="shrink-0 w-8 h-8 rounded-full bg-[#27AE60] hover:bg-[#219653] text-white flex items-center justify-center shadow-sm active:scale-95 transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">call</span>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-center text-xs text-gray-500 italic">No matches found.</div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Tab Filter Header */}
         <div className="p-3 border-b border-gray-200 shrink-0 bg-white">
           <div className="flex justify-between items-center mb-3">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">{leadRoleMeta[leadRole].label} Queue</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-[#17376B] uppercase tracking-wider">{leadRoleMeta[leadRole].label} Queue</span>
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => { refetchQueue(); refetchCounts(); }}
@@ -303,7 +536,7 @@ export const WctCallQueue: React.FC = () => {
             {LEAD_ROLES.map(r => (
               <button
                 key={r}
-                onClick={() => { setLeadRole(r); setSelectedId(''); }}
+                onClick={() => { setLeadRole(r); setExternalLead(null); setSelectedId(''); }}
                 title={`${leadRoleMeta[r].label} leads assigned to you`}
                 className={`py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-1 ${
                   leadRole === r ? 'bg-[#FB641B] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
@@ -326,6 +559,11 @@ export const WctCallQueue: React.FC = () => {
             />
           </div>
 
+          {/* Registration date window — applies to every tab below. */}
+          <div className="mb-2">
+            <RegistrationDateFilter value={regDates} onChange={setRegDates} accent="#FB641B" />
+          </div>
+
           {/* Filter Tab Row — same tabs as Driver Welcome, real counts */}
           <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
             {[
@@ -335,16 +573,22 @@ export const WctCallQueue: React.FC = () => {
               { id: 'uncalled', label: `Uncalled (${counts?.uncalled ?? 0})` },
               { id: 'callbacks', label: `CB (${counts?.callbacks ?? 0})` },
               { id: 'called', label: `Called (${counts?.called_today ?? 0})` },
+              // Conversion pipeline — every lead dispositioned "Agree for
+              // Subscription" (any wording), all time, so the agent can work the
+              // payment follow-ups without digging through call history.
+              { id: 'agree', label: `Agree (${counts?.agree_subscription ?? 0})` },
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as QueueType)}
+                title={tab.id === 'agree' ? 'Leads whose call feedback is “Agree for Subscription”' : undefined}
                 className={`px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap border transition-colors flex items-center gap-1 ${
                   activeTab === tab.id
                     ? 'bg-[#FB641B] text-white border-[#FB641B]'
                     : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
                 }`}
               >
+                {tab.id === 'agree' && <span className="material-symbols-outlined text-[13px]">verified</span>}
                 {tab.label}
                 {tab.id === 'callbacks' && (counts?.overdue_callbacks ?? 0) > 0 && (
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" title={`${counts?.overdue_callbacks} overdue`}></span>
@@ -364,7 +608,7 @@ export const WctCallQueue: React.FC = () => {
               return (
                 <div 
                   key={l.id}
-                  onClick={() => setSelectedId(l.id)}
+                  onClick={() => { setExternalLead(null); setSelectedId(l.id); }}
                   className={`p-3 cursor-pointer flex border-l-4 transition-all relative ${getBorderColorClass(l)} ${
                     l.id === selectedId ? 'bg-orange-50/15 font-medium' : 'bg-white hover:bg-gray-50'
                   }`}
@@ -388,6 +632,14 @@ export const WctCallQueue: React.FC = () => {
                         </span>
                       )}
                     </div>
+
+                    {activeTab === 'agree' && (
+                      <div className="text-[11px] text-[#16A34A] truncate bg-green-50 border border-green-100 px-1.5 py-0.5 rounded font-semibold"
+                        title={l.notes || ''}>
+                        {l.lastFeedback || 'Agreed to subscribe'}
+                        {l.agreedAt ? ` · ${new Date(l.agreedAt.replace(' ', 'T')).toLocaleDateString('en-GB')}` : ''}
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between mt-2 pt-1 border-t border-gray-100/50">
                       <span className={`text-[11px] font-bold flex items-center gap-0.5 ${getSLAColorText(l.slaMinutesLeft)}`}>

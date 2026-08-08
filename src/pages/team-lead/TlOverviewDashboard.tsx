@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import IndependenceHeaderBanner from '../../shared/components/IndependenceHeaderBanner';
 import { useGetTlDashboardQuery, useGetTlRosterQuery, useGetTargetQuery, useSetTargetMutation } from '../../services/api/webCrmApi';
 
 interface TeamMember {
@@ -252,6 +253,12 @@ export const TlOverviewDashboard: React.FC = () => {
           {toastMessage}
         </div>
       )}
+
+      {/* Independence Day Banner */}
+      <IndependenceHeaderBanner
+        title="Team Leader Operations & Rebalancing Console"
+        subtitle="Driving team productivity, queue re-allocation, and performance targets."
+      />
 
       {/* Top Banner & Mode Toggle */}
       <div className="flex justify-between items-center bg-white p-3 border border-gray-200 rounded-xl shrink-0">

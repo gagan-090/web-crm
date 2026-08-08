@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useGetDwCampaignLeadsQuery, useUpdateDwCampaignLeadNotesMutation } from '../../services/api/webCrmApi';
+import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 
 interface CallHistory {
   date: string;
   duration: string;
   status: string;
   caller: string;
+  feedback?: string | null;
+  disposition_sub?: string | null;
+  remarks?: string | null;
 }
 
 interface CampaignLead {
@@ -40,12 +43,18 @@ interface CampaignLead {
   history: CallHistory[];
 }
 
-export const DwCampaignLeads: React.FC = () => {
-  const navigate = useNavigate();
+// `desk` reuses this exact screen for other calling desks (e.g. Matchmaking)
+// so the campaign-leads UI stays pixel-identical — only the active-call screen
+// the Call button routes to differs. The leads endpoint is caller-scoped, so
+// each desk's agent sees their own assigned campaign leads with no other change.
+export const DwCampaignLeads: React.FC<{ desk?: 'dw' | 'mm' }> = ({ desk = 'dw' }) => {
+  // Live CTI — dials in place (no page switch); the global
+  // CallControlBar renders the dialer over this same screen.
+  const { dial, agentState, callState } = useSanCti();
 
   // UI States
   const [selectedId, setSelectedId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'all' | 'hot' | 'warm' | 'cold' | 'callbacks' | 'converted'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'uncalled' | 'connected' | 'not_connected' | 'callbacks'>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'temperature' | 'newest' | 'oldest' | 'callbacks'>('temperature');
@@ -77,7 +86,18 @@ export const DwCampaignLeads: React.FC = () => {
     setPage(1);
   }, [sourceFilter, searchQuery, activeTab, sortBy]);
 
+  // Dials in place (no navigate-away/return), so refresh the queue when
+  // a call's disposition is submitted — the just-called lead is excluded
+  // server-side and should drop off, matching the WCT campaign desk.
+  useEffect(() => {
+    const onDone = () => refetch();
+    window.addEventListener('san-disposition-complete', onDone);
+    return () => window.removeEventListener('san-disposition-complete', onDone);
+  }, [refetch]);
+
   const [updateNotes] = useUpdateDwCampaignLeadNotesMutation();
+
+  const counts: Record<string, number> = campaignData?.counts || {};
 
   const leads: CampaignLead[] = (campaignData?.leads || []).map((l: any) => ({
     ...l,
@@ -166,53 +186,22 @@ export const DwCampaignLeads: React.FC = () => {
 
   const filteredLeads = getFilteredLeads();
 
-  // Active call trigger
+  // Active call trigger — dials in place over this screen.
+  // The global CallControlBar + auto-opening disposition modal handle the call,
+  // without redirecting to a separate active call focus screen.
   const handleCallNow = (lead: CampaignLead) => {
-    triggerToast(`Initiating outbound call to ${lead.name}...`);
-    
-    // Pass mobile to state lead
-    navigate('/dw/dw-active-call-focus', {
-      state: {
-        userId: lead.id,
-        leadId: lead.id,
-        tmid: lead.tmid,
-        name: lead.name,
-        phone: lead.phone,
-        mobile: lead.phone,
-        location: lead.city && lead.state ? `${lead.city}, ${lead.state}` : 'Unknown',
-        vehicleType: lead.vehicleType,
-        licenseType: lead.licenseType,
-        experience: lead.experience,
-        preferredRoute: lead.preferredRoute,
-        subscribed: lead.subscribed,
-        whatsapp: lead.whatsapp,
-        history: lead.history,
-        isCampaign: true,
-        queueBatch: filteredLeads.map(l => ({ ...l, id: Number(l.id) })), // Map string IDs back to numbers for DwActiveCallFocus state compatibility
-        batchIndex: filteredLeads.findIndex(l => l.id === lead.id),
-        queueType: 'campaign',
-        queuePage: page,
-        queueFilters: { source: sourceFilter },
-        campaignContext: {
-          source: lead.source,
-          campaignName: lead.campaignName,
-          adSet: lead.adSet,
-          leadForm: lead.leadForm,
-          capturedTime: lead.capturedTime,
-          utmSource: lead.utmSource,
-          utmMedium: lead.utmMedium,
-          utmCampaign: lead.utmCampaign,
-          temperature: lead.temperature,
-          openingScript: lead.openingScript
-        }
-      }
-    });
-
-    // If live SAN dialer is ready, trigger dial immediately (aligns with queue click-to-call flow)
-    if ((window as any)._sanDial) {
-      const numericId = parseInt(String(lead.id).replace(/\D/g, ''), 10) || 0;
-      (window as any)._sanDial(lead.phone, numericId, lead.name, lead.tmid, 'social_media');
+    if (agentState !== 'ready') {
+      triggerToast(agentState === 'logged_out'
+        ? 'CTI login failed — check the SAN softphone panel (bottom-left).'
+        : 'CTI agent is not ready yet — please wait a moment and try again.');
+      return;
     }
+    if (callState !== 'idle') { triggerToast('Finish the current call before dialing another lead.'); return; }
+    if (!lead.phone) { triggerToast('This lead has no phone number on record.'); return; }
+    setSelectedId(String(lead.id));
+    const numericId = parseInt(String(lead.id).replace(/\D/g, ''), 10) || 0;
+    dial(lead.phone, numericId, lead.name, lead.tmid, 'social_media');
+    triggerToast(`Dialing ${lead.name || 'lead'}…`);
   };
 
   return (
@@ -232,7 +221,7 @@ export const DwCampaignLeads: React.FC = () => {
         <div className="bg-red-500/10 border-b border-red-200 px-3 py-2 text-[11px] text-red-800 font-semibold flex justify-between items-center shrink-0">
           <span className="flex items-center gap-1">
             <span className="animate-pulse">🔥</span> 
-            <span>12 Hot Campaign Leads Piled Up</span>
+            <span>{counts.hot !== undefined ? `${counts.hot} Hot Campaign Leads Piled Up` : '12 Hot Campaign Leads Piled Up'}</span>
           </span>
           <span className="bg-red-500 text-white font-mono text-[9px] px-1.5 py-0.5 rounded-full uppercase">SLA Warning</span>
         </div>
@@ -242,6 +231,11 @@ export const DwCampaignLeads: React.FC = () => {
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Campaign Queue</span>
+              {(counts[activeTab] !== undefined || campaignData?.pagination?.total !== undefined) && (
+                <span className="bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.25 rounded-full font-mono">
+                  {counts[activeTab] ?? campaignData?.pagination?.total ?? leads.length}
+                </span>
+              )}
               <button
                 onClick={() => refetch()}
                 className="text-gray-400 hover:text-gray-650 hover:bg-gray-100 rounded-full p-0.5 flex items-center justify-center transition-all active:scale-90"
@@ -295,23 +289,29 @@ export const DwCampaignLeads: React.FC = () => {
           {/* Filter Tabs */}
           <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
             {[
-              { id: 'all', label: 'All Leads' },
-              { id: 'hot', label: '🔥 Hot' },
-              { id: 'warm', label: '~ Warm' },
-              { id: 'cold', label: '❄ Cold' },
-              { id: 'callbacks', label: 'Callbacks' },
-              { id: 'converted', label: 'Converted' }
+              { id: 'all', label: 'All Leads', count: counts.all ?? campaignData?.pagination?.total },
+              { id: 'uncalled', label: 'Uncalled', count: counts.uncalled },
+              { id: 'connected', label: 'Connected', count: counts.connected },
+              { id: 'not_connected', label: 'Not Connected', count: counts.not_connected },
+              { id: 'callbacks', label: 'Callbacks', count: counts.callbacks }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap border transition-colors ${
+                className={`px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap border transition-colors flex items-center gap-1.5 ${
                   activeTab === tab.id
                     ? 'bg-red-500 text-white border-red-500'
                     : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
                 }`}
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                {tab.count !== undefined && (
+                  <span className={`text-[10px] px-1.5 py-0.25 rounded-full font-bold font-mono ${
+                    activeTab === tab.id ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -404,7 +404,7 @@ export const DwCampaignLeads: React.FC = () => {
               Prev
             </button>
             <span className="text-[10px] text-gray-500 font-medium">
-              Page {page} of {campaignData.pagination.last_page}
+              Page {page} of {campaignData.pagination.last_page} ({campaignData.pagination.total} leads)
             </span>
             <button
               disabled={page >= campaignData.pagination.last_page}
@@ -452,8 +452,14 @@ export const DwCampaignLeads: React.FC = () => {
               </div>
               <p className="text-sm text-gray-500 mt-1">
                 {[selectedLead.city, selectedLead.state].filter(Boolean).join(', ')}
-                {([selectedLead.city, selectedLead.state].filter(Boolean).length > 0) ? ' | ' : ''}
-                {selectedLead.phone}
+                {/* MM desk never surfaces the mobile number — the agent dials
+                    through the CTI, which needs no number on show. */}
+                {desk !== 'mm' && (
+                  <>
+                    {([selectedLead.city, selectedLead.state].filter(Boolean).length > 0) ? ' | ' : ''}
+                    {selectedLead.phone}
+                  </>
+                )}
               </p>
             </div>
 
@@ -564,17 +570,36 @@ export const DwCampaignLeads: React.FC = () => {
             {selectedLead.history.length > 0 ? (
               <div className="space-y-2.5">
                 {selectedLead.history.map((hist, i) => (
-                  <div key={i} className="flex justify-between items-center text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${
-                        hist.status === 'Connected' ? 'bg-[#27AE60]' : 'bg-red-500'
-                      }`}></span>
-                      <span className="font-bold text-gray-800">{hist.status}</span>
-                      <span className="text-[11px] text-gray-400">Duration: {hist.duration}</span>
+                  <div key={i} className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${
+                          hist.status === 'Connected' ? 'bg-[#27AE60]' : 'bg-red-500'
+                        }`}></span>
+                        <span className="font-bold text-gray-800">{hist.status}</span>
+                        <span className="text-[11px] text-gray-400">Duration: {hist.duration}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        <span>{hist.date}</span> | <span className="font-semibold">{hist.caller}</span>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-gray-400">
-                      <span>{hist.date}</span> | <span className="font-semibold">{hist.caller}</span>
-                    </div>
+                    {(hist.feedback || hist.disposition_sub) && (
+                      <div className="flex flex-wrap gap-1.5 pl-4">
+                        {hist.feedback && (
+                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-semibold">
+                            {hist.feedback}
+                          </span>
+                        )}
+                        {hist.disposition_sub && (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100 text-[10px] font-semibold">
+                            {hist.disposition_sub}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {hist.remarks && (
+                      <p className="pl-4 text-[11px] text-gray-500 italic">"{hist.remarks}"</p>
+                    )}
                   </div>
                 ))}
               </div>

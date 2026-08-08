@@ -4,6 +4,18 @@ Options -MultiViews -Indexes
     RewriteEngine On
     RewriteBase /crm/
 
+    # ── App routes always win over a same-named FOLDER ──────────────────────
+    # A leftover asset directory called `theme` shipped in earlier builds, and
+    # deploying by unzipping over the folder never removes it. Apache then found
+    # a real directory at /crm/theme, the passthrough below stepped aside for it,
+    # and with -Indexes the page an agent asked for came back as 403 — the SPA
+    # never saw the request.
+    #
+    # Client-side routes are declared here so a stale directory can never shadow
+    # one again. Extensionless and listed explicitly, so real asset folders
+    # (assets/, brand/) keep being served normally.
+    RewriteRule ^(theme|web-roles)/?$ index.html [L]
+
     # Serve real files/directories as-is (assets, favicon, etc.)
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d

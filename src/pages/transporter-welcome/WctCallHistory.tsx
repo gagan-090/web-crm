@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useGetWctCallHistoryQuery } from '../../services/api/webCrmApi';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import {
@@ -17,6 +17,12 @@ const CANONICAL_FEEDBACKS = new Set(FEEDBACK_GROUPS.flatMap((g) => g.options));
 
 type DirectionFilter = 'all' | 'incoming' | 'outgoing';
 type StatusFilter = 'all' | 'connected' | 'not_connected' | 'callback_later';
+
+// Rows per fetch. 'all' asks the backend for the whole filtered log in one
+// page (it caps at 2000) so the agent scrolls rather than paginates — the
+// default is 50, which already clears the pager for a normal day's calling.
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 'all'] as const;
+type PageSize = typeof PAGE_SIZE_OPTIONS[number];
 
 const DATE_RANGE_OPTIONS = [
   { value: 'all', label: 'All Time' },
@@ -55,31 +61,29 @@ export const WctCallHistory: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [dateRange, setDateRange] = useState<string>('all');
   const [feedbackFilter, setFeedbackFilter] = useState<string>('all');
+  const [pageSize, setPageSize] = useState<PageSize>(50);
 
   const range = getDateRange(dateRange);
+  // EVERY filter goes to the server. Direction and status used to be applied
+  // here, after the server had already cut the log into 15-row pages — so the
+  // total counted rows the filter would have thrown away and each page showed
+  // only the handful of its 15 rows that matched. Filtering server-side means
+  // the total, the pages and the visible rows all describe the same set.
   const { data: response, isLoading, isFetching, refetch } = useGetWctCallHistoryQuery({
     page: currentPage,
     search: searchQuery || undefined,
     feedback: feedbackFilter !== 'all' ? feedbackFilter : undefined,
     date_from: range.date_from,
     date_to: range.date_to,
-    per_page: 15,
+    direction: directionFilter !== 'all' ? directionFilter : undefined,
+    call_status: statusFilter !== 'all' ? statusFilter : undefined,
+    per_page: pageSize,
   });
 
   const records = response?.data || [];
   const feedbackOptions = response?.feedback_options || [];
   const extraFeedbacks = feedbackOptions.filter((f) => !CANONICAL_FEEDBACKS.has(f));
-  const pagination = response?.pagination || { total: 0, per_page: 15, current_page: 1, last_page: 1 };
-
-  const filteredRecords = useMemo(() => {
-    return records.filter((r: any) => {
-      const isIncoming = r.process?.toLowerCase() === 'incoming';
-      if (directionFilter === 'incoming' && !isIncoming) return false;
-      if (directionFilter === 'outgoing' && isIncoming) return false;
-      if (statusFilter !== 'all' && r.call_status?.toLowerCase() !== statusFilter) return false;
-      return true;
-    });
-  }, [records, directionFilter, statusFilter]);
+  const pagination = response?.pagination || { total: 0, per_page: 50, current_page: 1, last_page: 1 };
 
   const hasActiveFilters = directionFilter !== 'all' || statusFilter !== 'all' || dateRange !== 'all' || feedbackFilter !== 'all' || searchQuery !== '';
 
@@ -219,6 +223,29 @@ export const WctCallHistory: React.FC = () => {
               )}
             </select>
           </div>
+
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-gray-400 text-[16px] pointer-events-none">format_list_numbered</span>
+            <select value={String(pageSize)} onChange={(e) => { const v = e.target.value; setPageSize(v === 'all' ? 'all' : Number(v) as PageSize); setCurrentPage(1); }}
+              title="Rows shown per screen"
+              className={`pl-8 pr-3 py-2 text-sm border rounded-lg shadow-sm outline-none font-semibold appearance-none ${pageSize !== 50 ? 'bg-slate-50 border-slate-300 text-slate-700' : 'bg-white border-gray-300 text-gray-700'}`}>
+              {PAGE_SIZE_OPTIONS.map((o) => (
+                <option key={String(o)} value={String(o)}>{o === 'all' ? 'Show all' : `${o} per screen`}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Result count — always the filtered total, so it matches the rows below */}
+        <div className="mt-3 text-xs font-semibold text-gray-500">
+          {isFetching ? 'Loading…' : (
+            <>
+              Showing <span className="text-gray-800">{records.length}</span> of{' '}
+              <span className="text-gray-800">{pagination.total}</span> call{pagination.total === 1 ? '' : 's'}
+              {hasActiveFilters ? ' matching the current filters' : ''}
+              {pagination.last_page > 1 ? ` · page ${pagination.current_page} of ${pagination.last_page}` : ''}
+            </>
+          )}
         </div>
       </section>
 
@@ -229,8 +256,8 @@ export const WctCallHistory: React.FC = () => {
             <div className="w-8 h-8 border-4 border-t-[#FB641B] border-gray-200 rounded-full animate-spin"></div>
             <p className="text-xs text-gray-400 mt-2">Retrieving call history...</p>
           </div>
-        ) : filteredRecords.length > 0 ? (
-          <div className="overflow-auto max-h-[calc(100vh-300px)]">
+        ) : records.length > 0 ? (
+          <div className="overflow-auto max-h-[calc(100vh-320px)]">
             <table className="w-full border-collapse text-left">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-600 uppercase tracking-wider">
@@ -247,7 +274,7 @@ export const WctCallHistory: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
-                {filteredRecords.map((r: any) => (
+                {records.map((r: any) => (
                   <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -338,7 +365,10 @@ export const WctCallHistory: React.FC = () => {
           <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
             <button disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               className="px-3 py-1.5 border border-gray-300 bg-white text-xs font-bold text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50 select-none">Previous</button>
-            <span className="text-xs font-semibold text-gray-500">Page {currentPage} of {pagination.last_page} ({pagination.total} total logs)</span>
+            <span className="text-xs font-semibold text-gray-500">
+              Page {currentPage} of {pagination.last_page} ({pagination.total} matching log{pagination.total === 1 ? '' : 's'})
+              <button onClick={() => { setPageSize('all'); setCurrentPage(1); }} className="ml-2 text-[#FB641B] hover:underline">Show all on one screen</button>
+            </span>
             <button disabled={currentPage >= pagination.last_page} onClick={() => setCurrentPage((p) => Math.min(pagination.last_page, p + 1))}
               className="px-3 py-1.5 border border-gray-300 bg-white text-xs font-bold text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50 select-none">Next</button>
           </div>
@@ -402,7 +432,7 @@ export const WctCallHistory: React.FC = () => {
                   <div><label className="text-[10.5px] text-gray-400 font-bold block">Connection Channel</label><span className="text-sm text-gray-800 capitalize font-semibold">{selectedRecord.call_type || '—'} ({selectedRecord.process || '—'})</span></div>
                   {selectedRecord.bill_duration && (<div><label className="text-[10.5px] text-gray-400 font-bold block">Actual Call Time (Billable)</label><span className="text-sm text-gray-800 font-bold">{selectedRecord.bill_duration}</span></div>)}
                   {selectedRecord.wrapup_durn && (<div><label className="text-[10.5px] text-gray-400 font-bold block">Wrap-up Duration</label><span className="text-sm text-gray-800 font-bold">{selectedRecord.wrapup_durn}</span></div>)}
-                  {selectedRecord.san_agent_name && (<div className="col-span-2"><label className="text-[10.5px] text-gray-400 font-bold block">SAN Agent Name</label><span className="text-sm text-gray-800 font-semibold">{selectedRecord.san_agent_name}</span></div>)}
+                  {selectedRecord.recording_source && (<div className="col-span-2"><label className="text-[10.5px] text-gray-400 font-bold block">Recording Source</label><span className="text-sm text-gray-800 font-semibold capitalize">{selectedRecord.recording_source === 'web-ivr' ? 'SAN (web dialer)' : selectedRecord.recording_source === 'ivr' ? 'EasyGo IVR' : 'Manual upload'}</span></div>)}
                   <div className="col-span-2"><label className="text-[10.5px] text-gray-400 font-bold block">Created Timestamp</label><span className="text-xs font-mono text-gray-700">{selectedRecord.created_at || '—'} (Display: {selectedRecord.date_display})</span></div>
                   {selectedRecord.recording_url && (<div className="col-span-2"><label className="text-[10.5px] text-gray-400 font-bold block mb-1.5">Audio Recording</label><audio src={selectedRecord.recording_url} controls className="w-full h-9 rounded" /></div>)}
                 </div>

@@ -257,7 +257,7 @@ const MmPlacementHistory: React.FC = () => {
                       <td className="p-2 pl-0 font-mono text-gray-500">
                         {p.placed_at ? new Date(p.placed_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}
                       </td>
-                      <td className="p-2 font-mono font-bold text-gray-700">{p.job_id}</td>
+                      <td className="p-2 font-mono font-bold text-black">{p.job_id}</td>
                       <td className="p-2 font-semibold text-gray-800">{p.driver_name || '—'}</td>
                       <td className="p-2">
                         <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${TIER_STYLES[p.tier]}`}>

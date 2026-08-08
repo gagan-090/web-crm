@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGetWctDashboardQuery } from '../../services/api/webCrmApi';
 import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
-import { useGetGateProgressQuery, useTriggerMockConversionMutation } from '../../services/api/incentiveApi';
+import IndependenceHeaderBanner from '../../shared/components/IndependenceHeaderBanner';
+import { KpiTile, WelcomeBar } from '../../shared/components/dashboard';
+import { useGetGateProgressQuery } from '../../services/api/incentiveApi';
 
 interface SLARow {
   id: string;
@@ -12,12 +14,23 @@ interface SLARow {
   slaMinutesLeft: number;
 }
 
+type Period = 'today' | 'yesterday' | 'last_7_days' | 'this_week' | 'this_month' | 'all';
+
+const PERIOD_TABS: { id: Period; label: string }[] = [
+  { id: 'today',       label: 'Today' },
+  { id: 'yesterday',   label: 'Yesterday' },
+  { id: 'last_7_days', label: 'Past 7 Days' },
+  { id: 'this_week',   label: 'This Week' },
+  { id: 'this_month',  label: 'This Month' },
+  { id: 'all',         label: 'All Time' },
+];
+
 export const WctHomeDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const [period, setPeriod] = useState<Period>('today');
 
-  const { data: realData } = useGetWctDashboardQuery();
+  const { data: realData } = useGetWctDashboardQuery({ period });
   const { data: progress } = useGetGateProgressQuery('twc');
-  const [triggerMockConversion] = useTriggerMockConversionMutation();
 
   // Real KPIs from WctCallerController::dashboard (transporter-retargeted DW shape)
   const kpis = realData?.data?.kpis;
@@ -25,6 +38,22 @@ export const WctHomeDashboard: React.FC = () => {
   const subs = realData?.data?.subscriptions;
   const leaderboard = realData?.data?.leaderboard;
   const callBreakdown = realData?.data?.call_breakdown ?? [];
+
+  // Period-aware call outcomes. The dashboard used to read only `kpis`, which
+  // is today-only and has no not-connected or callback figure at all — the
+  // reason those two never appeared and "Missed Calls" was standing in for
+  // them. calls_summary has carried all of it from the start.
+  const cs = realData?.data?.calls_summary ?? {
+    total_calls: 0, unique_leads: 0, unique_connected: 0, repeat_calls: 0,
+    incoming: 0, outgoing: 0, connected: 0, not_connected: 0, callback_later: 0,
+    conversions: 0, connect_rate: 0, conversion_rate: 0, call_time: '0H 0M 0S',
+    total_active_time: '0H 0M 0S', total_active_seconds: 0,
+  };
+
+  // False when the figures were derived from call_history_ivr because SAN's
+  // network CDR had nothing — missed counts are unknown, not zero, in that mode.
+  const isCdrLive = cdr?.source !== 'crm';
+
   const callsToday = kpis?.calls_today ?? 0;
   const connectedToday = kpis?.connected_today ?? 0;
   const conversionsToday = kpis?.subscriptions_today ?? 0;
@@ -111,36 +140,20 @@ export const WctHomeDashboard: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
       
-      {/* Simulation Bar */}
-      <section className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 pb-4">
-        <div>
-          <p className="text-[#666666] text-xs font-semibold uppercase tracking-widest">Transporter Welcome calling Process</p>
-          <h2 className="text-2xl font-bold text-gray-800">Transporter Connect Control</h2>
-        </div>
-        
-        {/* Interactive Simulator */}
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 p-2 rounded-lg text-xs select-none">
-          <span className="font-bold text-gray-600">Simulate:</span>
-          <button 
-            onClick={() => triggerMockConversion({ role: 'twc', planName: 'sp_posting' })}
-            className="px-2.5 py-1 bg-white border rounded hover:bg-gray-100 transition-colors"
-          >
-            Simulate Conversion (+₹500 / ₹2,999 Value)
-          </button>
-          <button 
-            onClick={() => {
-              // Add a breached lead
-              setSlaList(prev => [
-                ...prev, 
-                { id: `S_${Date.now()}`, company: 'Grover Logistics', tmid: 'TR-19208', registeredMinutesAgo: 320, slaMinutesLeft: -80 }
-              ]);
-            }}
-            className="px-2.5 py-1 bg-white border rounded hover:bg-gray-100 transition-colors text-red-600 font-semibold"
-          >
-            + Add Breached SLA Lead
-          </button>
-        </div>
-      </section>
+      {/* Independence Day Header Banner */}
+      <IndependenceHeaderBanner 
+        title="Transporter Welcome Control Center"
+        subtitle="Empowering logistics partners with nationwide driver onboarding & verification."
+      />
+
+      {/* The two "Simulate" buttons that used to live here injected a fake
+          conversion and a fake breached-SLA lead into a live desk dashboard.
+          Removed — an agent cannot tell invented rows from real ones. */}
+      <WelcomeBar
+        process="Transporter Welcome Calling Process"
+        name={realData?.data?.caller?.name || 'Agent'}
+        date={new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+      />
 
       {/* SLA WATCH STRIP (sticky-feeling dedicated horizontal strip) */}
       <section className={`border rounded-xl p-4 shadow-sm ${
@@ -283,25 +296,62 @@ export const WctHomeDashboard: React.FC = () => {
 
       {/* ── Wide-range Call Data (DWC parity) ── */}
       <section className="space-y-4">
-        <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Call Performance</h3>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Call Performance</h3>
 
-        {/* Assignment & Today's Funnel */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-          {[
-            { label: 'Assigned', value: kpis?.assigned_total ?? 0, color: 'text-gray-800' },
-            { label: 'Pending', value: kpis?.calls_pending ?? 0, color: 'text-[#FB641B]' },
-            { label: 'Calls Today', value: callsToday, color: 'text-gray-800' },
-            { label: 'Connected', value: connectedToday, color: 'text-[#27AE60]' },
-            { label: 'Conversions', value: conversionsToday, color: 'text-[#27AE60]' },
-            { label: 'Feedback Due', value: kpis?.feedback_missing ?? 0, color: 'text-red-500' },
-            { label: 'Missed Calls', value: kpis?.missed_calls ?? 0, color: 'text-red-500' },
-            { label: 'Talk Time', value: kpis?.call_time ?? '0h 0m', color: 'text-gray-800', isText: true },
-          ].map((s, i) => (
-            <div key={i} className="bg-white border border-gray-200 rounded-lg p-3 text-center shadow-sm">
-              <div className={`font-bold ${s.isText ? 'text-base' : 'text-xl'} ${s.color}`}>{s.value}</div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">{s.label}</div>
+          {/* The figures below come from calls_summary, which is period-aware.
+              Without this selector the dashboard could only ever say "today". */}
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider shrink-0">Period:</span>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm shrink-0">
+              {PERIOD_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setPeriod(tab.id)}
+                  className={`px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap transition-all border-r border-gray-200 last:border-r-0 ${
+                    period === tab.id ? 'bg-[#1A5276] text-white' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
-          ))}
+          </div>
+        </div>
+
+        {/* The real call funnel for the selected period. Every value is a
+            distinct outcome of call_history_ivr.call_status, so they add up:
+            connected + not connected + callback = total. */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-2 tm-stagger">
+          <KpiTile label="Total Calls"   value={cs.total_calls}   icon="phone"        tone="slate"
+                   sub={`${cs.repeat_calls} repeat dials`} />
+          <KpiTile label="Unique Leads"  value={cs.unique_leads}  icon="group"        tone="indigo"
+                   sub={`${cs.unique_connected} reached`} />
+          <KpiTile label="Connected"     value={cs.connected}     icon="check_circle" tone="emerald"
+                   sub={`${cs.connect_rate}% connect rate`} />
+          <KpiTile label="Not Connected" value={cs.not_connected} icon="cancel"       tone="red"
+                   sub="did not reach the lead" />
+          <KpiTile label="Call Backs"    value={cs.callback_later} icon="schedule_send" tone="amber"
+                   sub="scheduled to retry" />
+          <KpiTile label="Talk Time"     value={cs.call_time || '0H 0M 0S'} icon="timer" tone="orange"
+                   valueSize="text-lg" sub="connected only" />
+          {/* Handling time — every call worked, dial through disposition. Talk
+              Time is 0 on calls that never connected, so on its own it credits
+              nothing for a number that rang out. */}
+          <KpiTile label="Total Active Time" value={cs.total_active_time || '0H 0M 0S'} icon="hourglass_bottom"
+                   tone="indigo" valueSize="text-lg" sub="dial → disposition" />
+        </div>
+
+        {/* Direction + assignment, kept separate from the outcome funnel above
+            so the two can't be read as one series. */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 tm-stagger">
+          <KpiTile label="Assigned"     value={kpis?.assigned_total ?? 0}   icon="assignment_ind" tone="slate" />
+          <KpiTile label="Pending"      value={kpis?.calls_pending ?? 0}    icon="pending_actions" tone="orange" />
+          <KpiTile label="Outgoing"     value={cs.outgoing}                 icon="call_made"      tone="blue" />
+          <KpiTile label="Incoming"     value={cs.incoming}                 icon="call_received"  tone="sky" />
+          <KpiTile label="Conversions"  value={cs.conversions}              icon="trending_up"    tone="emerald"
+                   sub={cs.connected > 0 ? `${cs.conversion_rate}% of connected` : undefined} />
+          <KpiTile label="Feedback Due" value={kpis?.feedback_missing ?? 0} icon="rate_review"    tone="red" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -313,12 +363,30 @@ export const WctHomeDashboard: React.FC = () => {
             <div className="grid grid-cols-2 gap-y-2 text-xs">
               <span className="text-gray-500">Total Calls</span><span className="font-bold text-gray-800 text-right">{cdr?.total_calls ?? 0}</span>
               <span className="text-gray-500">Connected</span><span className="font-bold text-[#27AE60] text-right">{cdr?.connected ?? 0}</span>
-              <span className="text-gray-500">Missed</span><span className="font-bold text-red-500 text-right">{cdr?.missed_calls ?? 0}</span>
-              <span className="text-gray-500">Incoming (missed)</span><span className="font-bold text-gray-800 text-right">{cdr?.incoming_total ?? 0} ({cdr?.incoming_missed ?? 0})</span>
-              <span className="text-gray-500">Outgoing (missed)</span><span className="font-bold text-gray-800 text-right">{cdr?.outgoing_total ?? 0} ({cdr?.outgoing_missed ?? 0})</span>
+              {/* Missed = a call nobody answered, which ONLY the network CDR
+                  sees. In the CRM fallback (source 'crm') that is genuinely
+                  unknown, so it shows "—" instead of borrowing the
+                  not-connected count and calling it missed. */}
+              <span className="text-gray-500">Missed</span>
+              <span className="font-bold text-red-500 text-right">
+                {isCdrLive ? (cdr?.missed_calls ?? 0) : '—'}
+              </span>
+              <span className="text-gray-500">Not Connected</span><span className="font-bold text-red-500 text-right">{cs.not_connected}</span>
+              <span className="text-gray-500">Call Backs</span><span className="font-bold text-amber-600 text-right">{cs.callback_later}</span>
+              <span className="text-gray-500">Incoming (missed)</span><span className="font-bold text-gray-800 text-right">{cdr?.incoming_total ?? 0} ({isCdrLive ? (cdr?.incoming_missed ?? 0) : '—'})</span>
+              <span className="text-gray-500">Outgoing (missed)</span><span className="font-bold text-gray-800 text-right">{cdr?.outgoing_total ?? 0} ({isCdrLive ? (cdr?.outgoing_missed ?? 0) : '—'})</span>
               <span className="text-gray-500">Talk Time</span><span className="font-bold text-gray-800 text-right">{cdr?.talk_time ?? '0'}</span>
               <span className="text-gray-500">Avg Ring</span><span className="font-bold text-gray-800 text-right">{cdr?.avg_ring_seconds ?? 0}s</span>
             </div>
+            {/* These are counts only. The Incoming Calls screen lists every
+                incoming call behind them, with the caller's full lead record. */}
+            <button
+              onClick={() => navigate('/wct/wct-incoming-calls')}
+              className="mt-3 w-full inline-flex items-center justify-center gap-1 text-[11px] font-bold text-sky-600 border border-sky-200 bg-sky-50 hover:bg-sky-100 rounded-lg py-1.5 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[14px]">call_received</span>
+              View incoming call history
+            </button>
           </div>
 
           {/* Subscriptions panel */}

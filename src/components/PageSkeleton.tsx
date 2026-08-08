@@ -1,10 +1,22 @@
 import React from 'react';
+import useCrmTheme from '../shared/theme/useCrmTheme';
+import AshokaChakra from '../shared/components/AshokaChakra';
 
 // ── Reusable skeleton primitives ──────────────────────────────────────────────
 
 const Sk = ({ className }: { className: string }) => (
   <div className={`bg-slate-200 rounded animate-pulse ${className}`} />
 );
+
+const ChakraLoader = () => {
+  const { isTricolor } = useCrmTheme();
+  return isTricolor ? (
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[#17376B] text-xs font-bold shrink-0">
+      <AshokaChakra size={16} className="text-[#17376B] animate-spin-slow" />
+      <span>Loading Data…</span>
+    </div>
+  ) : null;
+};
 
 // ── Page-level full skeleton (header + table rows) ─────────────────────────
 export const PageTableSkeleton: React.FC<{
@@ -24,7 +36,10 @@ export const PageTableSkeleton: React.FC<{
     <div className="flex justify-between items-center">
       <div className="space-y-2">
         {title ? (
-          <p className="text-xs font-bold text-outline uppercase tracking-wider">{title}</p>
+          <p className="text-xs font-bold text-outline uppercase tracking-wider flex items-center gap-2">
+            <span>{title}</span>
+            <ChakraLoader />
+          </p>
         ) : (
           <Sk className="h-3 w-32" />
         )}
@@ -84,7 +99,10 @@ export const PageCardSkeleton: React.FC<{ cards?: number; title?: string }> = ({
     <div className="flex justify-between items-center">
       <div className="space-y-2">
         {title ? (
-          <p className="text-xs font-bold text-outline uppercase tracking-wider">{title}</p>
+          <p className="text-xs font-bold text-outline uppercase tracking-wider flex items-center gap-2">
+            <span>{title}</span>
+            <ChakraLoader />
+          </p>
         ) : (
           <Sk className="h-3 w-32" />
         )}

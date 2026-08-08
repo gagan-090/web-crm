@@ -20,6 +20,8 @@ export const DwPerformanceStats: React.FC = () => {
   const data = response?.data;
   const metrics = data?.metrics || {
     total_calls: 0,
+    unique_leads: 0,
+    repeat_calls: 0,
     connected: 0,
     conversions: 0,
     revenue: 0,
@@ -126,6 +128,16 @@ export const DwPerformanceStats: React.FC = () => {
               {metrics.total_calls} <span className="text-xs text-gray-400 font-normal">calls made</span>
             </div>
             <div className="text-xs text-gray-500 mt-2 space-y-1">
+              {/* Distinct numbers dialled — calls made counts every dial, so a
+                  lead worked repeatedly inflated it. */}
+              <div className="flex justify-between">
+                <span>Unique Leads:</span>
+                <span className="font-semibold text-gray-800">{metrics.unique_leads}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Repeat Dials:</span>
+                <span className="font-semibold text-gray-800">{metrics.repeat_calls}</span>
+              </div>
               <div className="flex justify-between">
                 <span>Avg Duration:</span>
                 <span className="font-semibold text-gray-800">{metrics.avg_call_time}</span>

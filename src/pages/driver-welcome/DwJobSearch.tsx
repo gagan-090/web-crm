@@ -1,10 +1,20 @@
 import React, { useState, useMemo } from 'react';
 import { useGetDwJobSearchQuery } from '../../services/api/webCrmApi';
-import type { DwJob } from '../../services/api/webCrmApi';
+import type { DwJob, JobBoardScope } from '../../services/api/webCrmApi';
+import JobDetailModal from '../../shared/components/business/JobDetailModal';
 
 type StatusFilter = 'open' | 'all';
 
-export const DwJobSearch: React.FC = () => {
+interface JobSearchBoardProps {
+  /**
+   * Which process is rendering the board. Only decides which API prefix is
+   * called — the board itself is identical for DW and MM, so MmJobSearch is a
+   * thin wrapper over this rather than a second copy to keep in sync.
+   */
+  scope?: JobBoardScope;
+}
+
+export const DwJobSearch: React.FC<JobSearchBoardProps> = ({ scope = 'dw' }) => {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [stateId, setStateId] = useState('');
@@ -12,6 +22,8 @@ export const DwJobSearch: React.FC = () => {
   const [experience, setExperience] = useState('');
   const [status, setStatus] = useState<StatusFilter>('open');
   const [currentPage, setCurrentPage] = useState(1);
+  // jobs.id of the row whose eye icon was clicked; null = modal closed.
+  const [detailJobId, setDetailJobId] = useState<number | null>(null);
 
   // Debounce the free-text search
   React.useEffect(() => {
@@ -20,6 +32,7 @@ export const DwJobSearch: React.FC = () => {
   }, [searchInput]);
 
   const { data: response, isLoading, isFetching, refetch } = useGetDwJobSearchQuery({
+    scope,
     page: currentPage,
     per_page: 20,
     status,
@@ -184,6 +197,7 @@ export const DwJobSearch: React.FC = () => {
                   <th className="px-5 py-4">Assigned To</th>
                   <th className="px-5 py-4">Placed Driver</th>
                   <th className="px-5 py-4 text-center">Applicants</th>
+                  <th className="px-5 py-4 text-center">View</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
@@ -246,6 +260,16 @@ export const DwJobSearch: React.FC = () => {
                         {job.applicants_count}
                       </span>
                     </td>
+                    <td className="px-5 py-4 text-center">
+                      <button
+                        onClick={() => setDetailJobId(job.id)}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                        title="View full job details"
+                        aria-label={`View details for ${job.job_title || 'job'}`}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">visibility</span>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -286,6 +310,8 @@ export const DwJobSearch: React.FC = () => {
           </div>
         )}
       </div>
+
+      <JobDetailModal jobRowId={detailJobId} scope={scope} onClose={() => setDetailJobId(null)} />
     </div>
   );
 };

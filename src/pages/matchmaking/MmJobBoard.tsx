@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGetMmJobListingsQuery, useGetMmDashboardQuery } from '../../services/api/webCrmApi';
 import { useStickyState, useStickyScroll } from '../../shared/hooks/useStickyState';
 import { openJobSession } from './mmJobSession';
+import TransporterDetailsModal from './TransporterDetailsModal';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const planBadge = (plan: string) => {
@@ -24,13 +25,13 @@ const daysSince = (dateStr: string) => {
 };
 
 // ── Job Card ─────────────────────────────────────────────────────────────────
-const JobCard: React.FC<{ job: any; onClick: () => void }> = ({ job, onClick }) => (
+const JobCard: React.FC<{ job: any; onClick: () => void; onViewTransporter: () => void }> = ({ job, onClick, onViewTransporter }) => (
   <div
     onClick={onClick}
     className="bg-white border border-gray-200 rounded-xl p-3.5 shadow-sm hover:shadow-md hover:border-[#8E44AD]/40 transition-all cursor-pointer group"
   >
     <div className="flex justify-between items-start mb-2">
-      <span className="font-mono text-[10px] text-gray-400">{job.job_id}</span>
+      <span className="font-mono text-[10px] font-bold text-black">{job.job_id}</span>
       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${planBadge(job.plan_type)}`}>
         {job.plan_type}
       </span>
@@ -40,8 +41,19 @@ const JobCard: React.FC<{ job: any; onClick: () => void }> = ({ job, onClick }) 
       {job.job_title}
     </h3>
 
-    <p className="text-gray-500 font-semibold text-[10px] truncate">
-      <span className="material-symbols-outlined text-[10px] align-middle">business</span> {job.transporter_name}
+    <p className="text-gray-500 font-semibold text-[10px] flex items-center gap-1 min-w-0">
+      <span className="material-symbols-outlined text-[10px] shrink-0">business</span>
+      <span className="truncate">{job.transporter_name}</span>
+      {/* stopPropagation so the eye opens the transporter, not the job. */}
+      {!!job.transporter_id && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onViewTransporter(); }}
+          title={`View full details for ${job.transporter_name || 'this transporter'}`}
+          className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-gray-400 hover:text-[#8E44AD] hover:bg-purple-50 transition-colors"
+        >
+          <span className="material-symbols-outlined text-[13px]">visibility</span>
+        </button>
+      )}
     </p>
     {(job.route || job.location) && (
       <p className="text-gray-400 text-[10px] truncate mt-0.5">
@@ -117,6 +129,10 @@ const JobsGrid: React.FC<{
   const navigate = useNavigate();
   const [cursor, setCursor] = useState<number | null>(null);
   const [allJobs, setAllJobs] = useState<any[]>([]);
+  // Transporter behind the eye icon on a job card, null when the modal is shut.
+  const [transporterView, setTransporterView] = useState<
+    { id: number; name?: string; tmid?: string } | null
+  >(null);
   // How many pages we've auto-advanced through — capped so that a backend which
   // ignores scope='mine' (and therefore keeps returning system-wide pages) can
   // never make us walk the entire job table.
@@ -260,9 +276,24 @@ const JobsGrid: React.FC<{
             key={job.id}
             job={job}
             onClick={() => navigate('/mm/mm-job-detail', { state: { jobId: job.job_id } })}
+            onViewTransporter={() => setTransporterView({
+              id: Number(job.transporter_id),
+              name: job.transporter_name,
+              tmid: job.tm_user_id,
+            })}
           />
         ))}
       </div>
+
+      {transporterView && (
+        <TransporterDetailsModal
+          open
+          transporterId={transporterView.id}
+          transporterName={transporterView.name}
+          uniqueId={transporterView.tmid}
+          onClose={() => setTransporterView(null)}
+        />
+      )}
 
       {stillLoadingMine && (
         <div className="flex justify-center items-center gap-2 mt-4 text-[11px] text-gray-400">
@@ -281,13 +312,15 @@ const JobsGrid: React.FC<{
 };
 
 
-// ── Job lookup (own jobs) ─────────────────────────────────────────────────────
+// ── Global job lookup (ANY agent's job) ───────────────────────────────────────
 //
-// The board is scoped to the signed-in agent, so this lookup is too: it reaches
-// only the caller's OWN jobs from whatever fragment they have — full or partial
-// job id, transporter name, TMID (full or last digits) or mobile number. The
-// backend matches all of those; scope='mine' keeps it to the agent's jobs and
-// the is_mine guard below enforces it regardless of the backend.
+// The board grid is scoped to the signed-in agent, but SEARCH is deliberately
+// system-wide: an agent can look up ANY job in the database from whatever
+// fragment they have — full or partial job id, transporter name, TMID (full or
+// last digits) or mobile number. Results are badged with their owner; opening a
+// job that isn't the agent's shows it read-only (details + applicants, no
+// calls — enforced in MmJobDetail via is_mine). Nothing here is filtered by
+// ownership, so type='any' with no scope.
 const GlobalJobSearch: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -308,11 +341,11 @@ const GlobalJobSearch: React.FC<{ value: string; onChange: (v: string) => void }
   }, []);
 
   const { data, isFetching } = useGetMmJobListingsQuery(
-    { type: 'any', section: 'all', search: term, scope: 'mine', limit: 25 },
+    { type: 'any', section: 'all', search: term, limit: 25 },
     { skip: term.length < 3 }
   );
-  // Enforce own-jobs-only even if the backend ignores scope='mine'.
-  const results = (data?.data?.jobs ?? []).filter(j => j.is_mine);
+  // System-wide: every job that matches, whoever owns it.
+  const results = data?.data?.jobs ?? [];
 
   return (
     <div ref={boxRef} className="relative flex-1 max-w-md">
@@ -321,7 +354,7 @@ const GlobalJobSearch: React.FC<{ value: string; onChange: (v: string) => void }
         value={value}
         onChange={e => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
-        placeholder="Search your jobs — job id, last 5 digits, transporter, TMID, mobile…"
+        placeholder="Search ANY job — job id, last 5 digits, transporter, TMID, mobile…"
         className="w-full pl-8 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#8E44AD] bg-white"
       />
       {value && (
@@ -342,7 +375,7 @@ const GlobalJobSearch: React.FC<{ value: string; onChange: (v: string) => void }
           ) : (
             <>
               <p className="px-3 py-1.5 text-[9px] font-extrabold text-gray-400 uppercase border-b border-gray-100 sticky top-0 bg-white">
-                {results.length} of your job{results.length !== 1 ? 's' : ''}
+                {results.length} job{results.length !== 1 ? 's' : ''} across all agents
               </p>
               {results.map(job => (
                 <button
@@ -354,10 +387,19 @@ const GlobalJobSearch: React.FC<{ value: string; onChange: (v: string) => void }
                   className="w-full text-left px-3 py-2 hover:bg-purple-50 border-b border-gray-50 last:border-0"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[10px] text-gray-400 shrink-0">{job.job_id}</span>
+                    <span className="font-mono text-[10px] font-bold text-black shrink-0">{job.job_id}</span>
                     <span className="font-bold text-gray-800 text-[11px] truncate flex-1">{job.job_title}</span>
                     <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded shrink-0 ${statusBadge(job.status)}`}>
                       {job.status}
+                    </span>
+                    {/* Ownership: YOURS (callable) vs another agent (view-only) */}
+                    <span
+                      className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded shrink-0 ${
+                        job.is_mine ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                      }`}
+                      title={job.is_mine ? 'Assigned to you' : 'Another agent — view only, no calls'}
+                    >
+                      {job.is_mine ? 'YOURS' : (job.assigned_to_name || 'OTHER AGENT')}
                     </span>
                   </div>
                   <p className="text-[10px] text-gray-500 mt-0.5 truncate">

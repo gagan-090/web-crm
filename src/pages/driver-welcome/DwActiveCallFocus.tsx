@@ -95,6 +95,7 @@ export const DwActiveCallFocus: React.FC = () => {
     currentLeadId: incomingLeadId,
     currentLeadLocation: incomingLeadLocation,
     currentLeadCallStatus: incomingLeadCallStatus,
+    callWasAnswered,
   } = useSanCti();
 
   const [submitCtiFeedback] = useSubmitCtiFeedbackMutation();
@@ -238,6 +239,13 @@ export const DwActiveCallFocus: React.FC = () => {
 
   // Timer state
   const [seconds, setSeconds] = useState(0);
+
+  // SAN confirmed the call was answered (or the timer ran, which only starts
+  // after that same Answer). A call that connected can never also be a
+  // no-answer, so the not-connected outcome is removed from the disposition
+  // form entirely — picking one wrote call_history_ivr rows that claimed
+  // "connected" and "Ringing / No Answer" at once.
+  const callConnected = callWasAnswered || seconds > 0;
 
   const [activeTab, setActiveTab] = useState<string>('profile');
 
@@ -708,7 +716,8 @@ export const DwActiveCallFocus: React.FC = () => {
           <div className="grid grid-cols-2 gap-2">
             {[
               { id: 'connected', label: 'Connected', icon: 'check_circle' },
-              { id: 'not_connected', label: 'No Answer / NR', icon: 'phone_disabled' },
+              // Hidden once the call was answered — see callConnected.
+              ...(callConnected ? [] : [{ id: 'not_connected', label: 'No Answer / NR', icon: 'phone_disabled' }]),
               { id: 'callback_later', label: 'Callback Later', icon: 'timer' }
             ].map(disp => (
               <button
@@ -1223,10 +1232,16 @@ export const DwActiveCallFocus: React.FC = () => {
             {/* Step 1 — Outcome */}
             <div className="space-y-2 mb-4">
               <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Step 1 — Call Outcome *</div>
-              <div className="grid grid-cols-3 gap-2">
+              {callConnected && (
+                <div className="text-[10px] font-bold text-[#27AE60]">
+                  Call already connected — "Not Connected" is hidden.
+                </div>
+              )}
+              <div className={`grid ${callConnected ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
                 {[
                   { id: 'connected', label: 'Connected', desc: 'कॉल जुड़ गया' },
-                  { id: 'not_connected', label: 'Not Connected', desc: 'कॉल नहीं जुड़ा' },
+                  // Hidden once the call was answered — see callConnected.
+                  ...(callConnected ? [] : [{ id: 'not_connected', label: 'Not Connected', desc: 'कॉल नहीं जुड़ा' }]),
                   { id: 'callback_later', label: 'Callback Later', desc: 'बाद में कॉल करें' }
                 ].map(op => (
                   <button

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import GateProgressWidget from '../../shared/components/incentive/GateProgressWidget';
+import IndependenceHeaderBanner from '../../shared/components/IndependenceHeaderBanner';
 import { useNavigate } from 'react-router-dom';
 import { useGetMmDashboardQuery, useGetMmJobListingsQuery, useGetMmAgentStatsQuery } from '../../services/api/webCrmApi';
+import TransporterDetailsModal from './TransporterDetailsModal';
 
 // ── Agent report helpers ────────────────────────────────────────────────────
 // Every figure comes from MmCallerController::mmAgentStats, which counts real
@@ -9,10 +11,14 @@ import { useGetMmDashboardQuery, useGetMmJobListingsQuery, useGetMmAgentStatsQue
 
 const StatTile: React.FC<{
   label: string; value: number | string; sub?: string; cls?: string;
-}> = ({ label, value, sub, cls = 'text-gray-800' }) => (
-  <div className="bg-white border border-gray-200 rounded-xl p-3">
+  /** Durations render as "1H 34M 25S", far too wide for the counter size. */
+  valueSize?: string;
+}> = ({ label, value, sub, cls = 'text-gray-800', valueSize = 'text-xl' }) => (
+  // Same shell as the shared dashboard KpiTile (shadow-tile + lift on hover) so
+  // matchmaking reads as one system with the other desks.
+  <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-tile hover:shadow-tile-hover tm-tile">
     <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">{label}</p>
-    <p className={`text-xl font-extrabold mt-0.5 ${cls}`}>{value}</p>
+    <p className={`${valueSize} font-extrabold mt-0.5 ${cls} whitespace-nowrap tm-metric`}>{value}</p>
     {sub && <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>}
   </div>
 );
@@ -167,6 +173,10 @@ export const MmHomeDashboard: React.FC = () => {
 
   // Agent's own call report + the job funnel (real rows).
   const [statsPeriod, setStatsPeriod] = useState('this_month');
+  // Transporter behind the eye icon in the Recent Assigned Jobs table.
+  const [transporterView, setTransporterView] = useState<
+    { id: number; name?: string; tmid?: string } | null
+  >(null);
   const { data: agentStats } = useGetMmAgentStatsQuery({ period: statsPeriod });
   const calls  = agentStats?.data?.calls;
   const funnel = agentStats?.data?.funnel;
@@ -196,11 +206,12 @@ export const MmHomeDashboard: React.FC = () => {
         <GateProgressWidget />
       </section>
 
-      {/* The welcome strip was removed — the app bar above already shows the
-          screen name and the signed-in agent, and Job Board is reachable from
-          both the left nav and the Quick Actions row at the bottom. */}
-
       <div className="px-4 pt-3 pb-6 space-y-4">
+        {/* Independence Day Theme Header Banner */}
+        <IndependenceHeaderBanner 
+          title="Matchmaking Operations Dashboard" 
+          subtitle="Connecting skilled drivers with transporters across India. Swatantrata Diwas special."
+        />
 
         {/* ── My Call Report ─────────────────────────────────────────────── */}
         <section className="mt-3">
@@ -228,10 +239,30 @@ export const MmHomeDashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-9 gap-2">
             <StatTile label="Calls Made" value={(calls?.total ?? 0).toLocaleString()} cls="text-[#8E44AD]" />
             <StatTile label="Connected" value={(calls?.connected ?? 0).toLocaleString()} cls="text-green-600"
               sub={calls?.connect_rate !== null && calls?.connect_rate !== undefined ? `${calls.connect_rate}% connect rate` : undefined} />
+            {/* TALK time (call_history_ivr.active_time + the mobile app's
+                jobs_match_making) — connected calls only, since active_time is
+                0 whenever the call never connected. */}
+            <StatTile
+              label="Active Call Time"
+              value={calls?.active_time ?? '0H 0M 0S'}
+              cls="text-teal-600"
+              valueSize="text-base"
+              sub={calls?.connected ? `${calls.avg_active_time} avg / connected call` : 'no connected calls yet'}
+            />
+            {/* HANDLING time — every call worked, dial through disposition.
+                Talk time alone credited nothing for a number that rang out,
+                even though the dial and the disposition cost the agent time. */}
+            <StatTile
+              label="Total Active Time"
+              value={calls?.total_active_time ?? '0H 0M 0S'}
+              cls="text-indigo-600"
+              valueSize="text-base"
+              sub="dial → disposition"
+            />
             <StatTile label="Not Connected" value={(calls?.not_connected ?? 0).toLocaleString()} cls="text-red-600" />
             <StatTile label="Callbacks" value={(calls?.callback ?? 0).toLocaleString()} cls="text-amber-600" />
             <StatTile label="To Applicants" value={(calls?.to_drivers ?? 0).toLocaleString()} cls="text-blue-600" />
@@ -413,7 +444,29 @@ export const MmHomeDashboard: React.FC = () => {
                         onClick={() => navigate('/mm/mm-job-detail', { state: { jobId: job.job_id } })}>
                         <td className="p-3 pl-4 font-mono font-bold text-gray-900 text-[10px]">{job.job_id}</td>
                         <td className="p-3 font-semibold text-gray-800 max-w-[180px] truncate">{job.job_title}</td>
-                        <td className="p-3 text-gray-600 max-w-[120px] truncate">{job.transporter_name}</td>
+                        <td className="p-3 text-gray-600 max-w-[150px]">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <span className="truncate">{job.transporter_name}</span>
+                            {/* stopPropagation so the eye opens the transporter,
+                                not the job row's navigate-to-detail. */}
+                            {!!job.transporter_id && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTransporterView({
+                                    id: Number(job.transporter_id),
+                                    name: job.transporter_name,
+                                    tmid: job.tm_user_id,
+                                  });
+                                }}
+                                title={`View full details for ${job.transporter_name || 'this transporter'}`}
+                                className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-gray-400 hover:text-[#8E44AD] hover:bg-purple-50 transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">visibility</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-3">
                           <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${planBadge(job.plan_type)}`}>
                             {job.plan_type}
@@ -438,11 +491,12 @@ export const MmHomeDashboard: React.FC = () => {
         </section>
 
         {/* Quick Actions */}
-        <section className="grid grid-cols-3 gap-3 pb-2">
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3 pb-2">
           {[
             { label: 'Driver Bank', icon: 'account_box', path: '/mm/mm-driver-bank', color: 'bg-[#8E44AD]' },
             { label: 'Driver Search', icon: 'person_search', path: '/mm/mm-driver-search', color: 'bg-[#1A5276]' },
             { label: 'Job Board', icon: 'work', path: '/mm/mm-job-board', color: 'bg-emerald-600' },
+            { label: 'Incoming Calls', icon: 'call_received', path: '/mm/mm-incoming-calls', color: 'bg-sky-600' },
           ].map(a => (
             <button key={a.label} onClick={() => navigate(a.path)}
               className={`${a.color} hover:opacity-90 text-white rounded-xl p-3 flex flex-col items-center gap-1.5 shadow-sm font-bold`}>
@@ -474,6 +528,16 @@ export const MmHomeDashboard: React.FC = () => {
         </section>
 
       </div>
+
+      {transporterView && (
+        <TransporterDetailsModal
+          open
+          transporterId={transporterView.id}
+          transporterName={transporterView.name}
+          uniqueId={transporterView.tmid}
+          onClose={() => setTransporterView(null)}
+        />
+      )}
     </main>
   );
 };

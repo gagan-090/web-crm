@@ -1,0 +1,122 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+   MOTION LAYER — the CRM's shared micro-interactions.
+   ─────────────────────────────────────────────────────────────────────────────
+   Applies to every role, because it hangs off the patterns every screen already
+   uses (cards, tiles, table rows, buttons) rather than off per-page classes.
+
+   The rule this file follows: an agent works these screens for a full shift, so
+   motion is short (≤340ms), small (≤8px), and never loops in their line of
+   sight. Entrances fade and rise once; hovers lift a hair; nothing bounces.
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Route transition ─────────────────────────────────────────────────────────
+   Applied by PageTransition, which remounts on pathname change so every screen
+   in every role fades in instead of snapping. */
+.tm-page-enter {
+  animation: fade-in-up 0.34s cubic-bezier(0.22, 0.68, 0.36, 1) both;
+}
+
+/* ── Staggered entrance ───────────────────────────────────────────────────────
+   Put .tm-stagger on a grid/list; children arrive in sequence. Capped at 12 so
+   a 200-row table never waits a second and a half to finish painting. */
+.tm-stagger > * {
+  animation: fade-in-up 0.32s cubic-bezier(0.22, 0.68, 0.36, 1) both;
+}
+.tm-stagger > *:nth-child(1)  { animation-delay: 0.02s; }
+.tm-stagger > *:nth-child(2)  { animation-delay: 0.05s; }
+.tm-stagger > *:nth-child(3)  { animation-delay: 0.08s; }
+.tm-stagger > *:nth-child(4)  { animation-delay: 0.11s; }
+.tm-stagger > *:nth-child(5)  { animation-delay: 0.14s; }
+.tm-stagger > *:nth-child(6)  { animation-delay: 0.17s; }
+.tm-stagger > *:nth-child(7)  { animation-delay: 0.20s; }
+.tm-stagger > *:nth-child(8)  { animation-delay: 0.23s; }
+.tm-stagger > *:nth-child(9)  { animation-delay: 0.26s; }
+.tm-stagger > *:nth-child(10) { animation-delay: 0.29s; }
+.tm-stagger > *:nth-child(11) { animation-delay: 0.32s; }
+.tm-stagger > *:nth-child(n + 12) { animation-delay: 0.35s; }
+
+/* ── Tiles and cards ──────────────────────────────────────────────────────────
+   The lift is what makes a dashboard feel alive without a single animation
+   playing. transform+shadow only, so it never triggers layout. */
+.tm-tile {
+  transition: transform 0.18s cubic-bezier(0.22, 0.68, 0.36, 1),
+              box-shadow 0.18s cubic-bezier(0.22, 0.68, 0.36, 1),
+              border-color 0.18s ease;
+  will-change: transform;
+}
+.tm-tile:hover {
+  transform: translateY(-2px);
+}
+.tm-tile:active {
+  transform: translateY(0);
+}
+
+/* Clickable tiles get a pressable feel. */
+.tm-pressable {
+  transition: transform 0.12s cubic-bezier(0.22, 0.68, 0.36, 1), box-shadow 0.12s ease;
+}
+.tm-pressable:active {
+  transform: scale(0.97);
+}
+
+/* ── Numbers ──────────────────────────────────────────────────────────────────
+   A KPI that changes should be noticed once, not flashed repeatedly. */
+.tm-metric {
+  animation: count-pop 0.4s cubic-bezier(0.22, 0.68, 0.36, 1) both;
+}
+
+/* ── Loading shimmer, for skeletons ──────────────────────────────────────── */
+.tm-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.tm-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0) 0,
+    rgb(255 255 255 / 0.55) 50%,
+    rgb(255 255 255 / 0) 100%
+  );
+  animation: shimmer 1.6s infinite;
+}
+
+/* ── Decorative twinkle (dashboard corner art only) ──────────────────────── */
+.tm-twinkle {
+  animation: twinkle 4s ease-in-out infinite;
+}
+
+/* ── Table rows: readable hover across every list screen ─────────────────── */
+tbody tr {
+  transition: background-color 0.14s ease;
+}
+
+/* ── Focus: visible, calm, and never a layout shift ──────────────────────── */
+[data-theme='tricolor'] :focus-visible {
+  outline: 2px solid var(--tm-navy, #17376b);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   Reduced motion — one switch, honoured everywhere.
+   Anyone who has asked their OS for less motion gets a completely still CRM:
+   entrances, shimmer, the chakra, and the decorative twinkle all stop, while
+   every layout and colour stays exactly as designed.
+   ═════════════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .tm-tile:hover {
+    transform: none;
+  }
+}

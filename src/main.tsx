@@ -1,6 +1,19 @@
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'
+// Loaded after index.css so its overrides win on equal specificity. Inert
+// unless <html data-theme="tricolor"> is set, which is decided one line below.
+import './styles/theme-tricolor.css'
+// Shared micro-interactions for every role. Self-disables under
+// prefers-reduced-motion.
+import './styles/motion.css'
 import App from './App.tsx'
+// Importing the runtime applies the cached theme synchronously, before React
+// mounts, so no screen flashes the wrong palette. The fetch below then asks the
+// server (crm_theme table) what the CRM should actually be wearing and repaints
+// only if it differs.
+import { refreshCrmTheme } from './shared/theme/crmTheme'
+
+void refreshCrmTheme()
 
 // StrictMode intentionally double-mounts every component in dev to catch
 // missing-cleanup bugs. That's fine for most components, but the SAN CTI

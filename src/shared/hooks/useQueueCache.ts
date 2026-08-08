@@ -5,6 +5,7 @@ import {
   useLazyGetDwQueueUncalledQuery,
   useLazyGetDwQueueCallbacksQuery,
   useLazyGetDwQueueCalledQuery,
+  useLazyGetDwQueueAgreeSubscriptionQuery,
   useLazyGetDwQueueCountsQuery,
   useLazyGetDwQueueQuery,
   useLazyGetWctQueueFreshQuery,
@@ -12,11 +13,12 @@ import {
   useLazyGetWctQueueUncalledQuery,
   useLazyGetWctQueueCallbacksQuery,
   useLazyGetWctQueueCalledQuery,
+  useLazyGetWctQueueAgreeSubscriptionQuery,
   useLazyGetWctQueueCountsQuery,
   useLazyGetWctQueueQuery
 } from '../../services/api/webCrmApi';
 
-export type QueueType = 'all' | 'fresh' | 'old' | 'uncalled' | 'callbacks' | 'called';
+export type QueueType = 'all' | 'fresh' | 'old' | 'uncalled' | 'callbacks' | 'called' | 'agree';
 /** Which endpoint set backs the queue: the DW set serves every users.role except transporter. */
 export type QueueRole = 'dw' | 'wct';
 
@@ -60,6 +62,9 @@ export interface FilterState {
   vehicle_type?: string;
   experience?: string;
   profile_complete?: string;
+  /** Registration date range (users.Created_at), inclusive, as YYYY-MM-DD. */
+  reg_from?: string;
+  reg_to?: string;
 }
 
 // Cache lives in localStorage with no time-based expiry — once fetched, data
@@ -115,6 +120,7 @@ export const useQueueCache = (
   const [triggerDwUncalled] = useLazyGetDwQueueUncalledQuery();
   const [triggerDwCallbacks] = useLazyGetDwQueueCallbacksQuery();
   const [triggerDwCalled] = useLazyGetDwQueueCalledQuery();
+  const [triggerDwAgree] = useLazyGetDwQueueAgreeSubscriptionQuery();
   const [triggerDwAll] = useLazyGetDwQueueQuery();
 
   const [triggerWctFresh] = useLazyGetWctQueueFreshQuery();
@@ -122,11 +128,12 @@ export const useQueueCache = (
   const [triggerWctUncalled] = useLazyGetWctQueueUncalledQuery();
   const [triggerWctCallbacks] = useLazyGetWctQueueCallbacksQuery();
   const [triggerWctCalled] = useLazyGetWctQueueCalledQuery();
+  const [triggerWctAgree] = useLazyGetWctQueueAgreeSubscriptionQuery();
   const [triggerWctAll] = useLazyGetWctQueueQuery();
 
   const t = role === 'wct'
-    ? { fresh: triggerWctFresh, old: triggerWctOld, uncalled: triggerWctUncalled, callbacks: triggerWctCallbacks, called: triggerWctCalled, all: triggerWctAll }
-    : { fresh: triggerDwFresh, old: triggerDwOld, uncalled: triggerDwUncalled, callbacks: triggerDwCallbacks, called: triggerDwCalled, all: triggerDwAll };
+    ? { fresh: triggerWctFresh, old: triggerWctOld, uncalled: triggerWctUncalled, callbacks: triggerWctCallbacks, called: triggerWctCalled, agree: triggerWctAgree, all: triggerWctAll }
+    : { fresh: triggerDwFresh, old: triggerDwOld, uncalled: triggerDwUncalled, callbacks: triggerDwCallbacks, called: triggerDwCalled, agree: triggerDwAgree, all: triggerDwAll };
 
   const fetchQueue = useCallback(async (_force = false) => {
     setIsFetching(true);
@@ -159,6 +166,8 @@ export const useQueueCache = (
         result = await t.uncalled(queryParams).unwrap();
       } else if (type === 'callbacks') {
         result = await t.callbacks(queryParams).unwrap();
+      } else if (type === 'agree') {
+        result = await t.agree(queryParams).unwrap();
       } else {
         result = await t.called(queryParams).unwrap();
       }
@@ -245,15 +254,22 @@ export const useQueueCache = (
 // the backend response), it's treated as no-cache so a real fetch happens —
 // otherwise a stale cache can silently mask a field as 0 forever, since
 // nothing ever invalidates it on a time basis anymore.
-const COUNTS_FIELDS = ['total', 'fresh', 'old', 'uncalled', 'callbacks', 'called_today', 'overdue_callbacks'] as const;
+const COUNTS_FIELDS = ['total', 'fresh', 'old', 'uncalled', 'callbacks', 'called_today', 'overdue_callbacks', 'agree_subscription'] as const;
 const isCompleteCounts = (data: any): boolean =>
   !!data && COUNTS_FIELDS.every((key) => typeof data[key] !== 'undefined');
 
-export const useQueueCountsCache = (role: QueueRole = 'dw', leadRole: LeadRole = 'driver') => {
+export const useQueueCountsCache = (
+  role: QueueRole = 'dw',
+  leadRole: LeadRole = 'driver',
+  filters?: FilterState
+) => {
   const [triggerDwCounts] = useLazyGetDwQueueCountsQuery();
   const [triggerWctCounts] = useLazyGetWctQueueCountsQuery();
   const triggerCounts = role === 'wct' ? triggerWctCounts : triggerDwCounts;
-  const cacheKey = `${role}_counts_${leadRole}_data`;
+  
+  const dateFilterStr = JSON.stringify({ reg_from: filters?.reg_from, reg_to: filters?.reg_to });
+  const cacheKey = `${role}_counts_${leadRole}_f${dateFilterStr}`;
+  
   const [counts, setCounts] = useState<{
     total: number;
     fresh: number;
@@ -262,6 +278,7 @@ export const useQueueCountsCache = (role: QueueRole = 'dw', leadRole: LeadRole =
     callbacks: number;
     called_today: number;
     overdue_callbacks: number;
+    agree_subscription: number;
     states?: Array<{ id: number; name: string }>;
   } | null>(() => {
     const cached = readCache(cacheKey)?.data;
@@ -270,10 +287,7 @@ export const useQueueCountsCache = (role: QueueRole = 'dw', leadRole: LeadRole =
   const [isFetching, setIsFetching] = useState(false);
 
   // Re-sync counts in the render phase when the cacheKey changes — e.g. the
-  // lead-role toggle switches desk or scope. Without this the counts
-  // state keeps the previous role's values (the effect below only refetches
-  // when the new key is uncached, and never swaps in an already-cached set),
-  // so the tab counts appear "stuck" after toggling.
+  // lead-role toggle switches desk or scope, or date filters change.
   const [prevCountsKey, setPrevCountsKey] = useState(cacheKey);
   if (cacheKey !== prevCountsKey) {
     setPrevCountsKey(cacheKey);
@@ -284,10 +298,12 @@ export const useQueueCountsCache = (role: QueueRole = 'dw', leadRole: LeadRole =
   const fetchCounts = useCallback(async () => {
     setIsFetching(true);
     try {
-      const result = await (role === 'wct'
-        ? (triggerCounts as any)()
-        : (triggerCounts as any)({ lead_role: leadRole })
-      ).unwrap();
+      const queryParams = {
+        ...(role === 'wct' ? {} : { lead_role: leadRole }),
+        reg_from: filters?.reg_from,
+        reg_to: filters?.reg_to,
+      };
+      const result = await (triggerCounts as any)(queryParams).unwrap();
       if (result && result.status) {
         const data = result.data;
         setCounts(data);
@@ -298,7 +314,7 @@ export const useQueueCountsCache = (role: QueueRole = 'dw', leadRole: LeadRole =
     } finally {
       setIsFetching(false);
     }
-  }, [triggerCounts, cacheKey, role, leadRole]);
+  }, [triggerCounts, cacheKey, role, leadRole, dateFilterStr]);
 
   useEffect(() => {
     if (!isCompleteCounts(readCache(cacheKey)?.data)) {

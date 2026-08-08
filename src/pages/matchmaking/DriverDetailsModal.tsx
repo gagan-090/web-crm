@@ -50,6 +50,13 @@ const StatusPill: React.FC<{ label: string; value?: string | null }> = ({ label,
 // Prominent DL / Photo / PAN availability card with a thumbnail if present.
 const DocCard: React.FC<{ label: string; available: boolean; imgPath?: string | null }> = ({ label, available, imgPath }) => {
   const url = imgUrl(imgPath);
+  // "Available" means the users row HOLDS a path — not that the file survived.
+  // Plenty of older records point at uploads that are no longer on the bucket,
+  // and the request then falls through to the site's HTML, so the <img> renders
+  // a broken-image icon and its alt text. Catch the failure and say so.
+  const [broken, setBroken] = React.useState(false);
+  React.useEffect(() => { setBroken(false); }, [url]);
+
   return (
     <div className={`rounded-xl border p-2.5 flex flex-col ${available ? 'border-green-200 bg-green-50/40' : 'border-red-200 bg-red-50/30'}`}>
       <div className="flex items-center justify-between mb-2">
@@ -59,12 +66,26 @@ const DocCard: React.FC<{ label: string; available: boolean; imgPath?: string | 
           {available ? 'Available' : 'Not Available'}
         </span>
       </div>
-      {url ? (
+      {url && !broken ? (
         <a href={url} target="_blank" rel="noreferrer" className="block group flex-1">
           <div className="w-full h-24 rounded-lg border border-gray-200 overflow-hidden bg-white">
-            <img src={url} alt={label} className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
+            <img
+              src={url}
+              alt={label}
+              onError={() => setBroken(true)}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+              loading="lazy"
+            />
           </div>
         </a>
+      ) : url && broken ? (
+        <div className="w-full h-24 rounded-lg border border-dashed border-amber-300 bg-amber-50/60 flex flex-col items-center justify-center gap-0.5 px-2 text-center">
+          <span className="material-symbols-outlined text-amber-500 text-xl">broken_image</span>
+          <span className="text-[9px] font-bold text-amber-700 leading-tight">File missing on server</span>
+          <a href={url} target="_blank" rel="noreferrer" className="text-[8.5px] text-amber-600 underline break-all line-clamp-1">
+            {imgPath}
+          </a>
+        </div>
       ) : (
         <div className="w-full h-24 rounded-lg border border-dashed border-gray-300 bg-white/60 flex items-center justify-center">
           <span className="material-symbols-outlined text-gray-300 text-2xl">{available ? 'image' : 'no_photography'}</span>
@@ -150,7 +171,7 @@ export const DriverDetailsModal: React.FC<Props> = ({ open, driverId, driverName
 
               <Section title="Address" color="#1A5276" fields={[
                 ['Address', a.address], ['City', a.city], ['State', a.state], ['Pincode', a.pincode],
-                ['Preferred Location', a.preferred_location], ['Routes', a.routes],
+                ['Preferred State', a.preferred_location], ['Routes', a.routes],
               ]} />
 
               <Section title="Driving & License" color="#059669" fields={[
@@ -281,7 +302,7 @@ export const DriverDetailsModal: React.FC<Props> = ({ open, driverId, driverName
                     {appliedJobs.map(j => (
                       <div key={j.application_id} className="border border-gray-100 rounded-lg p-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] text-gray-400 shrink-0">{j.job_ref || j.job_id}</span>
+                          <span className="font-mono text-[10px] font-bold text-black shrink-0">{j.job_ref || j.job_id}</span>
                           <span className="flex-1 min-w-0 font-bold text-gray-800 text-[11px] truncate" title={j.job_title || ''}>
                             {j.job_title || 'Untitled job'}
                           </span>
@@ -330,7 +351,7 @@ export const DriverDetailsModal: React.FC<Props> = ({ open, driverId, driverName
                             <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">{c.match_status}</span>
                           )}
                           {c.job_id && (
-                            <span className="text-[9px] font-mono font-bold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">{c.job_id}</span>
+                            <span className="text-[9px] font-mono font-bold text-black bg-gray-100 px-1.5 py-0.5 rounded">{c.job_id}</span>
                           )}
                           {c.transporter_name && (
                             <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded">{c.transporter_name}</span>

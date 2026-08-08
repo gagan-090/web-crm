@@ -7,6 +7,9 @@ interface CallHistory {
   duration: string;
   status: string;
   caller: string;
+  feedback?: string | null;
+  disposition_sub?: string | null;
+  remarks?: string | null;
 }
 
 interface WctCampaignLead {
@@ -52,7 +55,7 @@ export const WctCampaignLeads: React.FC = () => {
   const { dial, agentState, callState } = useSanCti();
 
   const [selectedId, setSelectedId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'all' | 'hot' | 'warm' | 'cold' | 'callbacks' | 'converted'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'uncalled' | 'hot' | 'warm' | 'cold' | 'callbacks' | 'converted'>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'temperature' | 'newest' | 'oldest' | 'callbacks'>('temperature');
@@ -63,6 +66,8 @@ export const WctCampaignLeads: React.FC = () => {
   const [saveTimestamp, setSaveTimestamp] = useState<string>('');
   const saveTimerRef = useRef<any | null>(null);
 
+  const [updateNotes] = useUpdateWctCampaignLeadNotesMutation();
+
   const { data, isLoading, refetch } = useGetWctCampaignLeadsQuery({
     source: sourceFilter === 'ALL' ? undefined : sourceFilter,
     search: searchQuery || undefined,
@@ -72,8 +77,7 @@ export const WctCampaignLeads: React.FC = () => {
     per_page: 20,
   }, { refetchOnMountOrArgChange: true });
 
-  const [updateNotes] = useUpdateWctCampaignLeadNotesMutation();
-
+  const counts: Record<string, number> = data?.counts || {};
   const leads: WctCampaignLead[] = (data?.leads || []).map((l: any) => ({ ...l, id: l.id }));
   const sources: string[] = data?.sources || [];
 
@@ -190,17 +194,24 @@ export const WctCampaignLeads: React.FC = () => {
 
           <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
             {[
-              { id: 'all', label: 'All Leads' },
-              { id: 'hot', label: '🔥 Hot' },
-              { id: 'warm', label: '~ Warm' },
-              { id: 'cold', label: '❄ Cold' },
-              { id: 'callbacks', label: 'Callbacks' },
+              { id: 'all', label: 'All Leads', count: counts.all ?? data?.pagination?.total },
+              { id: 'uncalled', label: 'Uncalled', count: counts.uncalled },
+              { id: 'connected', label: 'Connected', count: counts.connected },
+              { id: 'not_connected', label: 'Not Connected', count: counts.not_connected },
+              { id: 'callbacks', label: 'Callbacks', count: counts.callbacks },
             ].map((tab) => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
-                className={`px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap border transition-colors ${
+                className={`px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap border transition-colors flex items-center gap-1.5 ${
                   activeTab === tab.id ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
                 }`}>
-                {tab.label}
+                <span>{tab.label}</span>
+                {tab.count !== undefined && (
+                  <span className={`text-[10px] px-1.5 py-0.25 rounded-full font-bold font-mono ${
+                    activeTab === tab.id ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -343,13 +354,28 @@ export const WctCampaignLeads: React.FC = () => {
               {selectedLead.history && selectedLead.history.length > 0 ? (
                 <div className="space-y-2.5">
                   {selectedLead.history.map((hist, i) => (
-                    <div key={i} className="flex justify-between items-center text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${hist.status === 'Connected' ? 'bg-[#27AE60]' : 'bg-red-500'}`}></span>
-                        <span className="font-bold text-gray-800">{hist.status}</span>
-                        <span className="text-[11px] text-gray-400">Duration: {hist.duration}</span>
+                    <div key={i} className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${hist.status === 'Connected' ? 'bg-[#27AE60]' : 'bg-red-500'}`}></span>
+                          <span className="font-bold text-gray-800">{hist.status}</span>
+                          <span className="text-[11px] text-gray-400">Duration: {hist.duration}</span>
+                        </div>
+                        <div className="text-[11px] text-gray-400"><span>{hist.date}</span> | <span className="font-semibold">{hist.caller}</span></div>
                       </div>
-                      <div className="text-[11px] text-gray-400"><span>{hist.date}</span> | <span className="font-semibold">{hist.caller}</span></div>
+                      {(hist.feedback || hist.disposition_sub) && (
+                        <div className="flex flex-wrap gap-1.5 pl-4">
+                          {hist.feedback && (
+                            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-semibold">{hist.feedback}</span>
+                          )}
+                          {hist.disposition_sub && (
+                            <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100 text-[10px] font-semibold">{hist.disposition_sub}</span>
+                          )}
+                        </div>
+                      )}
+                      {hist.remarks && (
+                        <p className="pl-4 text-[11px] text-gray-500 italic">"{hist.remarks}"</p>
+                      )}
                     </div>
                   ))}
                 </div>

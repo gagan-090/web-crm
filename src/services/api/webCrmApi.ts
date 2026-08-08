@@ -1,4 +1,5 @@
 import { baseApi } from './baseApi';
+import { API_BASE_URL, COUPON_API_BASE_URL } from '../../shared/constants/config';
 
 export interface DwLead {
   id: number;
@@ -34,6 +35,16 @@ export interface DwCdrStats {
   talk_time: string;
   total_duration: string;
   avg_ring_seconds: number;
+  /**
+   * 'crm' = SAN's network CDR had nothing for this agent/period, so these
+   * figures were derived from call_history_ivr. Missed counts are 0 and
+   * UNKNOWN in that mode, not genuinely zero — only the network sees a call
+   * nobody answered. Absent when the numbers come from the real CDR.
+   */
+  source?: 'crm';
+  /** Dials that never reached the lead. Only set in the 'crm' fallback. */
+  not_connected?: number;
+  callback_later?: number;
   recent_missed: Array<{
     caller_id: string | null;
     call_type: string | null;
@@ -63,13 +74,48 @@ export interface DwDashboardResponse {
       calls_pending: number;
       assigned_total: number;
       calls_today: number;
+      /** Distinct numbers dialled today — calls_today counts every dial. */
+      unique_leads_today: number;
       connected_today: number;
       subscriptions_today: number;
       feedback_missing: number;
       call_time: string;
+      /** Handling time — dial through disposition, every call. See calls_summary. */
+      total_active_time: string;
       monthly_revenue: number;
       missed_calls: number;
       incoming_missed: number;
+    };
+    calls_summary: {
+      total_calls: number;
+      /** Distinct numbers dialled in the period. */
+      unique_leads: number;
+      /** Distinct numbers that were reached at least once. */
+      unique_connected: number;
+      /** total_calls − unique_leads: dials to a number already called. */
+      repeat_calls: number;
+      incoming: number;
+      outgoing: number;
+      connected: number;
+      not_connected: number;
+      callback_later: number;
+      conversions: number;
+      connect_rate: number;
+      conversion_rate: number;
+      /**
+       * TALK time. call_history_ivr.active_time is 0 whenever the call never
+       * connected, so this covers connected calls only.
+       */
+      call_time: string;
+      call_seconds: number;
+      /**
+       * HANDLING time: dial (the Call button) through to the disposition, on
+       * EVERY call. Talk time alone credits an agent with nothing for a number
+       * that rang out, though the dial and the disposition still cost them time.
+       */
+      total_active_time: string;
+      total_active_seconds: number;
+      period: string;
     };
     cdr_stats: DwCdrStats;
     subscriptions: DwSubscriptionStats;
@@ -283,6 +329,10 @@ export interface DwPerformanceResponse {
     period: string;
     metrics: {
       total_calls: number;
+      /** Distinct numbers dialled in the period — total_calls counts every dial. */
+      unique_leads: number;
+      /** total_calls − unique_leads: dials to a number already called. */
+      repeat_calls: number;
       connected: number;
       conversions: number;
       revenue: number;
@@ -453,6 +503,189 @@ export interface WctJobsResponse {
   };
 }
 
+// One call against an applicant, from call_history_ivr — any process (DWC / MM /
+// TWC), not just this caller's own calls.
+export interface WctApplicantCall {
+  id: number;
+  call_status: string | null;
+  feedback: string | null;
+  remarks: string | null;
+  disposition_sub: string | null;
+  process: string | null;
+  direction: 'incoming' | 'outgoing';
+  duration_seconds: number;
+  callback_at: string | null;
+  called_by: string | null;
+  called_at: string;
+  recording_url: string | null;
+  recording_source: string | null;
+}
+
+
+// ── ID Verification desk (shared by DWC / TWC / MM) ─────────────────────────
+export interface IdvCheck {
+  key: string;
+  label: string;
+  icon: string;
+  /** What the caller should ask for to get this check run. */
+  hint: string | null;
+  /** clean | attention | failed | pending | not_done */
+  state: string;
+  detail: string | null;
+  at: string | null;
+  extra: Record<string, string | number | null>;
+  entitled: boolean;
+  entitlement_note: string;
+  /** Paid for but never run — the reason to call. */
+  actionable: boolean;
+}
+
+export interface IdvQueueRow {
+  id: number;
+  tmid: string | null;
+  name: string;
+  mobile: string | null;
+  role: string;
+  location: string;
+  registered_at: string | null;
+  last_paid_at: string | null;
+  is_mine: boolean;
+  plan: string | null;
+  plan_amount: number;
+  entitled_count: number;
+  done_count: number;
+  pending_count: number;
+  attention_count: number;
+  completion: number;
+  last_call: { status: string; feedback: string; by: string; at: string } | null;
+}
+
+export interface IdvQueueResponse {
+  status: boolean;
+  data: IdvQueueRow[];
+  pagination: { total: number; per_page: number; current_page: number; last_page: number };
+}
+
+export interface IdvCall {
+  id: number;
+  call_status: string | null;
+  feedback: string | null;
+  remarks: string | null;
+  disposition_sub: string | null;
+  duration_seconds: number;
+  handling_seconds: number;
+  callback_at: string | null;
+  called_by: string | null;
+  called_at: string;
+  recording_url: string | null;
+  recording_source: string | null;
+}
+
+export interface IdvDossierResponse {
+  status: boolean;
+  data: {
+    user: {
+      id: number; tmid: string | null; name: string; mobile: string | null;
+      email: string | null; role: string; location: string;
+      registered_at: string | null; profile_image: string | null;
+    };
+    plan: { best: string | null; best_amount: number; types: string[]; paid_at: string | null; is_top_plan: boolean };
+    summary: IdvQueueRow extends never ? never : {
+      plan: string | null; plan_amount: number; entitled_count: number; done_count: number;
+      pending_count: number; attention_count: number; completion: number;
+      last_call: { status: string; feedback: string; by: string; at: string } | null;
+    };
+    checks: IdvCheck[];
+    payments: { plan: string; type: string; amount: number; paid_at: string; start_at: string | null; end_at: string | null }[];
+    calls: IdvCall[];
+  };
+}
+
+export interface IdvDispositionOptions {
+  status: boolean;
+  data: {
+    process: string;
+    call_statuses: { value: string; label: string; label_hi: string }[];
+    sub_dispositions: Record<string, { value: string; label: string; label_hi: string; color: string }[]>;
+  };
+}
+
+export interface RevivalOffer {
+  id: number;
+  user_id: number;
+  tmid: string | null;
+  name: string;
+  mobile: string | null;
+  role: string | null;
+  location: string;
+  coupon_code: string;
+  plan: string;
+  plan_label: string;
+  mrp: number | null;
+  discount: number;
+  offer_price: number | null;
+  expiry_date: string | null;
+  offered_at: string;
+  agent_id: number | null;
+  agent_name: string;
+  converted: boolean;
+  converted_at: string | null;
+  converted_same_plan: boolean;
+  expired: boolean;
+  status: 'active' | 'expired' | 'converted';
+}
+
+export interface RevivalOffersResponse {
+  status: boolean;
+  data: RevivalOffer[];
+  summary: {
+    total: number; active: number; expired: number; converted: number;
+    conversion_rate: number; discount_given: number; revenue: number;
+  };
+  pagination: { total: number; per_page: number; current_page: number; last_page: number };
+}
+
+export interface CouponResponse {
+  success: boolean;
+  message: string;
+  data: {
+    id?: number;
+    user_id: number;
+    unique_id: string;
+    coupon_code: string;
+    coupon_amount: number | string;
+    expiry_date: string;
+    payment_type: string;
+  };
+}
+
+export interface CrmThemeRow {
+  id: number;
+  slug: string;
+  name: string;
+  description?: string | null;
+  is_active: boolean;
+  /** What is ACTUALLY being served — a schedule overrides the is_active flag. */
+  is_live: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  palette?: Record<string, string>;
+  assets?: Record<string, string>;
+  options?: Record<string, string | boolean | number>;
+  updated_by?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CrmThemesResponse {
+  status: boolean;
+  data: CrmThemeRow[];
+}
+
+export interface CrmThemeActivateResponse {
+  status: boolean;
+  message?: string;
+}
+
 export interface WctJobApplicant {
   apply_id: number;
   driver_id: number | null;
@@ -465,6 +698,15 @@ export interface WctJobApplicant {
   status: string;
   subscription: string;
   subscription_amount: number;
+  call_stats: {
+    total: number;
+    connected: number;
+    last_call_at: string | null;
+    last_status: string | null;
+    last_called_by: string | null;
+    last_feedback: string | null;
+  };
+  calls: WctApplicantCall[];
 }
 
 export interface WctJobApplicantsResponse {
@@ -727,6 +969,24 @@ export interface MmAgentStatsResponse {
       total: number; connected: number; not_connected: number; callback: number;
       pending: number; to_drivers: number; to_transporters: number;
       unattributed: number; connect_rate: number | null;
+      /**
+       * TALK seconds (call_history_ivr.active_time + jobs_match_making).
+       * 0 on any call that never connected, so this is connected calls only.
+       */
+      active_seconds: number;
+      /** Same figure preformatted as "2h 5m". */
+      active_time: string;
+      /**
+       * HANDLING seconds: dial (the Call button) through to the disposition, on
+       * EVERY call. Talk time alone credits an agent with nothing for a number
+       * that rang out, though the dial and the disposition still cost them time.
+       */
+      total_active_seconds: number;
+      /** Same figure preformatted as "2h 5m". */
+      total_active_time: string;
+      /** Averaged over CONNECTED calls only. */
+      avg_active_seconds: number;
+      avg_active_time: string;
     };
     feedback: Array<{ label: string; count: number }>;
     funnel: {
@@ -747,10 +1007,15 @@ export interface MmCallHistoryRow {
   job_id: string | null;
   job_title: string | null;
   transporter_name: string | null;
+  /** The job's transporter is on a Greenline plan — drives the Greenline
+   *  disposition options when this call is redialled. */
+  is_greenline: boolean;
   lead_id: number | null;
   lead_tmid: string | null;
   lead_name: string | null;
   lead_role: string | null;
+  /** Number to redial — the lead's current mobile, not the call's snapshot. */
+  lead_mobile: string | null;
   call_status: string | null;
   feedback: string | null;
   remarks: string | null;
@@ -768,7 +1033,120 @@ export interface MmCallHistoryRow {
 export interface MmCallHistoryResponse {
   status: boolean;
   data: MmCallHistoryRow[];
+  /** Every disposition this agent has filed — powers the feedback filter.
+   *  Mixes MM machine keys and onboarding human labels, as the column does. */
+  feedback_options: string[];
   pagination: { total: number; per_page: number; current_page: number; last_page: number };
+}
+
+/**
+ * Incoming Call History — one shape for DW / WCT / MM (backend:
+ * IncomingCallController). Each row is one call that rang on the agent's
+ * extension, merged from SAN's network CDR (webhook_crm — the only source that
+ * sees never-answered calls) and the CRM's own call_history_ivr row, with the
+ * caller's full lead record attached.
+ */
+export interface IncomingCallLead {
+  type: 'user' | 'campaign';
+  user_id: number | null;
+  social_lead_id?: number;
+  name: string;
+  tmid: string | null;
+  mobile: string | null;
+  email?: string | null;
+  role?: string | null;
+  city?: string | null;
+  state?: string | null;
+  location?: string | null;
+  vehicle_type?: string | null;
+  experience?: string | null;
+  source?: string | null;
+  registered_at?: string | null;
+  assigned_to?: number | null;
+  assigned_name?: string | null;
+  is_my_lead: boolean;
+  total_calls: number;
+  my_calls?: number;
+  connected_calls?: number;
+  last_call_at?: string | null;
+  last_call_status?: string | null;
+  last_feedback?: string | null;
+  last_called_by?: string | null;
+  current_plan: string | null;
+  is_subscribed?: boolean;
+}
+
+export interface IncomingCallRow {
+  id: string;
+  /** 'both' = matched CDR + CRM row, 'cdr' = never landed on screen, 'crm' = CDR missing. */
+  source: 'both' | 'cdr' | 'crm';
+  call_id: number | null;
+  /** The account the call was attributed to on arrival — wins over the number. */
+  lead_user_id: number | null;
+  caller_number: string | null;
+  did_number: string | null;
+  started_at: string;
+  sort_time: number;
+  date_display: string;
+  time_display: string;
+  day_label: string;
+  answered: boolean;
+  missed: boolean;
+  /** The CTI popped this call on the agent's screen (a CRM row exists). */
+  landed: boolean;
+  ring_seconds: number;
+  ring_display: string;
+  queue_display: string | null;
+  talk_seconds: number;
+  talk_display: string;
+  cause_txt: string | null;
+  ended_by: string | null;
+  san_agent_name: string | null;
+  san_unique_id: string | null;
+  dispositioned: boolean;
+  call_status: string | null;
+  call_feedback: string | null;
+  call_remarks: string | null;
+  disposition_sub: string | null;
+  callback_at: string | null;
+  recording_url: string | null;
+  bill_duration?: string | null;
+  wrapup_durn?: string | null;
+  lead: IncomingCallLead | null;
+}
+
+export interface IncomingCallsResponse {
+  status: boolean;
+  period: string;
+  data: IncomingCallRow[];
+  summary: {
+    total: number;
+    answered: number;
+    missed: number;
+    landed: number;
+    pending_feedback: number;
+    unique_callers: number;
+    known_leads: number;
+    unknown_callers: number;
+    my_leads: number;
+    talk_seconds: number;
+    talk_time: string;
+    answer_rate: number;
+  };
+  cdr: { agent_name: string | null; extension: string | null; available: boolean };
+  pagination: { total: number; per_page: number; current_page: number; last_page: number };
+}
+
+export interface IncomingCallsParams {
+  period?: string;
+  date_from?: string;
+  date_to?: string;
+  status?: 'all' | 'answered' | 'missed';
+  handled?: 'all' | 'dispositioned' | 'pending';
+  lead?: 'all' | 'known' | 'unknown';
+  search?: string;
+  page?: number;
+  per_page?: number;
 }
 
 /**
@@ -1000,6 +1378,8 @@ export interface MmApplicant {
     match_status: string | null;
     process: string | null;
     feedback: string | null;
+    /** Canonical disposition code (interested_job, placement_done…). */
+    disposition_sub?: string | null;
     remarks: string | null;
     called_by: string | null;
     called_at: string;
@@ -1049,7 +1429,54 @@ export interface MmDriverProfileResponse {
       call_type: string | null; direction: string | null; duration_seconds: number;
       callback_at: string | null; called_by: string | null; called_at: string;
       recording_url: string | null; bill_duration: string | number | null;
+      recording_source?: string | null;
     }>;
+  } | null;
+}
+
+/** One entry in a lead's call history — shared by the driver and transporter modals. */
+export interface MmCallTimelineEntry {
+  id: number; job_id: string | null; job_title: string | null; transporter_name: string | null;
+  call_status: string | null; feedback: string | null; remarks: string | null;
+  match_status: string | null; disposition_sub: string | null; process: string | null;
+  call_type: string | null; direction: string | null; duration_seconds: number;
+  callback_at: string | null; called_by: string | null; called_at: string;
+  recording_url: string | null; recording_source: string | null;
+  bill_duration: string | number | null;
+}
+
+export interface MmTransporterProfileResponse {
+  status: boolean;
+  message?: string;
+  data: {
+    profile: Record<string, string | number | null>;
+    address: Record<string, string | number | null>;
+    business: Record<string, string | number | null>;
+    documents: {
+      profile_image: string | null; pan_image: string | null;
+      gst_certificate: string | null; voter_id: string | null;
+    };
+    subscription: {
+      current_plan: string; current_label: string; current_amount: number;
+      total_paid: number; payment_count: number;
+      payments: Array<{
+        id: number; amount: number; status: string;
+        plan_name: string | null; plan_label: string | null;
+        duration_months: number | null;
+        start_at: string | number | null; end_at: string | number | null; paid_at: string;
+      }>;
+    };
+    jobs: {
+      total: number; open: number; applicants: number;
+      list: Array<{
+        id: number; job_id: string; job_title: string | null; job_location: string | null;
+        route: string | null; salary: string | null; vehicle_type: string | null;
+        license_type: string | null; deadline: string | null; created_at: string;
+        is_closed: boolean; applicants_count: number;
+      }>;
+    };
+    call_summary: { total: number; connected: number; last_call: string | null };
+    call_timeline: MmCallTimelineEntry[];
   } | null;
 }
 
@@ -1092,6 +1519,90 @@ export interface MmApplicantsFullResponse {
   total_applicants: number;
   match_making: any[];
   pagination: { next_cursor: number | null; has_more: boolean; per_page: number };
+}
+
+// ── "Send Connection Request" (WhatsApp + push + in-app) ──────────────────────
+export interface MmConnectionRequestPartyStat {
+  total_sent: number;
+  last_sent_at: string | null;
+}
+export interface MmConnectionRequestHistory {
+  driver: MmConnectionRequestPartyStat;
+  transporter: MmConnectionRequestPartyStat;
+  total_sent: number;
+  last_sent_at: string | null;
+  entries?: Array<{
+    id: number;
+    recipient: 'driver' | 'transporter';
+    recipient_tm_id: string | null;
+    recipient_mobile: string | null;
+    agent_name: string | null;
+    whatsapp_status: string;
+    push_status: string;
+    in_app_status: string;
+    read_status: string | null;
+    sent_at: string;
+  }>;
+}
+export interface MmConnectionRequestResult {
+  recipient: 'driver' | 'transporter';
+  skipped: boolean;
+  reason?: string;
+  message?: string;
+  last_sent_at?: string | null;
+  next_allowed_at?: string | null;
+  log_id?: number;
+  recipient_name?: string;
+  recipient_tm_id?: string;
+  /** Language the recipient was messaged in, from their `users.user_lang`. */
+  language?: MmLang;
+  /** Which of the three messages went out. */
+  template?: 'driver' | 'transporter' | 'transporter_interested';
+  /** The live AiSensy campaign the language resolved to. */
+  campaign?: string | null;
+  channels?: { whatsapp: string; push: string; in_app: string };
+  /** Why a channel didn't send (null when it sent). */
+  channel_notes?: { whatsapp: string | null; push: string | null };
+  sent_at?: string;
+}
+/** Languages the connection request has approved templates for. */
+export type MmLang = 'en' | 'hi' | 'hn';
+export interface MmInterestedDriver {
+  id: number;
+  name: string;
+  tm_id: string;
+  mobile: string | null;
+  /** Raw `users.user_lang` — may be a value with no template, e.g. `pa`. */
+  lang?: string | null;
+  /** Language actually sent, after aliasing/fallback. */
+  lang_sent?: MmLang;
+  marked_at: string | null;
+}
+export interface MmConnectionRequestResponse {
+  success: boolean;
+  message: string;
+  job_id: string;
+  results: MmConnectionRequestResult[];
+  interested_drivers: MmInterestedDriver[];
+  interested_drivers_count: number;
+  history: MmConnectionRequestHistory;
+}
+export interface MmBulkConnectionResponse {
+  success: boolean;
+  message: string;
+  job_id: string;
+  /** 'selected' = agent picked the recipients; 'interested' = server-derived. */
+  source?: 'selected' | 'interested';
+  /** Drivers that actually resolved to driver accounts. */
+  recipients_count?: number;
+  /** Legacy alias of recipients_count. */
+  interested_drivers_count: number;
+  /** False when the agent chose to notify only the transporter. */
+  notified_drivers?: boolean;
+  sent: number;
+  skipped: number;
+  results: MmConnectionRequestResult[];
+  transporter: MmConnectionRequestResult | null;
 }
 
 export interface QcDashboardResponse {
@@ -1403,7 +1914,18 @@ export interface DwQueueParams {
   profile_complete?: string;
 }
 
+/**
+ * Which process's copy of the Open Jobs Board endpoint to hit. The board is
+ * not caller-scoped — both routes land on the same controller — but each
+ * process keeps its own URL so per-role middleware stays meaningful.
+ */
+export type JobBoardScope = 'dw' | 'mm';
+
+const jobBoardPrefix = (scope: JobBoardScope = 'dw') =>
+  scope === 'mm' ? 'match-making' : 'dw';
+
 export interface DwJobSearchParams {
+  scope?: JobBoardScope;
   page?: number;
   per_page?: number;
   status?: 'open' | 'all';
@@ -1452,6 +1974,107 @@ export interface DwJobSearchResponse {
   };
 }
 
+/** Everything behind the Open Jobs Board eye icon. */
+export interface JobSearchDetailResponse {
+  status: boolean;
+  data: {
+    job: {
+      id: number;
+      job_id: string | null;
+      job_title: string | null;
+      job_location: string | null;
+      route: string | null;
+      route_scope: string | null;
+      area: string | null;
+      pincode: string | null;
+      salary_range: string | null;
+      experience: string | null;
+      license_type: string | null;
+      preferred_skills: string | null;
+      job_description: string | null;
+      job_management: string | null;
+      vehicle_type: string | null;
+      vehicle_type_label: string;
+      drivers_required: number | string | null;
+      status: string | null;
+      is_open: boolean;
+      active_inactive: string | number | null;
+      closed_job: string | number | null;
+      application_deadline: string | null;
+      remarks: string | null;
+      created_at: string | null;
+      updated_at: string | null;
+    };
+    benefits: Record<string, string | number | null>;
+    transporter: {
+      id: number | null;
+      name: string | null;
+      tmid: string | null;
+      mobile: string | null;
+      email: string | null;
+      city: string | null;
+      state: string | null;
+    };
+    assigned_to: {
+      id: number;
+      name: string | null;
+      mobile: string | null;
+      email: string | null;
+      role: string | null;
+      process: string | null;
+    } | null;
+    /** Every agent who has actually called on this job, busiest first. */
+    agents_worked: Array<{
+      agent_id: number | null;
+      agent_name: string | null;
+      calls: number;
+      unique_leads: number;
+      last_call_at: string | null;
+    }>;
+    applicants: Array<{
+      id: number;
+      driver_id: number | null;
+      accept_reject_status: string | number | null;
+      rejected_status: string | number | null;
+      rejection_remark: string | null;
+      applied_at: string | null;
+      driver_name: string | null;
+      driver_tmid: string | null;
+      driver_mobile: string | null;
+      driver_city: string | null;
+      driver_experience: string | null;
+      driver_state: string | null;
+      applicant_assigned_to: string | null;
+    }>;
+    applicants_count: number;
+    call_logs: Array<{
+      id: number;
+      agent_id: number | null;
+      agent_name: string | null;
+      call_status: string | null;
+      call_feedback: string | null;
+      call_remarks: string | null;
+      match_status: string | null;
+      duration: number | null;
+      process: string | null;
+      created_at: string | null;
+      party_name: string | null;
+      party_tmid: string | null;
+      party_mobile: string | null;
+      party_role: string | null;
+    }>;
+    placements: Array<{
+      driver_id: number | null;
+      match_status: string | null;
+      placed_at: string | null;
+      placed_by: string | null;
+      driver_name: string | null;
+      driver_tmid: string | null;
+      driver_mobile: string | null;
+    }>;
+  };
+}
+
 export interface MmSubscriptionsResponse {
   status: boolean;
   data: {
@@ -1481,6 +2104,29 @@ export interface MmSubscriptionsResponse {
   };
 }
 
+// ── Web CRM role management ──
+export interface WebRoleTelecaller {
+  id: number;
+  name: string;
+  email: string;
+  mobile: string | null;
+  role: string;
+  sub_role: string | null;
+  is_active: boolean;
+}
+export interface WebRolesResponse {
+  status: boolean;
+  data: {
+    telecallers: WebRoleTelecaller[];
+    roles: string[];
+  };
+}
+export interface WebRoleUpdateResponse {
+  status: boolean;
+  message: string;
+  data: { id: number; name: string; email: string; role: string; previous_role: string };
+}
+
 export const webCrmApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // DW Endpoints
@@ -1496,7 +2142,7 @@ export const webCrmApi = baseApi.injectEndpoints({
         params: params || undefined,
       }),
     }),
-    getDwQueueCounts: builder.query<any, { lead_role?: string } | void>({
+    getDwQueueCounts: builder.query<any, { lead_role?: string; reg_from?: string; reg_to?: string } | void>({
       query: (params) => ({
         url: '/web-crm/dw/queue/counts',
         params: params || undefined,
@@ -1529,6 +2175,14 @@ export const webCrmApi = baseApi.injectEndpoints({
     getDwQueueCalled: builder.query<any, DwQueueParams | void>({
       query: (params) => ({
         url: '/web-crm/dw/queue/called',
+        params: params || undefined,
+      }),
+    }),
+    // Agreed-to-subscribe follow-up list — every lead this caller dispositioned
+    // as agreeing to subscribe, all time (not just today).
+    getDwQueueAgreeSubscription: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/queue/agree-subscription',
         params: params || undefined,
       }),
     }),
@@ -1596,6 +2250,19 @@ export const webCrmApi = baseApi.injectEndpoints({
       query: () => '/web-crm/dw/break-status',
     }),
 
+    // Incoming Call History — one endpoint per process, one response shape.
+    // The three differ only in which role wins when a mobile belongs to both a
+    // driver and a transporter account, which the backend decides.
+    getDwIncomingCalls: builder.query<IncomingCallsResponse, IncomingCallsParams | void>({
+      query: (params) => ({ url: '/web-crm/dw/incoming-calls', params: params || undefined }),
+    }),
+    getWctIncomingCalls: builder.query<IncomingCallsResponse, IncomingCallsParams | void>({
+      query: (params) => ({ url: '/web-crm/wct/incoming-calls', params: params || undefined }),
+    }),
+    getMmIncomingCalls: builder.query<IncomingCallsResponse, IncomingCallsParams | void>({
+      query: (params) => ({ url: '/web-crm/match-making/incoming-calls', params: params || undefined }),
+    }),
+
     // WCT Endpoints — Transporter Welcome Caller. The backend (WctCallerController)
     // returns shapes identical to the DW controller, retargeted to transporters,
     // so these reuse the Dw* response types.
@@ -1611,8 +2278,11 @@ export const webCrmApi = baseApi.injectEndpoints({
         params: params || undefined,
       }),
     }),
-    getWctQueueCounts: builder.query<any, void>({
-      query: () => '/web-crm/wct/queue/counts',
+    getWctQueueCounts: builder.query<any, { reg_from?: string; reg_to?: string } | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/queue/counts',
+        params: params || undefined,
+      }),
     }),
     getWctQueueFresh: builder.query<any, DwQueueParams | void>({
       query: (params) => ({
@@ -1641,6 +2311,12 @@ export const webCrmApi = baseApi.injectEndpoints({
     getWctQueueCalled: builder.query<any, DwQueueParams | void>({
       query: (params) => ({
         url: '/web-crm/wct/queue/called',
+        params: params || undefined,
+      }),
+    }),
+    getWctQueueAgreeSubscription: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/queue/agree-subscription',
         params: params || undefined,
       }),
     }),
@@ -1698,7 +2374,7 @@ export const webCrmApi = baseApi.injectEndpoints({
         body,
       }),
     }),
-    getWctCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number; page?: number; search?: string; feedback?: string; date_from?: string; date_to?: string } | void>({
+    getWctCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number | 'all'; page?: number; search?: string; feedback?: string; date_from?: string; date_to?: string; direction?: string; call_status?: string } | void>({
       query: (params) => ({
         url: '/web-crm/wct/call-history',
         params: params || undefined,
@@ -1721,19 +2397,35 @@ export const webCrmApi = baseApi.injectEndpoints({
         body: { notes },
       }),
     }),
-    getWctGlobalSearch: builder.query<any, string>({
-      query: (searchStr) => `/web-crm/wct/global-search?q=${searchStr}`,
+    // Accepts `{ q, roles: 'all' }` as well as a bare string, matching
+    // getDwGlobalSearch — the Transporter Welcome queue searches the whole user
+    // base, not just transporters, so a caller can reach a driver too. The
+    // string form is kept for existing callers. Also URL-encodes the term,
+    // which the old template literal did not: a '+' or '&' in a name broke the
+    // query string.
+    getWctGlobalSearch: builder.query<any, string | { q: string; roles?: string }>({
+      query: (arg) => {
+        const q = (typeof arg === 'string' ? arg : arg?.q ?? '').trim();
+        const roles = typeof arg === 'object' && arg !== null ? arg.roles : undefined;
+
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        if (roles) params.set('roles', roles);
+        return `/web-crm/wct/global-search?${params.toString()}`;
+      },
     }),
     getWctJobSearch: builder.query<DwJobSearchResponse, DwJobSearchParams | void>({
       query: (params) => {
         const p = new URLSearchParams();
-        if (params?.page) p.set('page', String(params.page));
-        if (params?.per_page) p.set('per_page', String(params.per_page));
-        if (params?.status) p.set('status', params.status);
-        if (params?.search) p.set('search', params.search);
-        if (params?.state_id) p.set('state_id', String(params.state_id));
-        if (params?.salary) p.set('salary', params.salary);
-        if (params?.experience) p.set('experience', params.experience);
+        if (params) {
+          if (params.page) p.set('page', String(params.page));
+          if (params.per_page) p.set('per_page', String(params.per_page));
+          if (params.status) p.set('status', params.status);
+          if (params.search) p.set('search', params.search);
+          if (params.state_id) p.set('state_id', String(params.state_id));
+          if (params.salary) p.set('salary', params.salary);
+          if (params.experience) p.set('experience', params.experience);
+        }
         const qs = p.toString();
         return `/web-crm/wct/job-search${qs ? `?${qs}` : ''}`;
       },
@@ -1882,6 +2574,7 @@ export const webCrmApi = baseApi.injectEndpoints({
     getMmCallHistory: builder.query<MmCallHistoryResponse, {
       page?: number; per_page?: number; period?: string;
       call_status?: string; job_id?: string; search?: string;
+      feedback?: string;
       date_from?: string; date_to?: string;
     } | void>({
       query: (params) => ({
@@ -1909,6 +2602,36 @@ export const webCrmApi = baseApi.injectEndpoints({
     >({
       query: (body) => ({ url: '/web-crm/match-making/conference-call', method: 'POST', body }),
       invalidatesTags: ['MmApplicants', 'MmTransporter'],
+    }),
+
+    // "Send Connection Request" — when a con-call can't be bridged, notify the
+    // driver and/or transporter for a job over WhatsApp (AiSensy) + push + in-app
+    // in one click. The backend resolves the transporter from the job.
+    sendMmConnectionRequest: builder.mutation<MmConnectionRequestResponse, {
+      driver_id: number; job_id: string; recipient: 'driver' | 'transporter' | 'both'; force?: boolean;
+    }>({
+      query: (body) => ({ url: '/web-crm/match-making/connection-request', method: 'POST', body }),
+      invalidatesTags: ['MmConnectionRequest'],
+    }),
+    // Bulk — notify every driver marked "Interested in the Job" for this job.
+    bulkSendMmConnectionRequest: builder.mutation<MmBulkConnectionResponse, {
+      job_id: string;
+      force?: boolean;
+      notify_transporter?: boolean;
+      /** Omit to fall back to the server's interested-drivers shortlist. */
+      driver_ids?: number[];
+      /** False sends the transporter the shortlist without messaging drivers. */
+      notify_drivers?: boolean;
+    }>({
+      query: (body) => ({ url: '/web-crm/match-making/connection-request/bulk', method: 'POST', body }),
+      invalidatesTags: ['MmConnectionRequest'],
+    }),
+    getMmConnectionRequestHistory: builder.query<
+      { success: boolean; data: MmConnectionRequestHistory },
+      { driver_id: number; job_id: string }
+    >({
+      query: (params) => ({ url: '/web-crm/match-making/connection-request/history', params }),
+      providesTags: ['MmConnectionRequest'],
     }),
 
     // Disposition for a CONFERENCE leg. Reuses the shared, unmodified
@@ -1960,6 +2683,36 @@ export const webCrmApi = baseApi.injectEndpoints({
     // Complete driver profile (all users fields + DL/PAN/Aadhaar verification).
     getMmDriverProfile: builder.query<MmDriverProfileResponse, number | string>({
       query: (driverId) => `/web-crm/match-making/driver/${driverId}/profile`,
+    }),
+    // "A new driver was banked" alerts — matchmaking callers only. The endpoint
+    // returns an empty list for other desks, so the shell can poll it without
+    // knowing the role rules.
+    getDriverBankNotifications: builder.query<{
+      success: boolean;
+      count: number;
+      is_matchmaking: boolean;
+      data: Array<{
+        id: number; driver_bank_id: number | null;
+        driver_name: string; driver_tmid: string | null;
+        title: string; body: string;
+        added_by_name: string | null; added_by_panel: string | null;
+        created_at: string;
+      }>;
+    }, void>({
+      query: () => '/web-crm/match-making/driver-bank/notifications',
+    }),
+    readDriverBankNotifications: builder.mutation<{ success: boolean; dismissed: number }, { ids?: number[] }>({
+      query: (body) => ({
+        url: '/web-crm/match-making/driver-bank/notifications/read',
+        method: 'POST',
+        body,
+      }),
+    }),
+
+    // Complete transporter record + full call timeline — the eye-icon modal on
+    // the MM job screens.
+    getMmTransporterProfile: builder.query<MmTransporterProfileResponse, number | string>({
+      query: (transporterId) => `/web-crm/match-making/transporter/${transporterId}/profile`,
     }),
     // Greenline applicant pipeline (rich cards + per-filter counts).
     getMmGreenlineApplicants: builder.query<MmGreenlineApplicantsResponse, {
@@ -2159,16 +2912,129 @@ export const webCrmApi = baseApi.injectEndpoints({
     getDwJobSearch: builder.query<DwJobSearchResponse, DwJobSearchParams | void>({
       query: (params) => {
         const p = new URLSearchParams();
-        if (params?.page) p.set('page', String(params.page));
-        if (params?.per_page) p.set('per_page', String(params.per_page));
-        if (params?.status) p.set('status', params.status);
-        if (params?.search) p.set('search', params.search);
-        if (params?.state_id) p.set('state_id', String(params.state_id));
-        if (params?.salary) p.set('salary', params.salary);
-        if (params?.experience) p.set('experience', params.experience);
+        if (params) {
+          if (params.page) p.set('page', String(params.page));
+          if (params.per_page) p.set('per_page', String(params.per_page));
+          if (params.status) p.set('status', params.status);
+          if (params.search) p.set('search', params.search);
+          if (params.state_id) p.set('state_id', String(params.state_id));
+          if (params.salary) p.set('salary', params.salary);
+          if (params.experience) p.set('experience', params.experience);
+        }
         const qs = p.toString();
-        return `/web-crm/dw/job-search${qs ? `?${qs}` : ''}`;
+        const scope = params ? params.scope : undefined;
+        return `/web-crm/${jobBoardPrefix(scope)}/job-search${qs ? `?${qs}` : ''}`;
       },
+    }),
+    /** Full detail for one job — backs the board's eye icon. */
+    getJobSearchDetail: builder.query<JobSearchDetailResponse, { scope?: JobBoardScope; id: number }>({
+      query: ({ scope, id }) => `/web-crm/${jobBoardPrefix(scope)}/job-search/${id}`,
+    }),
+
+    // ── Web CRM role management (/web-roles screen) ──
+    getWebRoles: builder.query<WebRolesResponse, void>({
+      query: () => '/web-crm/web-roles',
+      providesTags: ['WebRoles'],
+    }),
+    updateWebRole: builder.mutation<WebRoleUpdateResponse, { admin_id: number; role: string }>({
+      query: (body) => ({
+        url: '/web-crm/web-roles',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['WebRoles'],
+    }),
+
+    getIdvQueue: builder.query<IdvQueueResponse, { page?: number; per_page?: number; search?: string; plan?: string; tab?: string; mine?: boolean }>({
+      query: (params) => ({ url: '/web-crm/id-verification/queue', params }),
+      providesTags: ['IdVerification'],
+    }),
+    getIdvDossier: builder.query<IdvDossierResponse, number>({
+      query: (userId) => `/web-crm/id-verification/user/${userId}`,
+      providesTags: ['IdVerification'],
+    }),
+    getIdvDispositionOptions: builder.query<IdvDispositionOptions, void>({
+      query: () => '/web-crm/id-verification/disposition-options',
+    }),
+    submitIdvFeedback: builder.mutation<{ status: boolean; message?: string; data?: { call_id: number } }, {
+      user_id: number; call_status: string; call_feedback: string; call_remarks?: string;
+      disposition_sub?: string; call_duration?: number; callback_at?: string;
+      /** Stamps the row the dial already created instead of inserting a new one. */
+      call_id?: number;
+    }>({
+      query: (body) => ({ url: '/web-crm/id-verification/feedback', method: 'POST', body }),
+      invalidatesTags: ['IdVerification'],
+    }),
+
+    // Offers already issued — the My Queue "Revival" tab.
+    getRevivalOffers: builder.query<RevivalOffersResponse, { mine?: boolean; status?: string; plan?: string; search?: string; page?: number; per_page?: number } | void>({
+      query: (params) => ({ url: '/web-crm/revival/offers', params: params || {} }),
+      providesTags: ['Revival'],
+    }),
+
+    // ── Revival-campaign coupon ──────────────────────────────────────────────
+    // Flat discount off the plan price, pushed to the subscriber by FCM + email
+    // by the backend. Amounts are fixed app-side: ₹50 job_ready, ₹70 verified,
+    // ₹100 trusted — i.e. ₹199→₹149, ₹299→₹229, ₹499→₹399.
+    generateCoupon: builder.mutation<CouponResponse, { user_id: number; unique_id: string; payment_type: string }>({
+      // queryFn, not query: this endpoint is owned by the app backend and is
+      // pinned to COUPON_API_BASE_URL, which may differ from the CRM's
+      // API_BASE_URL (production CRM, campaign running on dev).
+      //
+      // It IS authenticated — calling it bare returns {"message":"Unauthenticated"}
+      // — so the CRM's Sanctum token is forwarded, but ONLY when the coupon host
+      // is the same host the CRM logged in against. A token minted by one host
+      // is meaningless on another, and sending it there would hand the CRM
+      // session to a different origin for a request that would 401 regardless.
+      async queryFn(body) {
+        try {
+          const sameHost = (() => {
+            try {
+              return new URL(COUPON_API_BASE_URL).host === new URL(API_BASE_URL, window.location.origin).host;
+            } catch { return false; }
+          })();
+
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          };
+          if (sameHost) {
+            try {
+              const stored = localStorage.getItem('tm_connect_user');
+              const token = stored ? JSON.parse(stored)?.token : null;
+              if (token) headers.authorization = `Bearer ${token}`;
+            } catch { /* no token — the call will 401 and the panel says so */ }
+          }
+
+          const res = await fetch(`${COUPON_API_BASE_URL}/web-crm/coupon-code`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+          });
+          const data = await res.json().catch(() => null);
+          if (!res.ok) {
+            return { error: { status: res.status, data } as any };
+          }
+          return { data: data as CouponResponse };
+        } catch (e: any) {
+          return { error: { status: 'FETCH_ERROR', error: String(e?.message || e) } as any };
+        }
+      },
+    }),
+
+    // ── CRM themes (server-driven skinning) ──────────────────────────────────
+    // Public, like web-roles: the /crm/theme switcher opens without a login.
+    getCrmThemes: builder.query<CrmThemesResponse, void>({
+      query: () => '/web-crm/themes',
+      providesTags: ['CrmThemes'],
+    }),
+    activateCrmTheme: builder.mutation<CrmThemeActivateResponse, { id: number; clear_schedule?: boolean }>({
+      query: ({ id, ...body }) => ({
+        url: `/web-crm/themes/${id}/activate`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['CrmThemes'],
     }),
   }),
 });
@@ -2190,6 +3056,7 @@ export const {
   useLazyGetDwQueueUncalledQuery,
   useLazyGetDwQueueCallbacksQuery,
   useLazyGetDwQueueCalledQuery,
+  useLazyGetDwQueueAgreeSubscriptionQuery,
   useLazyGetDwQueueCountsQuery,
   useSkipDwLeadMutation,
   useGetDwLeadDetailQuery,
@@ -2200,6 +3067,9 @@ export const {
   useScheduleDwCallbackMutation,
   useGetDwCallHistoryQuery,
   useGetDwBreakStatusQuery,
+  useGetDwIncomingCallsQuery,
+  useGetWctIncomingCallsQuery,
+  useGetMmIncomingCallsQuery,
   useGetWctDashboardQuery,
   useGetWctQueueQuery,
   useLazyGetWctQueueQuery,
@@ -2216,6 +3086,7 @@ export const {
   useLazyGetWctQueueUncalledQuery,
   useLazyGetWctQueueCallbacksQuery,
   useLazyGetWctQueueCalledQuery,
+  useLazyGetWctQueueAgreeSubscriptionQuery,
   useLazyGetWctQueueCountsQuery,
   useSkipWctLeadMutation,
   useGetWctLeadDetailQuery,
@@ -2255,12 +3126,18 @@ export const {
   useGetMmCallHistoryQuery,
   useSubmitMmJobBriefMutation,
   useLogMmConferenceCallMutation,
+  useSendMmConnectionRequestMutation,
+  useBulkSendMmConnectionRequestMutation,
+  useGetMmConnectionRequestHistoryQuery,
   useSubmitMmConferenceDispositionMutation,
   useSubmitMmScreeningMutation,
   useUpdateMmScreeningStatusMutation,
   useGetMmDriverScreeningQuery,
   useLazyGetMmDriverScreeningQuery,
   useGetMmDriverProfileQuery,
+  useGetMmTransporterProfileQuery,
+  useGetDriverBankNotificationsQuery,
+  useReadDriverBankNotificationsMutation,
   useGetMmGreenlineApplicantsQuery,
   useGetDriverBankQuery,
   useGetDriverBankDetailQuery,
@@ -2292,6 +3169,17 @@ export const {
   useGetDwGlobalSearchQuery,
   useLazyGetDwGlobalSearchQuery,
   useGetDwJobSearchQuery,
+  useGetJobSearchDetailQuery,
   useLazyGetDwJobSearchQuery,
+  useGetWebRolesQuery,
+  useUpdateWebRoleMutation,
+  useGetIdvQueueQuery,
+  useGetIdvDossierQuery,
+  useGetIdvDispositionOptionsQuery,
+  useSubmitIdvFeedbackMutation,
+  useGetRevivalOffersQuery,
+  useGenerateCouponMutation,
+  useGetCrmThemesQuery,
+  useActivateCrmThemeMutation,
 } = webCrmApi;
 

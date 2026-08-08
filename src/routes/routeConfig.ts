@@ -511,6 +511,15 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/dw/dw-id-verification',
+    name: 'ID Verification',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'verified_user',
+    showInMenu: true
+  },
+  {
     path: '/dw/dw-driver-bank',
     name: 'Driver Bank',
     role: 'Driver Welcome',
@@ -526,6 +535,15 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'history',
+    showInMenu: true
+  },
+  {
+    path: '/dw/dw-incoming-calls',
+    name: 'Incoming Calls',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'call_received',
     showInMenu: true
   },
   {
@@ -667,6 +685,15 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/wct/wct-incoming-calls',
+    name: 'Incoming Calls',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'call_received',
+    showInMenu: true
+  },
+  {
     path: '/wct/wct-subscriptions',
     name: 'My Subscriptions',
     role: 'Transporter Welcome',
@@ -682,6 +709,24 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'work',
+    showInMenu: true
+  },
+  {
+    path: '/wct/wct-id-verification',
+    name: 'ID Verification',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'verified_user',
+    showInMenu: true
+  },
+  {
+    path: '/wct/wct-driver-bank',
+    name: 'Driver Bank',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'account_box',
     showInMenu: true
   },
   {
@@ -796,6 +841,24 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/mm/mm-job-search',
+    name: 'Job Search',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'work',
+    showInMenu: true
+  },
+  {
+    path: '/mm/mm-id-verification',
+    name: 'ID Verification',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'verified_user',
+    showInMenu: true
+  },
+  {
     path: '/mm/mm-driver-bank',
     name: 'Driver Bank',
     role: 'Matchmaking',
@@ -814,12 +877,30 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/mm/mm-campaign-leads',
+    name: 'Campaign Leads',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'campaign',
+    showInMenu: true
+  },
+  {
     path: '/mm/mm-call-history',
     name: 'Call History',
     role: 'Matchmaking',
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'call_log',
+    showInMenu: true
+  },
+  {
+    path: '/mm/mm-incoming-calls',
+    name: 'Incoming Calls',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'call_received',
     showInMenu: true
   },
   {

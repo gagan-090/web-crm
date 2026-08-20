@@ -913,6 +913,15 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/mm/mm-placed-drivers',
+    name: 'Interview & Placements',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'handshake',
+    showInMenu: true
+  },
+  {
     path: '/mm/mm-placement-history',
     name: 'My Placements Dashboard',
     role: 'Matchmaking',

@@ -22,7 +22,16 @@ export const useClickToCall = () => {
     // a number that is NOT a valid users.id, which the backend rejects with
     // "The selected user id is invalid" and the call never starts. Always pass
     // the actual user id where the caller knows it (e.g. the Driver Bank).
-    userId?: number
+    userId?: number,
+    // WHERE THE CALL WAS DIALLED FROM, not who was dialled.
+    //
+    // Sent to /call/initiate as `lead_type` and turned into the `process`
+    // stamped on the call_history_ivr row. The Driver Bank passes
+    // 'driver_bank' so its calls report as matchmaking work rather than
+    // disappearing into general Driver Onboarding volume — the lead is a
+    // driver either way, so nothing downstream could tell them apart without
+    // this. Omitted elsewhere, which leaves the existing behaviour untouched.
+    leadType?: string
   ) => {
     // Intercept if SAN live dialer is active
     if ((window as any)._sanDial) {
@@ -45,7 +54,21 @@ export const useClickToCall = () => {
       else if (path.startsWith('/wct')) targetPath = '/wct/wct-active-call-focus';
       else if (path.startsWith('/mm')) targetPath = '/mm/mm-active-call-focus-refined';
       else if (path.startsWith('/sc')) targetPath = '/sc/active-call-focus-special-categories';
-      
+
+      // THE DRIVER BANK STAYS PUT.
+      //
+      // The focus screen exists for queue work, where the agent has one lead
+      // and wants it filling the window. The bank is the opposite: the agent is
+      // working a LIST, comparing candidates against vacancies, and navigating
+      // away loses the scroll position, the filters and the row they were on —
+      // then drops them back at the top of the list after the call.
+      //
+      // The call bar is rendered by DashboardLayout, not by the focus screen,
+      // so staying here keeps the dialer on screen with nothing else to change.
+      if (leadType === 'driver_bank') {
+        targetPath = '';
+      }
+
       if (targetPath) {
         navigate(targetPath, {
           state: {
@@ -58,7 +81,9 @@ export const useClickToCall = () => {
         });
       }
       
-      (window as any)._sanDial(phone, numericId, name, leadId);
+      // 5th arg is lead_type — undefined leaves the provider's own default
+      // ('driver'), so callers that pass nothing behave exactly as before.
+      (window as any)._sanDial(phone, numericId, name, leadId, leadType);
       return;
     }
 

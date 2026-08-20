@@ -1000,6 +1000,51 @@ export interface MmAgentStatsResponse {
   };
 }
 
+export interface PlacementJobManager {
+  id: number;
+  name: string;
+}
+
+/** One row of the Interview Done / Placed Drivers report. */
+export interface PlacementRow {
+  id: string;
+  /** call_history_ivr.id when this came off a call; null for a Driver Bank row. */
+  call_id: number | null;
+  source: 'call' | 'driver_bank';
+  job_id: string | null;
+  job_db_id: number | null;
+  job_title: string | null;
+  /** Null when the outcome was filed on the TRANSPORTER's call — no column on
+   *  that row names the driver, so the report says so instead of guessing. */
+  driver_tmid: string | null;
+  driver_name: string | null;
+  driver_mobile: string | null;
+  transporter_tmid: string | null;
+  transporter_name: string | null;
+  placed_at: string;
+  placed_at_display: string;
+  last_activity_at: string;
+  job_manager: string | null;
+  job_manager_id: number | null;
+  logged_on: 'driver' | 'transporter';
+  outcome: string;
+  remarks: string | null;
+  match_status: string | null;
+  /** The driver also sits in driver_bank against this job. */
+  in_driver_bank: boolean;
+  /** How many qualifying calls collapsed into this one row. */
+  entries: number;
+}
+
+export interface PlacementReportResponse {
+  status: boolean;
+  tab: 'interview_done' | 'placed';
+  rows: PlacementRow[];
+  counts: { interview_done: number; placed: number };
+  job_managers: PlacementJobManager[];
+  pagination: { total: number; per_page: number; current_page: number; last_page: number };
+}
+
 export interface MmCallHistoryRow {
   id: number;
   recording_url: string | null;
@@ -2127,6 +2172,61 @@ export interface WebRoleUpdateResponse {
   data: { id: number; name: string; email: string; role: string; previous_role: string };
 }
 
+/**
+ * One entry in a driver's call timeline.
+ *
+ * `id` is a STRING for calls merged in from the other log tables ("mm-12",
+ * "jd-88") — only `call_history_ivr` rows have a numeric id, so nothing may
+ * assume a number here.
+ *
+ * `called_at` and `updated_at` are different moments: when the call was
+ * dialled, and when its disposition was last written.
+ */
+export interface DriverCallTimelineEntry {
+  source: 'call_history_ivr' | 'match_making' | 'job_details' | string;
+  id: number | string;
+  job_id: string | null;
+  job_title: string | null;
+  transporter_name?: string | null;
+  call_status: string | null;
+  feedback: string | null;
+  remarks: string | null;
+  match_status: string | null;
+  disposition_sub: string | null;
+  process: string | null;
+  call_type: string | null;
+  direction: 'incoming' | 'outgoing';
+  /** Talk time. 0 on a call that never connected. */
+  duration_seconds: number;
+  /** Dial through to disposition — the agent's handling time. */
+  handling_seconds: number | null;
+  callback_at: string | null;
+  called_by: string | null;
+  mobile: string | null;
+  called_at: string | null;
+  updated_at: string | null;
+  recording_url: string | null;
+  recording_source: string | null;
+}
+
+export interface DriverBankDetailResponse {
+  success: boolean;
+  data: {
+    driver: Record<string, any>;
+    applications: Record<string, any>[];
+    subscription: Record<string, any> | null;
+    call_timeline: DriverCallTimelineEntry[];
+    call_summary: {
+      total: number;
+      connected: number;
+      last_call_at: string | null;
+      /** Which identity keys the bank entry actually had to match on. */
+      matched_by: ('user_id' | 'tmid' | 'mobile')[];
+      sources: Record<string, number>;
+    };
+  };
+}
+
 export const webCrmApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // DW Endpoints
@@ -2383,6 +2483,24 @@ export const webCrmApi = baseApi.injectEndpoints({
     getWctBreakStatus: builder.query<DwBreakStatusResponse, void>({
       query: () => '/web-crm/wct/break-status',
     }),
+    // ── Interview Done / Placed Drivers report ───────────────────────────
+    // Reads PlacementReportController: call_history_ivr is the source of truth
+    // (a placement is a dispositioned call), with driver_bank merged in.
+    getPlacementReport: builder.query<PlacementReportResponse, {
+      tab?: 'interview_done' | 'placed';
+      job_manager?: number | string;
+      date_from?: string; date_to?: string;
+      search?: string; page?: number; per_page?: number;
+    } | void>({
+      query: (params) => ({
+        url: '/web-crm/placements',
+        params: params || undefined,
+      }),
+    }),
+    getPlacementJobManagers: builder.query<{ status: boolean; job_managers: PlacementJobManager[] }, void>({
+      query: () => ({ url: '/web-crm/placements/job-managers' }),
+    }),
+
     getWctCampaignLeads: builder.query<any, { source?: string; search?: string; tab?: string; sort_by?: string; page?: number; per_page?: number } | void>({
       query: (params) => ({
         url: '/web-crm/wct/campaign-leads',
@@ -2725,21 +2843,88 @@ export const webCrmApi = baseApi.injectEndpoints({
       providesTags: ['MmApplicants'],
     }),
 
+    /* ── Notify drivers about a job (Driver Search → bulk notify) ──────────
+       Not under a role prefix: MM, DWC and TWC all work Driver Search, and the
+       backend sends each driver the message in the language they chose in the
+       app rather than the agent's. */
+
+    /** Job picker — matches full code, last digits, numeric id, or title. */
+    searchNotifiableJobs: builder.query<any, string>({
+      query: (q) => ({ url: '/web-crm/job-notification/jobs', params: { q } }),
+    }),
+
+    /** Fire the notification at every selected driver. */
+    sendJobNotification: builder.mutation<any, {
+      job_id: string | number;
+      driver_ids: number[];
+      message_type?: 'perfect_fit' | 'new_job';
+    }>({
+      query: (body) => ({ url: '/web-crm/job-notification/send', method: 'POST', body }),
+    }),
+
+    /** Who has already been told about this job. */
+    getJobNotificationHistory: builder.query<any, string>({
+      query: (job_id) => ({ url: '/web-crm/job-notification/history', params: { job_id } }),
+    }),
+
     // Driver Bank endpoints
-    getDriverBank: builder.query<any, { search?: string; job_id?: string; availability?: string; per_page?: number; cursor?: number | null }>({
+    //
+    // The list is EXPANDED server-side: one row per (driver × linked job), so a
+    // driver considered for three vacancies arrives as three rows carrying
+    // three different owning agents. Use `row_key`, not the driver id, as the
+    // React key — the driver id repeats.
+    getDriverBank: builder.query<any, {
+      search?: string; job_id?: string; availability?: string;
+      assigned_agent?: number; never_called_since_banked?: boolean;
+      per_page?: number; cursor?: number | null;
+    }>({
       query: (params) => ({
         url: '/web-crm/match-making/driver-bank',
-        params: Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')),
+        params: Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== '' && v !== false)),
       }),
       providesTags: ['DriverBank'],
     }),
-    getDriverBankDetail: builder.query<any, number | string>({
+
+    /** Bank-wide reporting: intake, how much of it gets worked, and by whom. */
+    getDriverBankReport: builder.query<any, { days?: number } | void>({
+      query: (params) => ({
+        url: '/web-crm/match-making/driver-bank/report',
+        params: params && (params as any).days ? { days: (params as any).days } : {},
+      }),
+      providesTags: ['DriverBank'],
+    }),
+
+    /** Job picker for the multi-select — code, title, and who owns it. */
+    searchDriverBankJobs: builder.query<any, string>({
+      query: (q) => ({ url: '/web-crm/match-making/driver-bank/jobs/search', params: { q } }),
+    }),
+
+    /** Link more vacancies to an already-banked driver. */
+    attachDriverBankJobs: builder.mutation<any, { id: number; job_ids: (string | number)[] }>({
+      query: ({ id, ...body }) => ({ url: `/web-crm/match-making/driver-bank/${id}/jobs`, method: 'POST', body }),
+      invalidatesTags: ['DriverBank'],
+    }),
+
+    /** Per-job outcome — distinct from the driver's overall availability. */
+    updateDriverBankJobLink: builder.mutation<any, { linkId: number; status?: string; remarks?: string }>({
+      query: ({ linkId, ...body }) => ({ url: `/web-crm/match-making/driver-bank/jobs/${linkId}`, method: 'PUT', body }),
+      invalidatesTags: ['DriverBank'],
+    }),
+
+    detachDriverBankJob: builder.mutation<any, number>({
+      query: (linkId) => ({ url: `/web-crm/match-making/driver-bank/jobs/${linkId}`, method: 'DELETE' }),
+      invalidatesTags: ['DriverBank'],
+    }),
+    getDriverBankDetail: builder.query<DriverBankDetailResponse, number | string>({
       query: (id) => `/web-crm/match-making/driver-bank/${id}`,
       providesTags: ['DriverBank'],
     }),
     addDriverBank: builder.mutation<any, {
       user_id?: number; tmid?: string; name: string; mobile: string;
-      job_id?: string; location?: string; license_type?: string; vehicle_type?: string;
+      // `job_ids` is the multi-job payload; `job_id` is kept for older callers
+      // and folded into the same pivot server-side.
+      job_id?: string; job_ids?: (string | number)[];
+      location?: string; license_type?: string; vehicle_type?: string;
       experience?: string; availability?: string; feedback?: string; remarks?: string;
     }>({
       query: (body) => ({ url: '/web-crm/match-making/driver-bank', method: 'POST', body }),
@@ -3097,6 +3282,8 @@ export const {
   useScheduleWctCallbackMutation,
   useGetWctCallHistoryQuery,
   useGetWctBreakStatusQuery,
+  useGetPlacementReportQuery,
+  useGetPlacementJobManagersQuery,
   useGetWctCampaignLeadsQuery,
   useLazyGetWctCampaignLeadsQuery,
   useUpdateWctCampaignLeadNotesMutation,
@@ -3145,6 +3332,14 @@ export const {
   useUpdateDriverBankMutation,
   useDeleteDriverBankMutation,
   useLazySearchDriverBankUserQuery,
+  useLazySearchNotifiableJobsQuery,
+  useSendJobNotificationMutation,
+  useLazyGetJobNotificationHistoryQuery,
+  useGetDriverBankReportQuery,
+  useLazySearchDriverBankJobsQuery,
+  useAttachDriverBankJobsMutation,
+  useUpdateDriverBankJobLinkMutation,
+  useDetachDriverBankJobMutation,
   useGetQcDashboardQuery,
   useGetQcQueueQuery,
   useSubmitQcAuditMutation,

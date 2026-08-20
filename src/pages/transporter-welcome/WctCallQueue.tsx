@@ -18,6 +18,7 @@ import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import CrossRoleLeadDetail from '../shared/CrossRoleLeadDetail';
 import RegistrationDateFilter from '../../shared/components/business/RegistrationDateFilter';
 import type { RegDateRange } from '../../shared/components/business/RegistrationDateFilter';
+import useResizablePane from '../../shared/hooks/useResizablePane';
 
 // Minutes since an ISO/SQL timestamp (best-effort; 0 when unparseable).
 const minutesSince = (ts?: string | null): number => {
@@ -130,6 +131,9 @@ interface TransporterLead {
 }
 
 export const WctCallQueue: React.FC = () => {
+  // Draggable split between the queue list and the lead profile. Stored
+  // under its own key so the WCT desk keeps a different split from DW/MM.
+  const queuePane = useResizablePane({ storageKey: 'queue_wct' });
   const { dial, callState, agentState } = useSanCti();
 
   // DWC-style queue: server-side tabs (Fresh / All / Old / Uncalled / Callbacks
@@ -420,7 +424,11 @@ export const WctCallQueue: React.FC = () => {
       )}
 
       {/* Left Panel: Staging Call Queue */}
-      <section className="w-[380px] border-r border-gray-200 flex flex-col bg-gray-50/50 shrink-0">
+      <section
+        ref={queuePane.paneRef as React.RefObject<HTMLElement>}
+        {...queuePane.paneProps}
+        className="border-r border-gray-200 flex flex-col bg-gray-50/50 min-w-0"
+      >
 
         {/* Global Search Header */}
         <div className="p-3 border-b border-gray-200 bg-gray-50 shrink-0 relative" ref={globalSearchRef}>
@@ -668,6 +676,15 @@ export const WctCallQueue: React.FC = () => {
           )}
         </div>
       </section>
+
+      {/* ── Resize handle ──────────────────────────────────────────────────── */}
+      <div
+        {...queuePane.handleProps}
+        className="group relative w-1.5 shrink-0 cursor-col-resize bg-gray-200 hover:bg-[#8E44AD] focus:bg-[#8E44AD] focus:outline-none transition-colors"
+      >
+        <span className="absolute inset-y-0 -left-1.5 -right-1.5" />
+        <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-0.5 rounded-full bg-gray-400 group-hover:bg-white" />
+      </div>
 
       {/* Right Detail Pane */}
       <section className="flex-1 flex flex-col bg-white overflow-hidden min-w-0">

@@ -117,6 +117,7 @@ import MmIncomingCalls from '../pages/matchmaking/MmIncomingCalls';
 import MmSubscriptions from '../pages/matchmaking/MmSubscriptions';
 import MmCallQueue from '../pages/matchmaking/MmCallQueue';
 import MmCampaignLeads from '../pages/matchmaking/MmCampaignLeads';
+import MmPlacedDrivers from '../pages/matchmaking/MmPlacedDrivers';
 import GlobalOverlaysContainer from '../shared/components/business/GlobalOverlaysContainer';
 import ScoreTrends from '../pages/special-categories/ScoreTrends';
 import ScriptEditorConsole from '../pages/special-categories/ScriptEditorConsole';
@@ -306,6 +307,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="mm/mm-subscriptions" element={<RoleGuard permission="calls:dial"><MmSubscriptions basePath="/web-crm/match-making" /></RoleGuard>} />
           <Route path="mm/mm-call-queue" element={<RoleGuard permission="calls:dial"><MmCallQueue /></RoleGuard>} />
           <Route path="mm/mm-campaign-leads" element={<RoleGuard permission="calls:dial"><MmCampaignLeads /></RoleGuard>} />
+          <Route path="mm/mm-placed-drivers" element={<RoleGuard permission="calls:dial"><MmPlacedDrivers /></RoleGuard>} />
           <Route path="mm/mm-job-board" element={<RoleGuard permission="calls:dial"><MmJobBoard /></RoleGuard>} />
           <Route path="mm/mm-job-search" element={<RoleGuard permission="calls:dial"><MmJobSearch /></RoleGuard>} />
           <Route path="mm/mm-job-detail" element={<RoleGuard permission="calls:dial"><MmJobDetail /></RoleGuard>} />

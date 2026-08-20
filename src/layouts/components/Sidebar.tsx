@@ -10,6 +10,7 @@ import useCrmTheme from '../../shared/theme/useCrmTheme';
 import AshokaChakra from '../../shared/components/AshokaChakra';
 import ChakraMedallion from '../../shared/components/ChakraMedallion';
 import sidebarBg from '../../assets/theme/sidebar_bg.jpg';
+import useDarkMode from '../../shared/theme/useDarkMode';
 
 /**
  * The rail's festive backdrop, for every role — the Sidebar is shared, so this
@@ -50,6 +51,7 @@ export const Sidebar: React.FC<{ hidden?: boolean }> = ({ hidden = false }) => {
   const { isTricolor: IS_TRICOLOR_THEME, greetingHi, greetingEn } = useCrmTheme();
   const location = useLocation();
   const { logout } = useAuth();
+  const { isDark, toggle: toggleTheme } = useDarkMode();
   const { role, can } = usePermissions();
 
   const isWctAgent = !!role && (role.includes('WCT') || role.includes('Transporter'));
@@ -182,6 +184,30 @@ export const Sidebar: React.FC<{ hidden?: boolean }> = ({ hidden = false }) => {
             </div>
           </div>
         )}
+
+        {/* Theme toggle — above Sign Out, the two "settings for me" actions
+            together. Deliberately not in a settings page: an agent flips this
+            when the light changes in the room, not once during onboarding. */}
+        <button
+          onClick={toggleTheme}
+          aria-pressed={isDark}
+          title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+          className="w-full flex items-center gap-3 px-sm py-2 rounded-lg text-slate-700 hover:bg-amber-500/10 font-bold transition-colors text-left text-xs"
+        >
+          <span className="material-symbols-outlined text-[18px]">
+            {isDark ? 'light_mode' : 'dark_mode'}
+          </span>
+          <span className="flex-1">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+          {/* A switch, not just a label: the state has to be readable at a
+              glance without parsing which way round the wording runs. */}
+          <span
+            className={`w-8 h-4 rounded-full flex items-center px-0.5 transition-colors shrink-0 ${
+              isDark ? 'bg-emerald-500 justify-end' : 'bg-slate-300 justify-start'
+            }`}
+          >
+            <span className="w-3 h-3 rounded-full bg-white shadow-sm" />
+          </span>
+        </button>
 
         <button
           onClick={logout}

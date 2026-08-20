@@ -44,10 +44,10 @@ interface CampaignLead {
 }
 
 // `desk` reuses this exact screen for other calling desks (e.g. Matchmaking)
-// so the campaign-leads UI stays pixel-identical — only the active-call screen
-// the Call button routes to differs. The leads endpoint is caller-scoped, so
-// each desk's agent sees their own assigned campaign leads with no other change.
-export const DwCampaignLeads: React.FC<{ desk?: 'dw' | 'mm' }> = ({ desk = 'dw' }) => {
+// so the campaign-leads UI stays pixel-identical — nothing renders differently
+// per desk any more (the mobile number now shows on both). The leads endpoint is
+// caller-scoped, so each desk's agent sees their own assigned campaign leads.
+export const DwCampaignLeads: React.FC<{ desk?: 'dw' | 'mm' }> = () => {
   // Live CTI — dials in place (no page switch); the global
   // CallControlBar renders the dialer over this same screen.
   const { dial, agentState, callState } = useSanCti();
@@ -75,9 +75,9 @@ export const DwCampaignLeads: React.FC<{ desk?: 'dw' | 'mm' }> = ({ desk = 'dw' 
     page: page,
     per_page: 10,
   }, {
-    // Called leads are excluded server-side (present in call_history_ivr), so
-    // refetch when returning to this screen after a call — the lead disappears,
-    // same as the queue.
+    // Called leads are NOT removed — they move out of Uncalled into
+    // Connected / Not Connected / Callbacks — so refetch on return to pick up
+    // the new bucket, tab counts and timeline entry.
     refetchOnMountOrArgChange: true,
   });
 
@@ -344,9 +344,14 @@ export const DwCampaignLeads: React.FC<{ desk?: 'dw' | 'mm' }> = ({ desk = 'dw' 
                     </span>
                   </div>
 
-                  <div className="text-[12px] text-gray-500 mt-1 flex justify-between">
-                    <span>{[l.city, l.state].filter(Boolean).join(', ')}</span>
-                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1 rounded font-mono">{l.tmid}</span>
+                  <div className="text-[12px] text-gray-500 mt-1 flex justify-between gap-2">
+                    <span className="truncate">{[l.city, l.state].filter(Boolean).join(', ')}</span>
+                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1 rounded font-mono shrink-0">{l.tmid}</span>
+                  </div>
+
+                  <div className="text-[12px] text-gray-700 font-mono mt-0.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[13px] text-gray-400">call</span>
+                    {l.phone || '—'}
                   </div>
 
                   <div className="text-[11px] text-gray-400 mt-2 flex justify-between items-center">
@@ -450,14 +455,15 @@ export const DwCampaignLeads: React.FC<{ desk?: 'dw' | 'mm' }> = ({ desk = 'dw' 
                   {selectedLead.temperature} LEAD
                 </span>
               </div>
+              {/* Campaign leads are the one screen that surfaces the raw mobile —
+                  every desk (DW and MM alike), because agents work these leads off
+                  the ad form and often need the number itself, not just the dialer. */}
               <p className="text-sm text-gray-500 mt-1">
                 {[selectedLead.city, selectedLead.state].filter(Boolean).join(', ')}
-                {/* MM desk never surfaces the mobile number — the agent dials
-                    through the CTI, which needs no number on show. */}
-                {desk !== 'mm' && (
+                {selectedLead.phone && (
                   <>
                     {([selectedLead.city, selectedLead.state].filter(Boolean).length > 0) ? ' | ' : ''}
-                    {selectedLead.phone}
+                    <span className="font-mono text-gray-700">{selectedLead.phone}</span>
                   </>
                 )}
               </p>

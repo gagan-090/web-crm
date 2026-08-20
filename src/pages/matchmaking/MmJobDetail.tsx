@@ -52,7 +52,10 @@ const callStatusBadge = (status: string) => {
   if (status === 'New') return 'bg-blue-50 text-blue-600 border-blue-200';
   if (status === 'Connected') return 'bg-green-50 text-green-700 border-green-200';
   if (status === 'Not Interested') return 'bg-red-50 text-red-600 border-red-200';
-  return 'bg-amber-50 text-amber-700 border-amber-200';
+  // Rose, not amber: a call that did not connect is a failed attempt, and it
+  // should not wear the same colour as Pending, which is work still scheduled.
+  if (status === 'Not Connected') return 'bg-rose-50 text-rose-700 border-rose-200';
+  return 'bg-amber-50 text-amber-700 border-amber-200';   // Pending
 };
 
 // Agents store a disposition on the call — sometimes the human label
@@ -544,6 +547,7 @@ const MmJobDetail: React.FC = () => {
     switch (applicantStatus) {
       case 'new':            return a.call_status === 'New';
       case 'connected':      return a.call_status === 'Connected';
+      case 'not_connected':  return a.call_status === 'Not Connected';
       case 'pending':        return a.call_status === 'Pending';
       case 'not_interested': return a.call_status === 'Not Interested';
       default:               return true; // 'All'
@@ -551,11 +555,17 @@ const MmJobDetail: React.FC = () => {
   };
 
   // Coarse status buckets — shared by the chips and the top of the dropdown.
+  //
+  // 'Not Connected' is its own tab rather than being folded into Pending.
+  // Of 45 applicants an agent needs to separate "30 answered", "10 did not
+  // answer" and "5 nobody has rung" — one bucket holding the last two answers
+  // neither question.
   const FEEDBACK_FILTERS: Array<{ label: string; value: string; title: string }> = [
     { label: 'All', value: '', title: 'Show every applicant' },
     { label: 'New', value: 'new', title: 'Never called' },
-    { label: 'Connected', value: 'connected', title: 'Latest feedback is Connected — not-connected / call-back are excluded' },
-    { label: 'Pending', value: 'pending', title: 'Called, but the latest outcome is not-connected or call-back' },
+    { label: 'Connected', value: 'connected', title: 'Latest call connected' },
+    { label: 'Not Connected', value: 'not_connected', title: 'Called, but the latest call did not connect' },
+    { label: 'Pending', value: 'pending', title: 'Latest call was a scheduled call-back — still owed' },
     { label: 'Not Interested', value: 'not_interested', title: 'Latest feedback is Not Interested' },
   ];
 

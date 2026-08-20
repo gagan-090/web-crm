@@ -21,6 +21,7 @@ import CrossRoleLeadDetail from '../shared/CrossRoleLeadDetail';
 import RevivalOffersList from '../../shared/components/business/RevivalOffersList';
 import RegistrationDateFilter from '../../shared/components/business/RegistrationDateFilter';
 import type { RegDateRange } from '../../shared/components/business/RegistrationDateFilter';
+import useResizablePane from '../../shared/hooks/useResizablePane';
 
 const SkeletonCard = () => (
   <div className="p-3 border-l-4 border-gray-200 bg-white animate-pulse space-y-2">
@@ -207,6 +208,10 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
   const pagination = queueData?.pagination || { total: 0, per_page: 20, current_page: 1, last_page: 1 };
 
   // Selected Lead state
+  // Draggable split between the queue list and the profile. Namespaced by
+  // desk: DW/MM/WCT share this component but want different splits.
+  const queuePane = useResizablePane({ storageKey: `queue_${deskKey}` });
+
   const [selectedId, setSelectedId] = useState<number | string>('');
   const prevLeadsRef = useRef<any[]>([]);
 
@@ -510,7 +515,11 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
       )}
 
       {/* Left Panel - Staging Call Queue */}
-      <section className="w-[380px] border-r border-gray-200 flex flex-col bg-gray-50/50 shrink-0">
+      <section
+        ref={queuePane.paneRef as React.RefObject<HTMLElement>}
+        {...queuePane.paneProps}
+        className="border-r border-gray-200 flex flex-col bg-gray-50/50 min-w-0"
+      >
         
         {/* Global Search Header */}
         <div className="p-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between shrink-0 relative" ref={globalSearchRef}>
@@ -977,6 +986,17 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
           </div>
         )}
       </section>
+
+      {/* ── Resize handle ────────────────────────────────────────────────────
+          A 5px grab strip with a wider invisible hit area — a 1px border is
+          the correct VISUAL weight and an impossible pointer target. */}
+      <div
+        {...queuePane.handleProps}
+        className="group relative w-1.5 shrink-0 cursor-col-resize bg-gray-200 hover:bg-[#8E44AD] focus:bg-[#8E44AD] focus:outline-none transition-colors"
+      >
+        <span className="absolute inset-y-0 -left-1.5 -right-1.5" />
+        <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-0.5 rounded-full bg-gray-400 group-hover:bg-white" />
+      </div>
 
       {/* Right Panel - Lead details profile cockpit */}
       <section className="flex-1 flex flex-col bg-white overflow-hidden min-w-0">

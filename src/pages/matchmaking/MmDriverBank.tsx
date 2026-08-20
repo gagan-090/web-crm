@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   useGetDriverBankQuery,
   useGetDriverBankDetailQuery,
@@ -8,6 +9,7 @@ import {
   useLazySearchDriverBankUserQuery,
   useGetMmJobListingsQuery,
 } from '../../services/api/webCrmApi';
+import type { DriverBankDetailResponse, DriverCallTimelineEntry } from '../../services/api/webCrmApi';
 import { useClickToCall } from '../../shared/hooks/useClickToCall';
 import { useAuth } from '../../app/providers/AuthProvider';
 
@@ -65,7 +67,188 @@ const INCOME_OPTIONS = [
 ];
 
 const availCls = (v: string) => AVAIL_OPTIONS.find(o => o.value === v)?.cls ?? 'bg-gray-100 text-gray-500 border-gray-200';
+
+/**
+ * A compact date for the list: "03 Aug, 4:05 pm".
+ *
+ * MySQL hands back "2026-08-03 16:05:33"; Safari refuses that as a Date
+ * argument unless the space is a T, and returns Invalid Date instead.
+ */
+const stamp = (v?: string | null) => {
+  if (!v) return '—';
+  const d = new Date(String(v).replace(' ', 'T'));
+  return isNaN(d.getTime())
+    ? String(v).slice(0, 16)
+    : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
+};
 const availLbl = (v: string) => AVAIL_OPTIONS.find(o => o.value === v)?.label ?? v;
+
+/** Seconds as "2m 14s" / "48s" — a bare "134" tells the agent nothing. */
+const dur = (s?: number | null) => {
+  const n = Number(s ?? 0);
+  if (!n) return '0s';
+  return n >= 60 ? `${Math.floor(n / 60)}m ${n % 60}s` : `${n}s`;
+};
+
+/**
+ * ── CALL HISTORY ON HOVER ────────────────────────────────────────────────
+ *
+ * The "Since Banked" badge says HOW MANY calls happened after banking; this
+ * says WHAT they were. Without it the number is a dead end — an agent seeing
+ * "5 since" still has to open the detail modal to learn whether those five
+ * were five voicemails or one real conversation.
+ *
+ * WHY A HOVER CARD AND NOT A TOOLTIP: `title=""` renders one unstyled line
+ * after a browser-controlled delay and cannot show a table. This is the same
+ * information the detail modal holds, surfaced where the question is asked.
+ *
+ * Positioned RIGHT-ALIGNED and above/below by row position: the column sits
+ * near the right edge of a 1480px table, and a left-anchored card would open
+ * off-screen — which is the failure mode that makes hover cards feel broken.
+ */
+const CallHistoryHover: React.FC<{ calls: any[]; total: number; children: React.ReactNode }> = ({ calls, total, children }) => {
+  // Either a `top` (opening downwards) or a `bottom` (flipped above) — never
+  // both. See the flip note in show().
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+
+  if (!calls?.length) return <>{children}</>;
+
+  // FIXED, AND PORTALLED TO <body>.
+  //
+  // Two separate containers had to be escaped, and `position: fixed` alone
+  // only escapes one of them:
+  //
+  //   • the scroll container — `.table-x-scroll` clips absolutely positioned
+  //     descendants at the column edge.
+  //   • a TRANSFORMED ANCESTOR — motion.css applies `transform` and
+  //     `will-change: transform` to hover/animation classes, and ANY of those
+  //     on an ancestor makes `position: fixed` resolve against that element
+  //     instead of the viewport. getBoundingClientRect() still returns
+  //     viewport coordinates, so the two disagree and the card lands a fixed
+  //     distance below where it was asked to go — which is the gap that made
+  //     it unreachable.
+  //
+  // A portal to <body> removes the card from that subtree entirely, so the
+  // viewport coordinates and the fixed origin finally refer to the same thing.
+  const show = () => {
+    // Re-entering cancels a close already scheduled — this is what lets the
+    // pointer travel from the badge onto the card. The card is a DOM
+    // descendant of this wrapper, so moving onto it bubbles a mouseenter here.
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const W = 420, H = 300;
+
+    // Right-aligned to the trigger, then clamped so it can never open past
+    // either edge of the window.
+    const left = Math.max(8, Math.min(r.right - W, window.innerWidth - W - 8));
+
+    // FLUSH WITH THE TRIGGER — no gap, in either direction.
+    //
+    // A 4px offset left a strip belonging to neither the badge nor the card.
+    // Crossing it fired mouseleave and shut the card before the agent could
+    // reach it, which made the scrollable list inside impossible to use.
+    //
+    // Opening upward anchors the card's BOTTOM to the trigger's top rather
+    // than computing a top from an assumed height. The card's real height
+    // varies with how many calls it lists — anchoring by top would leave the
+    // same dead gap again on every card shorter than the estimate.
+    setPos(
+      r.bottom + H > window.innerHeight
+        ? { bottom: Math.max(8, window.innerHeight - r.top), left }
+        : { top: r.bottom, left }
+    );
+  };
+
+  // Closed on a delay, not immediately. Even flush edges leave a sub-pixel
+  // seam at some zoom levels, and a pointer crossing it should not destroy the
+  // card the agent is reaching for.
+  const scheduleClose = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setPos(null), 220);
+  };
+
+  return (
+    <div ref={ref} className="relative inline-block"
+      onMouseEnter={show}
+      onMouseLeave={scheduleClose}>
+      {children}
+      {pos && createPortal(
+        <div
+          style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, width: 420 }}
+          className="z-[60] bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden cursor-default"
+          /* The card is no longer a DOM descendant of the trigger, so the
+             wrapper's mouseleave fires the moment the pointer reaches it.
+             These two keep it alive while the agent is reading or scrolling. */
+          onMouseEnter={() => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; } }}
+          onMouseLeave={scheduleClose}>
+          <div className="px-3 py-2 bg-[#1A5276] text-white flex items-center justify-between">
+            <span className="text-[10px] font-extrabold uppercase tracking-wide">Calls since banked</span>
+            <span className="text-[10px] opacity-80">
+              {/* The cap is stated rather than hidden — a card silently showing
+                  12 of 38 would read as the driver having been rung 12 times. */}
+              {calls.length < total ? `latest ${calls.length} of ${total}` : `${total} call${total !== 1 ? 's' : ''}`}
+            </span>
+          </div>
+          <div className="max-h-[260px] overflow-y-auto divide-y divide-gray-100">
+            {calls.map((c: any) => (
+              <div key={c.id} className="px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                    c.status === 'connected' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : String(c.status).includes('callback') ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}>
+                    {String(c.status || 'unknown').replace(/_/g, ' ')}
+                  </span>
+                  <span className="text-[10px] font-semibold text-gray-700 truncate">{c.agent || 'Unknown agent'}</span>
+                </div>
+
+                <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9.5px] text-gray-600">
+                  <div><span className="text-gray-400">Dialled</span> {stamp(c.called_at)}</div>
+                  {/* Completion is a separate event from the dial — it is when
+                      the agent finished writing the disposition. */}
+                  <div><span className="text-gray-400">Completed</span> {stamp(c.completed_at)}</div>
+                  {/* Talk vs handling: talk is 0 on a call that never
+                      connected, handling spans dial → disposition. Showing only
+                      one of them overstates or understates the work. */}
+                  <div><span className="text-gray-400">Talk</span> {dur(c.talk_seconds)}</div>
+                  <div><span className="text-gray-400">Handling</span> {dur(c.handling_seconds)}</div>
+                </div>
+
+                {(c.feedback || c.disposition_sub) && (
+                  <div className="mt-1 text-[9.5px]">
+                    <span className="text-gray-400">Feedback </span>
+                    <span className="font-semibold text-gray-800">{c.feedback || '—'}</span>
+                    {c.disposition_sub && (
+                      <span className="text-gray-500"> · {c.disposition_sub}</span>
+                    )}
+                  </div>
+                )}
+
+                {c.remarks && (
+                  <div className="mt-0.5 text-[9.5px] text-gray-600 italic break-words">“{c.remarks}”</div>
+                )}
+
+                <div className="mt-0.5 flex flex-wrap gap-2 text-[9px] text-gray-400">
+                  {c.process && <span>{c.process}</span>}
+                  {c.job_id && <span className="text-[#8E44AD]">{c.job_id}</span>}
+                  {c.callback_at && <span className="text-blue-600">callback {stamp(c.callback_at)}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
 
 // ── JobIdPicker ───────────────────────────────────────────────────────────────
 //
@@ -502,6 +685,64 @@ const MmDriverBank: React.FC = () => {
     { refetchOnMountOrArgChange: true }
   );
 
+  /* ── QUICK UPDATE, STRAIGHT AFTER THE DISPOSITION ────────────────────────
+     The disposition records what happened on the CALL; Quick Update records
+     what it means for the CANDIDATE — availability, feedback, remarks. They
+     are two different records and the agent has the answer to both exactly
+     once: the moment they hang up. Asking for the second one later means
+     going back to find the row, which is how a bank fills with drivers whose
+     availability is whatever it was when they were added.
+
+     Driven off the same `san-disposition-complete` event the focus screens
+     use, filtered to lead.type === 'driver_bank' so a disposition from any
+     other screen never pops this modal.
+
+     DECLARED AFTER useGetDriverBankQuery, not before it. `refetch` is a const
+     from that hook, so a dependency array naming it above this line is read
+     during render while it is still in the temporal dead zone — which throws
+     "Cannot access 'refetch' before initialization" and white-screens the
+     page. Neither tsc nor the bundler catches it: const TDZ is a runtime
+     error, and a build never executes the component.
+     ───────────────────────────────────────────────────────────────────── */
+  const rowsRef = useRef<any[]>([]);
+  useEffect(() => { rowsRef.current = allRows; }, [allRows]);
+
+  useEffect(() => {
+    const onDispositionComplete = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const lead = detail.lead || {};
+
+      if (lead.type !== 'driver_bank') return;
+
+      // Match the call back to a banked row. The phone is the only identity
+      // guaranteed present on every call — user_id is null for anyone the CTI
+      // could not resolve, and the tmid is a display value the dialer may have
+      // rewritten. Compared on the last 10 digits, since one side carries a
+      // country code and the other does not.
+      const last10 = (v: any) => String(v ?? '').replace(/\D/g, '').slice(-10);
+      const wantedPhone = last10(lead.phone);
+      const wantedId = Number(lead.id) || 0;
+
+      const hit = rowsRef.current.find((r: any) =>
+        (wantedPhone && last10(r.mobile) === wantedPhone) ||
+        (wantedId && Number(r.user_id) === wantedId)
+      );
+
+      // The list is paginated and the driver may have been dialled from a page
+      // since scrolled past — better to refresh quietly than to pop a modal
+      // bound to the wrong person.
+      if (!hit) { refetch(); return; }
+
+      // QuickEditModal updates by driver_bank id, and an expanded row carries
+      // the driver id under driver_bank_id — `id` on those rows is the same
+      // value, but being explicit keeps it correct if the shape ever changes.
+      setQuickEdit({ ...hit, id: hit.driver_bank_id ?? hit.id });
+    };
+
+    window.addEventListener('san-disposition-complete', onDispositionComplete);
+    return () => window.removeEventListener('san-disposition-complete', onDispositionComplete);
+  }, [refetch]);
+
   // Populate rows — no separate filter-reset effect (that caused allRows to clear
   // after data was set when the cache returned the same reference on re-mount).
   // The cursor=null branch here already replaces (not appends), so filter changes
@@ -577,8 +818,12 @@ const MmDriverBank: React.FC = () => {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="flex-1 overflow-auto custom-scrollbar">
+      {/* Table
+          `flex-1` bounds this box to the space left by the header, so the
+          horizontal scrollbar sits at the BOTTOM EDGE OF THE VIEWPORT rather
+          than below 15 rows of content — which is where it ends up if the
+          container is allowed to grow to its content height. */}
+      <div className="flex-1 table-x-scroll">
         {isLoading && allRows.length === 0 ? (
           <div className="p-4 space-y-2">
             {[...Array(8)].map((_, i) => <div key={i} className="h-12 bg-white rounded-lg border border-gray-200 animate-pulse" />)}
@@ -590,26 +835,75 @@ const MmDriverBank: React.FC = () => {
             <p className="text-[11px] mt-1">Click "Add Driver" to start — any role can add drivers</p>
           </div>
         ) : (
-          <table className="w-full border-collapse min-w-[1000px]">
+          <table
+            /* min-width sized to the 16 columns actually rendered. It was
+               1000px for 14; adding Job Agent and Since Banked pushed the real
+               width past it, so the last columns (Feedback, Added By, Added /
+               Updated, Actions) were clipped with no bar to reach them. */
+            className="w-full border-collapse min-w-[1480px]"
+          >
             <thead className="bg-gray-100 sticky top-0 z-10">
               <tr>
-                {['#','Driver','Mobile','TMID','Job ID','Location','Vehicle / Lic.','Exp.','Status','Feedback','Added By','Actions'].map(h => (
+                {['#','Driver','Mobile','TMID','Job ID','Job Agent','Location','Vehicle / Lic.','Exp.','Status','Since Banked','Last Call','Feedback','Added By','Added / Updated','Actions'].map(h => (
                   <th key={h} className="text-left py-2 px-3 text-[10px] font-extrabold text-gray-500 uppercase tracking-wide border-b border-gray-200 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {allRows.map((row: any, i: number) => (
-                <tr key={row.id} className={`border-b border-gray-100 hover:bg-purple-50/30 ${i % 2 ? 'bg-gray-50/50' : 'bg-white'}`}>
-                  <td className="py-2 px-3 font-mono text-[10px] text-gray-400">{row.id}</td>
+              {/* ONE ROW PER (DRIVER × JOB).
+                  A driver considered for three vacancies arrives as three rows
+                  from the server, each carrying that job's own owner. `row_key`
+                  is the key, NOT `id` — the driver id repeats across its own
+                  rows and React would collapse them into one. */}
+              {allRows.map((row: any, i: number) => {
+                const prev = allRows[i - 1];
+                // The first row of a driver's group carries the identity
+                // columns; the repeats are visually indented under it so three
+                // rows read as one candidate against three jobs, not as three
+                // separate drivers who happen to share a name.
+                const isRepeat = prev && (prev.driver_bank_id ?? prev.id) === (row.driver_bank_id ?? row.id);
+
+                return (
+                <tr key={row.row_key || row.id} className={`border-b border-gray-100 hover:bg-purple-50/30 ${isRepeat ? 'bg-purple-50/20' : i % 2 ? 'bg-gray-50/50' : 'bg-white'}`}>
+                  <td className="py-2 px-3 font-mono text-[10px] text-gray-400">{isRepeat ? '' : (row.driver_bank_id ?? row.id)}</td>
                   <td className="py-2 px-3">
-                    <div className="font-bold text-gray-850">{row.name}</div>
-                    {row.remarks && <div className="text-[9px] text-gray-400 truncate max-w-[120px]" title={row.remarks}>{row.remarks}</div>}
+                    {isRepeat ? (
+                      <div className="text-[10px] text-gray-400 pl-3 border-l-2 border-purple-200">↳ same driver</div>
+                    ) : (
+                      <>
+                        <div className="font-bold text-gray-850">
+                          {row.name}
+                          {row.job_count > 1 && (
+                            <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200"
+                              title={`Considered for ${row.job_count} jobs`}>
+                              {row.job_count} jobs
+                            </span>
+                          )}
+                        </div>
+                        {row.remarks && <div className="text-[9px] text-gray-400 truncate max-w-[120px]" title={row.remarks}>{row.remarks}</div>}
+                      </>
+                    )}
                   </td>
-                  <td className="py-2 px-3 font-mono text-[10px]">**********</td>
-                  <td className="py-2 px-3 font-mono text-[10px] text-gray-500">{row.tmid || '—'}</td>
-                  <td className="py-2 px-3 font-mono text-[10px] text-[#8E44AD]">{row.job_id || '—'}</td>
-                  <td className="py-2 px-3 text-[10px] text-gray-600">{row.location || '—'}</td>
+                  <td className="py-2 px-3 font-mono text-[10px]">{isRepeat ? '' : '**********'}</td>
+                  <td className="py-2 px-3 font-mono text-[10px] text-gray-500">{isRepeat ? '' : (row.tmid || '—')}</td>
+                  <td className="py-2 px-3 font-mono text-[10px] text-[#8E44AD]">
+                    {row.job_id || <span className="text-gray-300 font-sans">no job linked</span>}
+                    {row.job_title && <div className="text-[9px] text-gray-400 font-sans truncate max-w-[130px]" title={row.job_title}>{row.job_title}</div>}
+                  </td>
+                  {/* THE COLUMN THE WHOLE EXPANSION EXISTS FOR — who owns this
+                      vacancy. Read live from jobs.assigned_to, so a reassigned
+                      job shows its new owner here without touching the bank. */}
+                  <td className="py-2 px-3 text-[10px]">
+                    {row.job_agent_name ? (
+                      <span className="font-semibold text-gray-700">{row.job_agent_name}</span>
+                    ) : row.job_id ? (
+                      <span className="text-amber-600 text-[9px]" title="This job has no agent assigned">unassigned</span>
+                    ) : <span className="text-gray-300">—</span>}
+                    {row.link_status && row.link_status !== 'considering' && (
+                      <div className="text-[9px] text-gray-500 capitalize">{row.link_status}</div>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-[10px] text-gray-600">{isRepeat ? '' : (row.location || '—')}</td>
                   <td className="py-2 px-3">
                     <div className="text-[10px]">{row.vehicle_type || '—'}</div>
                     <div className="text-[9px] text-gray-400">{row.license_type || ''}</div>
@@ -620,6 +914,67 @@ const MmDriverBank: React.FC = () => {
                       {availLbl(row.availability)}
                     </span>
                   </td>
+                  {/* SINCE BANKED — the number that says whether this bank is
+                      being worked. A driver can have 40 prior calls and none
+                      since banking; a combined total presents those 40 as
+                      engagement the bank produced, which is how a stale bank
+                      goes unnoticed for weeks. */}
+                  <td className="py-2 px-3 text-[10px]">
+                    {isRepeat ? '' : row.never_called_since_banked ? (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border bg-rose-50 text-rose-700 border-rose-200"
+                        title="Banked, but nobody has called since">
+                        not called yet
+                      </span>
+                    ) : (
+                      <div className="whitespace-nowrap">
+                        <CallHistoryHover calls={row.recent_calls_since_banked || []} total={row.calls_after_banking}>
+                          {/* No `title` here. The native tooltip renders its
+                              own dark box under the cursor after a browser
+                              delay — directly on top of the card this badge
+                              opens. The dashed border already signals it is
+                              hoverable. */}
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200 cursor-help border-dashed">
+                            {row.calls_after_banking} since
+                          </span>
+                        </CallHistoryHover>
+                        {row.hours_to_first_call !== null && row.hours_to_first_call !== undefined && (
+                          <div className="text-[9px] text-gray-500 mt-0.5" title="Time from banking to the first call">
+                            {row.hours_to_first_call < 24
+                              ? `${row.hours_to_first_call}h to 1st`
+                              : `${Math.round(row.hours_to_first_call / 24)}d to 1st`}
+                          </div>
+                        )}
+                        {row.calls_before_banking > 0 && (
+                          <div className="text-[9px] text-gray-400" title="Calls that predate the banking">
+                            +{row.calls_before_banking} before
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  {/* LAST CALL — a bank that shows drivers but not whether
+                      anyone has rung them sends agents round in circles. */}
+                  <td className="py-2 px-3 text-[10px]">
+                    {row.call_count ? (
+                      <div className="whitespace-nowrap">
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                          String(row.last_call_status).toLowerCase() === 'connected'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : String(row.last_call_status).toLowerCase().includes('callback')
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}>
+                          {String(row.last_call_status || 'unknown').replace(/_/g, ' ')}
+                        </span>
+                        <div className="text-[9px] text-gray-500 mt-0.5" title={row.last_call_at || ''}>
+                          {stamp(row.last_call_at)}
+                          {' · '}{row.call_count} call{row.call_count !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-300">never called</span>
+                    )}
+                  </td>
                   <td className="py-2 px-3 text-[10px] text-gray-600 max-w-[100px]">
                     <span className="truncate block" title={row.feedback}>{row.feedback || '—'}</span>
                   </td>
@@ -627,9 +982,32 @@ const MmDriverBank: React.FC = () => {
                     <div className="text-[10px] font-semibold">{row.added_by_name || row.added_by_admin_name || '—'}</div>
                     {row.added_by_role && <div className="text-[9px] text-gray-400 uppercase">{row.added_by_role}</div>}
                   </td>
+                  {/* WHEN THE ENTRY ITSELF WAS TOUCHED — not the call.
+                      `created_at` is when the telecaller banked this driver;
+                      `updated_at` is when someone last changed the record.
+                      Equal values mean it has never been edited, so showing
+                      both would just be the same date twice. */}
+                  <td className="py-2 px-3 text-[10px] whitespace-nowrap">
+                    <div className="text-gray-700 font-semibold" title={row.created_at || ''}>
+                      {stamp(row.created_at)}
+                    </div>
+                    {row.updated_at && row.updated_at !== row.created_at ? (
+                      <div className="text-[9px] text-amber-600" title={`Last updated ${row.updated_at}`}>
+                        upd {stamp(row.updated_at)}
+                      </div>
+                    ) : (
+                      <div className="text-[9px] text-gray-300">not edited</div>
+                    )}
+                  </td>
                   <td className="py-2 px-3">
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
-                      <button title="Call" onClick={() => triggerCall(row.name, row.mobile, 'Driver Bank', row.tmid || 'DR', undefined, { source: 'driver-bank', driverBankId: row.id, jobId: row.job_id }, row.user_id ? Number(row.user_id) : 0)}
+                      {/* leadType 'driver_bank' is what stamps the call row's
+                          process as driver_bank_match_making. Without it the
+                          lead is just a driver and the call reports as general
+                          Driver Onboarding, indistinguishable from a welcome
+                          call. The jobId rides along so the dial is attributable
+                          to the vacancy this row represents. */}
+                      <button title="Call" onClick={() => triggerCall(row.name, row.mobile, 'Driver Bank', row.tmid || 'DR', undefined, { source: 'driver-bank', driverBankId: row.driver_bank_id ?? row.id, jobId: row.job_id, jobAgent: row.job_agent_name }, row.user_id ? Number(row.user_id) : 0, 'driver_bank')}
                         className="w-6 h-6 rounded-full bg-[#1A5276] hover:bg-[#154360] text-white flex items-center justify-center shadow-sm">
                         <span className="material-symbols-outlined text-[11px]">call</span>
                       </button>
@@ -652,7 +1030,8 @@ const MmDriverBank: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -737,7 +1116,16 @@ const DriverDetailModal: React.FC<{ driverId: number; onClose: () => void }> = (
     );
   }
 
-  const { driver, applications = [], subscription } = data.data;
+  // Defaults matter here: a server still running the previous build returns
+  // no call_timeline at all, and the modal must degrade to "no calls yet"
+  // rather than crash on undefined.
+  const {
+    driver,
+    applications = [],
+    subscription,
+    call_timeline: timeline = [],
+    call_summary: callSummary,
+  } = data.data as DriverBankDetailResponse['data'];
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -764,7 +1152,7 @@ const DriverDetailModal: React.FC<{ driverId: number; onClose: () => void }> = (
               <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Masked Mobile</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="font-mono text-gray-800 font-bold">**********</span>
-                <button onClick={() => triggerCall(driver.name, driver.mobile, 'Driver Bank', driver.tmid || 'DR', undefined, { source: 'driver-bank', driverBankId: driverId, jobId: driver.job_id }, driver.user_id ? Number(driver.user_id) : 0)}
+                <button onClick={() => triggerCall(driver.name, driver.mobile, 'Driver Bank', driver.tmid || 'DR', undefined, { source: 'driver-bank', driverBankId: driverId, jobId: driver.job_id }, driver.user_id ? Number(driver.user_id) : 0, 'driver_bank')}
                   className="w-5 h-5 rounded-full bg-green-600 hover:bg-green-700 text-white flex items-center justify-center transition-all">
                   <span className="material-symbols-outlined text-[10px]">call</span>
                 </button>
@@ -884,6 +1272,140 @@ const DriverDetailModal: React.FC<{ driverId: number; onClose: () => void }> = (
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+
+          {/* CALL TIMELINE — the reason the info button gets clicked.
+              Every call ever placed to this driver, with the remark the agent
+              wrote and BOTH timestamps: when it was dialled, and when the
+              disposition was written. Those are different moments, and a
+              disposition edited a day later is worth seeing. */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                <span className="material-symbols-outlined text-indigo-500" style={{ fontSize: 18 }}>history</span>
+                CALL HISTORY TIMELINE
+              </h3>
+              {timeline.length > 0 && (
+                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">
+                  {callSummary?.total ?? timeline.length} call{(callSummary?.total ?? timeline.length) !== 1 ? 's' : ''}
+                  {callSummary?.connected ? ` · ${callSummary.connected} connected` : ''}
+                </span>
+              )}
+            </div>
+
+            {timeline.length === 0 ? (
+              <div className="border border-dashed border-gray-200 rounded-xl p-4 text-center">
+                {/* An empty timeline has two causes, and they are not the same
+                    problem: nobody has rung this driver, or the bank entry has
+                    no identity to find their calls by. */}
+                {callSummary?.matched_by?.length ? (
+                  <p className="text-xs text-gray-400 font-medium">No calls have been placed to this driver yet.</p>
+                ) : (
+                  <p className="text-xs text-amber-600 font-semibold">
+                    This entry has no mobile, TMID or linked account — there is nothing to match their calls against.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                {timeline.map((c: DriverCallTimelineEntry) => {
+                  const status = String(c.call_status || '').toLowerCase();
+                  const connected = status === 'connected';
+                  const callback = status.includes('callback');
+                  const tone = connected
+                    ? { dot: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+                    : callback
+                      ? { dot: 'bg-blue-500', chip: 'bg-blue-50 text-blue-700 border-blue-200' }
+                      : { dot: 'bg-rose-500', chip: 'bg-rose-50 text-rose-700 border-rose-200' };
+                  const fmt = (v: string | null | undefined) => (v ? new Date(String(v).replace(' ', 'T')).toLocaleString('en-IN', {
+                    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+                  }) : '—');
+                  // Only worth showing when the disposition was written at a
+                  // different time from the call — otherwise it is noise.
+                  const edited = c.updated_at && c.updated_at !== c.called_at;
+
+                  return (
+                    <div
+                      key={c.id}
+                      className="p-3 hover:bg-gray-50/70 transition-colors"
+                      title={edited ? `Disposition last written ${fmt(c.updated_at)}` : undefined}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${tone.dot}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${tone.chip}`}>
+                              {c.call_status || 'unknown'}
+                            </span>
+                            {c.disposition_sub && (
+                              <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                {String(c.disposition_sub).replace(/_/g, ' ')}
+                              </span>
+                            )}
+                            {c.direction === 'incoming' && (
+                              <span className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">INCOMING</span>
+                            )}
+                            {c.source && c.source !== 'call_history_ivr' && (
+                              <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full" title="Logged by another desk">
+                                {String(c.source).replace(/_/g, ' ')}
+                              </span>
+                            )}
+                            {c.duration_seconds > 0 && (
+                              <span className="text-[10px] font-semibold text-gray-500">
+                                {Math.floor(c.duration_seconds / 60)}m {c.duration_seconds % 60}s talk
+                              </span>
+                            )}
+                            {/* Dial through to disposition. Shown only when it
+                                adds something over talk time — on a call that
+                                never connected it is the only duration there is. */}
+                            {!!c.handling_seconds && c.handling_seconds !== c.duration_seconds && (
+                              <span className="text-[10px] font-semibold text-gray-400" title="Dial through to disposition">
+                                {Math.floor(c.handling_seconds / 60)}m {c.handling_seconds % 60}s handling
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-1 text-[11px] text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5">
+                            <span><span className="text-gray-400">Called:</span> <strong className="text-gray-700">{fmt(c.called_at)}</strong></span>
+                            {c.called_by && <span><span className="text-gray-400">By:</span> <strong className="text-gray-700">{c.called_by}</strong></span>}
+                            {c.callback_at && <span><span className="text-gray-400">Callback:</span> <strong className="text-blue-600">{fmt(c.callback_at)}</strong></span>}
+                          </div>
+
+                          {c.remarks && (
+                            <p className="mt-1.5 text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 whitespace-pre-wrap break-words">
+                              {c.remarks}
+                            </p>
+                          )}
+
+                          {c.recording_url && (
+                            <div className="mt-2">
+                              <audio
+                                controls
+                                preload="none"
+                                src={c.recording_url}
+                                className="h-8 w-full max-w-xs"
+                                onError={(e) => {
+                                  // A recording path that 404s is common on old
+                                  // rows; a dead player with no explanation is
+                                  // worse than saying it is unavailable.
+                                  const el = e.currentTarget;
+                                  el.style.display = 'none';
+                                  el.insertAdjacentHTML('afterend',
+                                    '<span class="text-[10px] text-gray-400 italic">Recording unavailable</span>');
+                                }}
+                              />
+                              {c.recording_source && c.recording_source !== 'manual' && (
+                                <span className="ml-2 text-[9px] text-gray-400 uppercase">{c.recording_source}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

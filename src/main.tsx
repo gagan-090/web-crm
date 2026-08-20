@@ -6,6 +6,13 @@ import './styles/theme-tricolor.css'
 // Shared micro-interactions for every role. Self-disables under
 // prefers-reduced-motion.
 import './styles/motion.css'
+// LAST of the stylesheets: dark mode redefines the light utilities the rest
+// of the app is written in, so it has to win on equal specificity.
+import './styles/dark.css'
+// Imported for the side effect: applies the agent's stored light/dark choice
+// to <html> synchronously, BEFORE React mounts. Doing it in an effect would
+// flash the full light UI on every reload.
+import './shared/theme/darkMode'
 import App from './App.tsx'
 // Importing the runtime applies the cached theme synchronously, before React
 // mounts, so no screen flashes the wrong palette. The fetch below then asks the

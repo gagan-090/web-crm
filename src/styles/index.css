@@ -82,6 +82,51 @@
   background: #c0c0c0;
 }
 
+/* ── Wide data tables — a horizontal scrollbar you can actually see ────────
+   `custom-scrollbar` draws a 4px, #e0e0e0 thumb on a transparent track. That
+   is fine for a vertical bar you glance at, and useless as the ONLY control
+   for reaching columns that are off-screen: on a white table it is invisible,
+   and on macOS overlay scrollbars it is not painted at all until something
+   scrolls.
+
+   So tables that overflow sideways use this instead — a thicker bar, a visible
+   track so it reads as a control rather than a smudge, and `overflow-x: scroll`
+   rather than `auto` so the bar is present before the agent discovers the hard
+   way that there are more columns. `scrollbar-gutter: stable` reserves its
+   space, so rows do not shift when it appears.
+
+   The vertical axis stays on `auto`: a permanent vertical bar on a short list
+   is just noise.
+   ──────────────────────────────────────────────────────────────────────── */
+.table-x-scroll {
+  overflow-x: scroll;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  /* Firefox, which does not implement ::-webkit-scrollbar at all. */
+  scrollbar-width: auto;
+  scrollbar-color: #94a3b8 #f1f5f9;
+}
+.table-x-scroll::-webkit-scrollbar {
+  height: 12px;
+  width: 8px;
+}
+.table-x-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-top: 1px solid #e2e8f0;
+}
+.table-x-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 8px;
+  border: 2px solid #f1f5f9;
+}
+.table-x-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+/* The corner where the two bars meet, which otherwise renders as a white notch. */
+.table-x-scroll::-webkit-scrollbar-corner {
+  background: #f1f5f9;
+}
+
 /* Live operations heartbeat animation */
 @keyframes pulse {
   0%, 100% {

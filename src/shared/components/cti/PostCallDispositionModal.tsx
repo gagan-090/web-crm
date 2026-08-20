@@ -192,8 +192,15 @@ export default function PostCallDispositionModal({
   // The duration alone is NOT enough: a call answered and dropped inside one
   // second still reads 0s, and the agent was then free to file it as
   // "Not Connected → Ringing / No Answer" on a row the backend had already
-  // marked connected. Whenever this is true the whole not-connected branch is
-  // removed from the form, so that contradiction can no longer be entered.
+  // marked connected.
+  //
+  // It used to REMOVE the not-connected branch outright. It no longer does:
+  // SAN reports an Answer for calls picked up by an IVR, a wrong number, or a
+  // handset nobody spoke into, and the agent was then forced to file those as
+  // "Connected" — a worse lie than the one the removal prevented. Every
+  // outcome is now always offered, wherever a call was initiated. "Connected"
+  // is merely PRE-SELECTED when the system saw an answer, and the agent may
+  // override it.
   const wasConnected = callWasAnswered || callDuration > 0;
 
   // Reset form when modal opens. Pre-select "Connected" when we already know
@@ -245,7 +252,28 @@ export default function PostCallDispositionModal({
   const mmPendingCtx = isMatchmakingRole ? readPendingMmContext() : null;
   const isJobMatchingCall = !!mmPendingCtx?.jobId
     && String(mmPendingCtx.leadId ?? '') === String(currentLeadId ?? '');
-  const isMatchmaking = isMatchmakingRole && !isCampaignCall && isJobMatchingCall;
+
+  // THE DRIVER BANK IS A THIRD KIND OF MATCHMAKING CALL.
+  //
+  // It dials through triggerCall, which never writes mm_pending_call_context —
+  // only useMmCallFlow does, from the job screens. So `isJobMatchingCall` is
+  // false here and every bank call fell through to the DRIVER WELCOME form,
+  // asking "Agree for Subscription / Already Subscribed" about a candidate the
+  // agent just discussed a vacancy with. None of those options can be answered
+  // on that call.
+  //
+  // Deliberately NOT gated on isMatchmakingRole, unlike the job-matching path.
+  // The bank is open to every desk ("any role can add drivers"), the backend
+  // already stamps these calls `driver_bank_match_making` on the strength of
+  // where they were dialled from, and this file's own rule is that the form
+  // follows THE CALL, not the agent's desk. A DW agent working the bank is
+  // doing matchmaking and needs the matchmaking options.
+  //
+  // mmCtx stays null for these, which is correct: no job context means the
+  // driver (non-greenline) option set, which is exactly what a bank call needs.
+  const isDriverBankCall = currentLeadType === 'driver_bank';
+
+  const isMatchmaking = !isCampaignCall && (isDriverBankCall || (isMatchmakingRole && isJobMatchingCall));
 
   // On an onboarding call the script follows the LEAD's own role — a
   // transporter gets the transporter welcome flow, everything else the driver
@@ -462,13 +490,13 @@ export default function PostCallDispositionModal({
           <div style={labelStyle}>Step 1: Call Outcome</div>
           {wasConnected && (
             <div style={{ fontSize: 11, color: '#138808', fontWeight: 700, marginBottom: 8 }}>
-              ✓ Call connected — "Not Connected" is hidden.
+              ✓ The system saw this call answered — "Connected" is pre-selected. Change it if it was not.
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: wasConnected ? '1fr 1fr' : '1fr 1fr 1fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             {[
               { id: 'connected', label: 'Connected', sub: 'कॉल जुड़ गया', color: IS_TRICOLOR_THEME ? '#138808' : '#10B981' },
-              ...(wasConnected ? [] : [{ id: 'not_connected', label: 'Not Connected', sub: 'कॉल नहीं जुड़ा', color: IS_TRICOLOR_THEME ? '#E05615' : '#EF4444' }]),
+              { id: 'not_connected', label: 'Not Connected', sub: 'कॉल नहीं जुड़ा', color: IS_TRICOLOR_THEME ? '#E05615' : '#EF4444' },
               { id: 'callback_later', label: 'Callback Later', sub: 'बाद में कॉल करें', color: IS_TRICOLOR_THEME ? '#17376B' : '#3B82F6' }
             ].map(item => (
               <button

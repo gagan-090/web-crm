@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   useGetMmDriversQuery,
   useGetMmDriverFiltersQuery,
+  useLazySearchNotifiableJobsQuery,
+  useSendJobNotificationMutation,
   type MmDriver,
   type MmDriverSearchParams,
 } from '../../services/api/webCrmApi';
@@ -136,6 +138,196 @@ const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <label className="text-[9.5px] text-gray-400 font-bold uppercase tracking-wider block">{children}</label>
 );
 
+/**
+ * ── NOTIFY SELECTED DRIVERS ABOUT A JOB ───────────────────────────────────
+ *
+ * Pick the job, pick what you are claiming, send. The server writes to each
+ * driver in the language THEY chose in the app, so there is no language
+ * control here — offering one would let an agent send Hindi copy to an
+ * English-speaking driver.
+ *
+ * The job search is debounced and server-backed: it matches the full code, the
+ * last few digits (what gets read off a call sheet), the numeric id, or words
+ * from the title.
+ */
+const NotifyDriversModal: React.FC<{
+  driverIds: number[];
+  onClose: () => void;
+  onSent: (msg: string) => void;
+}> = ({ driverIds, onClose, onSent }) => {
+  const [q, setQ] = useState('');
+  const [job, setJob] = useState<any | null>(null);
+  const [messageType, setMessageType] = useState<'perfect_fit' | 'new_job'>('perfect_fit');
+  const [err, setErr] = useState('');
+  const [result, setResult] = useState<any | null>(null);
+
+  const [searchJobs, { data: jobData, isFetching }] = useLazySearchNotifiableJobsQuery();
+  const [send, { isLoading: sending }] = useSendJobNotificationMutation();
+
+  // Debounced so typing a job code is one request, not one per character.
+  useEffect(() => {
+    const t = setTimeout(() => { searchJobs(q); }, 300);
+    return () => clearTimeout(t);
+  }, [q, searchJobs]);
+
+  const jobs = jobData?.data || [];
+
+  const submit = async () => {
+    if (!job) { setErr('Pick a job first.'); return; }
+    setErr('');
+    try {
+      const res = await send({
+        job_id: job.job_id || job.id,
+        driver_ids: driverIds,
+        message_type: messageType,
+      }).unwrap();
+      setResult(res.data);
+      onSent(res.message || 'Notification sent.');
+    } catch (e: any) {
+      setErr(e?.data?.message || 'Could not send the notification.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="p-4 bg-[#8E44AD] text-white flex justify-between items-center shrink-0">
+          <div>
+            <p className="text-[10px] opacity-80 font-bold uppercase">Notify drivers</p>
+            <h3 className="font-extrabold text-sm">
+              {driverIds.length} driver{driverIds.length !== 1 ? 's' : ''} selected
+            </h3>
+          </div>
+          <button onClick={onClose} className="text-white/70 hover:text-white font-bold text-lg leading-none">✕</button>
+        </div>
+
+        {result ? (
+          /* The receipt. Four numbers rather than "sent!", because "150
+             selected" and "150 reached" are rarely the same figure and the
+             agent needs to know which. */
+          <div className="p-5 space-y-3 overflow-y-auto">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-4xl text-emerald-600">mark_email_read</span>
+              <p className="font-extrabold text-gray-800 mt-1">Notification sent</p>
+              <p className="text-[11px] text-gray-500">{job?.job_id} · {job?.job_title}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              {[
+                ['Pushed to phone', result.push_sent, 'text-emerald-700 bg-emerald-50 border-emerald-200'],
+                ['Saved in-app only', result.no_device, 'text-blue-700 bg-blue-50 border-blue-200'],
+                ['Already told (24h)', result.already_sent, 'text-amber-700 bg-amber-50 border-amber-200'],
+                ['Failed', result.failed, 'text-rose-700 bg-rose-50 border-rose-200'],
+              ].map(([label, val, cls]) => (
+                <div key={label as string} className={`border rounded-lg px-3 py-2 ${cls}`}>
+                  <div className="font-extrabold text-base">{val as number}</div>
+                  <div className="font-semibold opacity-80">{label as string}</div>
+                </div>
+              ))}
+            </div>
+            {result.by_language && (
+              <div className="text-[10.5px] text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <span className="font-bold text-gray-500 uppercase text-[9px]">Sent in </span>
+                {Object.entries(result.by_language).map(([l, n]) => (
+                  <span key={l} className="mr-2 font-semibold">{l.toUpperCase()}: {n as number}</span>
+                ))}
+              </div>
+            )}
+            <button onClick={onClose} className="w-full py-2 bg-[#8E44AD] text-white rounded-xl font-bold text-xs">Done</button>
+          </div>
+        ) : (
+          <>
+            <div className="p-4 space-y-3 overflow-y-auto">
+              <div className="space-y-1.5">
+                <Label>Find the job</Label>
+                <input
+                  autoFocus
+                  value={q}
+                  onChange={e => { setQ(e.target.value); setJob(null); }}
+                  placeholder="Job ID, last 5 digits, or job title…"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-[#8E44AD]"
+                />
+              </div>
+
+              <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 max-h-56 overflow-y-auto">
+                {isFetching && <div className="p-3 text-[11px] text-gray-400">Searching…</div>}
+                {!isFetching && jobs.length === 0 && (
+                  <div className="p-3 text-[11px] text-gray-400">No jobs match that.</div>
+                )}
+                {jobs.map((j: any) => {
+                  const closed = ['yes', '1', 'true'].includes(String(j.closed_job || '').toLowerCase());
+                  const on = job?.id === j.id;
+                  return (
+                    <button
+                      key={j.id}
+                      onClick={() => setJob(j)}
+                      className={`w-full text-left px-3 py-2 hover:bg-purple-50 ${on ? 'bg-purple-50' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono font-bold text-[11px] text-[#8E44AD]">{j.job_id}</span>
+                        {/* A closed job is still selectable — sometimes the
+                            agent genuinely wants to reach its applicants — but
+                            it is labelled, because notifying 150 people about a
+                            filled vacancy is the expensive mistake here. */}
+                        {closed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">CLOSED</span>}
+                      </div>
+                      <div className="text-[11px] text-gray-700 truncate">{j.job_title || '—'}</div>
+                      <div className="text-[9.5px] text-gray-400 flex flex-wrap gap-2">
+                        {j.transporter_name && <span>{j.transporter_name}</span>}
+                        {j.assigned_agent_name && <span>Agent: {j.assigned_agent_name}</span>}
+                        {j.salary && <span>{j.salary}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>What are you telling them?</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { v: 'perfect_fit', l: 'You are a perfect fit for this job' },
+                    { v: 'new_job', l: 'A new job is waiting for you' },
+                  ].map(o => (
+                    <button
+                      key={o.v}
+                      onClick={() => setMessageType(o.v as any)}
+                      className={`px-3 py-1 rounded-full border font-bold text-[10px] ${
+                        messageType === o.v
+                          ? 'bg-purple-100 border-[#8E44AD] text-[#7D3C98]'
+                          : 'bg-white border-gray-200 text-gray-500'
+                      }`}
+                    >
+                      {o.l}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[9.5px] text-gray-400">
+                  Each driver is written to in the language they chose in the app.
+                </p>
+              </div>
+
+              {err && <p className="text-[10.5px] text-red-600 bg-red-50 rounded px-2 py-1 font-semibold">{err}</p>}
+            </div>
+
+            <div className="p-4 border-t border-gray-100 shrink-0">
+              <button
+                onClick={submit}
+                disabled={sending || !job}
+                className="w-full py-2.5 bg-[#8E44AD] hover:bg-[#7D3C98] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-sm">send</span>
+                {sending
+                  ? 'Sending…'
+                  : `Send notification to ${driverIds.length} driver${driverIds.length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const selectCls =
   'w-full border border-gray-200 rounded p-1 px-1.5 outline-none font-semibold text-gray-700 bg-white text-[11px]';
 
@@ -151,6 +343,9 @@ export const MmDriverSearch: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [bankPrefill, setBankPrefill] = useState<any | null>(null);
   const [selectedDrivers, setSelectedDrivers] = useState<number[]>([]);
+  const [showNotify, setShowNotify] = useState(false);
+  // Local to the long truck-type chip list — see the note beside the input.
+  const [vehicleTypeQuery, setVehicleTypeQuery] = useState('');
   const [detailsDriver, setDetailsDriver] = useState<{ id: number; name: string; tmid: string } | null>(null);
 
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -400,13 +595,38 @@ export const MmDriverSearch: React.FC = () => {
             </div>
             <div className="space-y-1.5">
               <Label>Truck types driven</Label>
+              {/* A search box, because this list is long and lives in a 160px
+                  scroll box — finding "Tankers" meant scrolling a chip cloud
+                  and reading every label. Filtering is local: the options are
+                  already loaded, so this must not cost a request per keystroke.
+                  Selected chips are ALWAYS shown even when they do not match
+                  the search, or typing would appear to silently clear a filter
+                  that is still applied. */}
+              <input
+                value={vehicleTypeQuery}
+                onChange={e => setVehicleTypeQuery(e.target.value)}
+                placeholder="Search truck type…"
+                className="w-full border border-gray-200 rounded p-1 px-1.5 outline-none text-[10px] font-semibold text-gray-700 focus:border-[#8E44AD]"
+              />
               <div className="max-h-40 overflow-y-auto pr-1">
                 <ChipGroup
-                  options={(options?.vehicle_types || []).map(v => ({ value: String(v.id), label: v.name }))}
+                  options={(options?.vehicle_types || [])
+                    .filter(v =>
+                      vehicleTypeQuery.trim() === '' ||
+                      String(v.name).toLowerCase().includes(vehicleTypeQuery.trim().toLowerCase()) ||
+                      filters.vehicle_type.includes(String(v.id))
+                    )
+                    .map(v => ({ value: String(v.id), label: v.name }))}
                   selected={filters.vehicle_type}
                   onToggle={toggle('vehicle_type')}
                 />
               </div>
+              {vehicleTypeQuery.trim() !== '' &&
+                (options?.vehicle_types || []).filter(v =>
+                  String(v.name).toLowerCase().includes(vehicleTypeQuery.trim().toLowerCase())
+                ).length === 0 && (
+                  <p className="text-[9.5px] text-gray-400">No truck type matches “{vehicleTypeQuery}”.</p>
+                )}
             </div>
             <div className="space-y-1.5">
               <Label>Truck ownership</Label>
@@ -640,13 +860,25 @@ export const MmDriverSearch: React.FC = () => {
 
           <div className="flex items-center gap-2">
             {selectedDrivers.length > 0 && (
-              <button
-                onClick={handleAddBulk}
-                className="bg-[#8E44AD] hover:bg-[#7D3C98] text-white px-3.5 py-1.5 rounded-lg shadow-sm text-xs font-bold transition-all flex items-center gap-1"
-              >
-                <span className="material-symbols-outlined text-sm">group_add</span>
-                <span>Add selected ({selectedDrivers.length}) to shortlist</span>
-              </button>
+              <>
+                {/* Notify comes FIRST — it is the action an agent takes after
+                    filtering down to a cohort, and it reaches the driver
+                    directly. Shortlisting is the internal bookkeeping. */}
+                <button
+                  onClick={() => setShowNotify(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg shadow-sm text-xs font-bold transition-all flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">campaign</span>
+                  <span>Notify ({selectedDrivers.length}) about a job</span>
+                </button>
+                <button
+                  onClick={handleAddBulk}
+                  className="bg-[#8E44AD] hover:bg-[#7D3C98] text-white px-3.5 py-1.5 rounded-lg shadow-sm text-xs font-bold transition-all flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">group_add</span>
+                  <span>Add selected ({selectedDrivers.length}) to shortlist</span>
+                </button>
+              </>
             )}
             <select
               value={filters.sort}
@@ -853,6 +1085,14 @@ export const MmDriverSearch: React.FC = () => {
         <DriverForm
           prefill={bankPrefill}
           onClose={() => { setBankPrefill(null); triggerToast('Driver added to bank ✓'); }}
+        />
+      )}
+
+      {showNotify && (
+        <NotifyDriversModal
+          driverIds={selectedDrivers}
+          onClose={() => setShowNotify(false)}
+          onSent={triggerToast}
         />
       )}
     </main>

@@ -1,0 +1,212 @@
+/* ============================================================================
+   DARK MODE — GitHub-style, applied as a remap layer
+   ============================================================================
+
+   This UI has ~3,167 hardcoded light utilities across every screen and role.
+   Rather than edit thousands of class strings, the utilities themselves are
+   REDEFINED under `.dark`, so every screen — including ones written later —
+   goes dark with nothing to keep in sync.
+
+   PALETTE is GitHub's dark canvas, which is what "professional dark mode"
+   means in practice: a near-black blue-grey ground, one step lighter for
+   surfaces, hairline borders, and high-contrast near-white text.
+
+     canvas   #0d1117   surface  #161b22   raised  #21262d
+     border   #30363d   text     #e6edf3   muted   #b1bac4
+
+   TEXT IS NEAR-WHITE AND BOLD-CAPABLE THROUGHOUT. The first version kept the
+   original grey hierarchy, which left sidebar nav, headings and small labels
+   as dark grey on a dark ground — technically "muted", actually unreadable.
+   Every neutral text class now resolves to #e6edf3 or #b1bac4; nothing is
+   allowed to fall below that.
+
+   BRAND AND STATUS COLOURS ARE PRESERVED. Purple #8E44AD, and the emerald /
+   rose / amber semantics, carry meaning — a "connected" badge must read green
+   in both themes. Only neutral scaffolding and pastel WASHES move.
+   ========================================================================== */
+
+.dark {
+  --d-canvas:    #0d1117;
+  --d-surface:   #161b22;
+  --d-raised:    #21262d;
+  --d-inset:     #010409;
+  --d-border:    #30363d;
+  --d-border-2:  #3d444d;
+  --d-text:      #e6edf3;   /* primary — near-white  */
+  --d-text-2:    #c9d1d9;   /* secondary             */
+  --d-text-3:    #b1bac4;   /* the FAINTEST allowed  */
+  --d-accent:    #2f81f7;
+}
+
+/* ── Ground ──────────────────────────────────────────────────────────────── */
+.dark body,
+.dark .bg-background,
+.dark .bg-surface,
+.dark .bg-surface-container,
+.dark .bg-surface-container-low,
+.dark .bg-surface-container-lowest {
+  background-color: var(--d-canvas) !important;
+  color: var(--d-text) !important;
+}
+
+/* ── OPACITY-MODIFIED SURFACES ───────────────────────────────────────────────
+   `bg-white/95` (the login card), `bg-white/50`, `hover:bg-white` … each
+   compiles to a DIFFERENT class name, so a plain `.bg-white` selector never
+   matched them and they stayed brilliant white on a dark page. Attribute
+   matching catches the whole family in one rule. Declared BEFORE the specific
+   washes below so those still win. */
+.dark [class*="bg-white"]      { background-color: var(--d-surface) !important; }
+.dark [class*="bg-gray-50"],
+.dark [class*="bg-slate-50"]   { background-color: var(--d-canvas) !important; }
+
+/* Pale brand washes written as arbitrary hex — Tailwind cannot name these, so
+   they are listed explicitly. Only the LIGHT ones: the saturated brand hexes
+   (#8E44AD, #FB641B, #27AE60 …) are buttons and must keep their colour. */
+.dark [class*="bg-[#EAFAF1]"]  { background-color: rgb(63 185 80 / 0.10) !important; }
+.dark [class*="bg-[#F5F5F5]"],
+.dark [class*="bg-[#FAFAFA]"],
+.dark [class*="bg-[#F8FAFC]"],
+.dark [class*="bg-[#FFFFFF]"],
+.dark [class*="bg-[#FFF]"]     { background-color: var(--d-surface) !important; }
+
+/* ── Surfaces ────────────────────────────────────────────────────────────── */
+.dark .bg-white        { background-color: var(--d-surface) !important; }
+.dark .bg-gray-50,
+.dark .bg-slate-50     { background-color: var(--d-canvas) !important; }
+.dark .bg-gray-100,
+.dark .bg-gray-150,
+.dark .bg-slate-100,
+.dark .bg-surface-container-high,
+.dark .bg-surface-variant { background-color: var(--d-raised) !important; }
+.dark .bg-gray-200,
+.dark .bg-slate-200    { background-color: var(--d-border) !important; }
+.dark .bg-gray-800,
+.dark .bg-gray-900,
+.dark .bg-slate-800,
+.dark .bg-slate-900,
+.dark .bg-black        { background-color: var(--d-inset) !important; }
+
+/* ── PASTEL WASHES ───────────────────────────────────────────────────────────
+   ~700 tinted cards (bg-red-50, bg-emerald-50, bg-purple-50 …) stayed bright
+   white-ish and kept their dark text, so half the dashboard was a light panel
+   with invisible numbers. Each becomes a dark surface with a coloured tint at
+   low alpha — the colour still separates the card, the text stays readable. */
+.dark [class*="bg-red-50"],    .dark [class*="bg-rose-50"]     { background-color: rgb(248 81 73 / 0.10) !important; }
+.dark [class*="bg-amber-50"],  .dark [class*="bg-yellow-50"]   { background-color: rgb(210 153 34 / 0.12) !important; }
+.dark [class*="bg-orange-50"]                                   { background-color: rgb(219 109 40 / 0.12) !important; }
+.dark [class*="bg-green-50"],  .dark [class*="bg-emerald-50"],
+.dark [class*="bg-teal-50"],   .dark [class*="bg-lime-50"]      { background-color: rgb(63 185 80 / 0.10) !important; }
+.dark [class*="bg-blue-50"],   .dark [class*="bg-sky-50"],
+.dark [class*="bg-cyan-50"],   .dark [class*="bg-indigo-50"]    { background-color: rgb(47 129 247 / 0.12) !important; }
+.dark [class*="bg-purple-50"], .dark [class*="bg-violet-50"],
+.dark [class*="bg-fuchsia-50"], .dark [class*="bg-pink-50"]     { background-color: rgb(163 113 247 / 0.12) !important; }
+
+.dark [class*="bg-red-100"],    .dark [class*="bg-rose-100"]    { background-color: rgb(248 81 73 / 0.16) !important; }
+.dark [class*="bg-amber-100"],  .dark [class*="bg-yellow-100"]  { background-color: rgb(210 153 34 / 0.18) !important; }
+.dark [class*="bg-orange-100"]                                  { background-color: rgb(219 109 40 / 0.18) !important; }
+.dark [class*="bg-green-100"],  .dark [class*="bg-emerald-100"],
+.dark [class*="bg-teal-100"],   .dark [class*="bg-lime-100"]    { background-color: rgb(63 185 80 / 0.16) !important; }
+.dark [class*="bg-blue-100"],   .dark [class*="bg-sky-100"],
+.dark [class*="bg-cyan-100"],   .dark [class*="bg-indigo-100"]  { background-color: rgb(47 129 247 / 0.18) !important; }
+.dark [class*="bg-purple-100"], .dark [class*="bg-violet-100"],
+.dark [class*="bg-fuchsia-100"], .dark [class*="bg-pink-100"]   { background-color: rgb(163 113 247 / 0.18) !important; }
+
+/* Status TEXT on those tints must brighten to stay legible — the 600/700/800
+   shades are chosen for white cards and go muddy on a dark tint. */
+.dark .text-red-600, .dark .text-red-700, .dark .text-red-800, .dark .text-rose-600, .dark .text-rose-700     { color: #ff7b72 !important; }
+.dark .text-green-600, .dark .text-green-700, .dark .text-green-800,
+.dark .text-emerald-600, .dark .text-emerald-700, .dark .text-emerald-800                                      { color: #3fb950 !important; }
+.dark .text-amber-600, .dark .text-amber-700, .dark .text-amber-800,
+.dark .text-yellow-600, .dark .text-yellow-700, .dark .text-orange-600, .dark .text-orange-700                 { color: #d29922 !important; }
+.dark .text-blue-600, .dark .text-blue-700, .dark .text-blue-800,
+.dark .text-indigo-600, .dark .text-indigo-700, .dark .text-sky-600                                            { color: #58a6ff !important; }
+.dark .text-purple-600, .dark .text-purple-700, .dark .text-purple-800,
+.dark .text-violet-600, .dark .text-violet-700                                                                 { color: #a371f7 !important; }
+
+/* ── TEXT — everything neutral becomes near-white ────────────────────────────
+   The whole grey/slate ramp collapses to two values. Anything dimmer than
+   --d-text-3 is unreadable at the 9–11px this UI runs at, so nothing is. */
+.dark .text-black,
+.dark .text-gray-900, .dark .text-gray-850, .dark .text-gray-800, .dark .text-gray-700,
+.dark .text-slate-900, .dark .text-slate-800, .dark .text-slate-700,
+.dark .text-on-surface, .dark .text-on-background {
+  color: var(--d-text) !important;
+}
+.dark .text-gray-600, .dark .text-gray-500,
+.dark .text-slate-600, .dark .text-slate-500,
+.dark .text-on-surface-variant {
+  color: var(--d-text-2) !important;
+}
+.dark .text-gray-450, .dark .text-gray-400, .dark .text-gray-300, .dark .text-gray-200,
+.dark .text-slate-400, .dark .text-slate-300, .dark .text-slate-200 {
+  color: var(--d-text-3) !important;
+}
+
+/* Headings are never muted, whatever class they carry. */
+.dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 { color: var(--d-text) !important; }
+
+/* `text-white` already reads correctly on coloured buttons — but where it sat
+   on a surface this layer just darkened, it needs to stay light, not inherit. */
+.dark .text-white { color: #ffffff !important; }
+
+/* ── Borders & dividers ──────────────────────────────────────────────────── */
+.dark .border-gray-50, .dark .border-gray-100, .dark .border-gray-150,
+.dark .border-slate-100, .dark .border-outline-variant { border-color: var(--d-border) !important; }
+.dark .border-gray-200, .dark .border-gray-250, .dark .border-gray-300,
+.dark .border-slate-200, .dark .border-slate-300, .dark .border-white { border-color: var(--d-border-2) !important; }
+.dark .divide-gray-50  > :not([hidden]) ~ :not([hidden]),
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: var(--d-border) !important; }
+
+/* ── Form controls ───────────────────────────────────────────────────────── */
+.dark input, .dark textarea, .dark select {
+  background-color: var(--d-canvas) !important;
+  color: var(--d-text) !important;
+  border-color: var(--d-border-2) !important;
+}
+.dark input::placeholder, .dark textarea::placeholder { color: #6e7681 !important; }
+.dark input:focus, .dark textarea:focus, .dark select:focus { border-color: var(--d-accent) !important; }
+.dark option { background-color: var(--d-surface); color: var(--d-text); }
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+.dark thead.bg-gray-100, .dark thead .bg-gray-100,
+.dark thead.bg-gray-50,  .dark thead .bg-gray-50 { background-color: var(--d-raised) !important; }
+.dark .bg-gray-50\/50, .dark .bg-white\/50 { background-color: rgb(255 255 255 / 0.03) !important; }
+.dark .hover\:bg-gray-50:hover, .dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-slate-50:hover { background-color: rgb(255 255 255 / 0.06) !important; }
+
+/* ── Depth ───────────────────────────────────────────────────────────────── */
+/* GitHub uses hairline borders rather than shadows for elevation; shadows
+   authored for white surfaces are invisible here and panels lose their edges. */
+.dark .shadow-sm, .dark .shadow, .dark .shadow-md, .dark .shadow-lg,
+.dark .shadow-xl, .dark .shadow-2xl, .dark .shadow-xs, .dark .shadow-2xs,
+.dark .shadow-tile {
+  box-shadow: 0 0 0 1px var(--d-border) !important;
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────────── */
+.dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #30363d; }
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #484f58; }
+.dark .table-x-scroll { scrollbar-color: #484f58 var(--d-surface); }
+.dark .table-x-scroll::-webkit-scrollbar-track { background: var(--d-surface); border-top-color: var(--d-border); }
+.dark .table-x-scroll::-webkit-scrollbar-thumb { background: #484f58; border-color: var(--d-surface); }
+.dark .table-x-scroll::-webkit-scrollbar-corner { background: var(--d-surface); }
+
+/* ── Gradients ───────────────────────────────────────────────────────────────
+   Tricolor washes and hero gradients are built from white/amber stops that
+   glare on a dark ground. Neutralised to the canvas rather than removed, so
+   layout and spacing are untouched. */
+.dark .bg-gradient-to-r.from-amber-500\/15,
+.dark .bg-gradient-to-r.via-white,
+.dark [class*="via-white"] { background-image: none !important; background-color: var(--d-surface) !important; }
+
+/* ── Images ──────────────────────────────────────────────────────────────── */
+.dark img:not([src*=".jpg"]):not([src*=".jpeg"]) { filter: brightness(0.9); }
+
+/* ── Queue resize handle ─────────────────────────────────────────────────────
+   The divider is bg-gray-200, which the surfaces block above turns into a
+   border grey — nearly invisible against the pane it separates. Given its own
+   value so it still reads as a grabbable edge on dark. */
+.dark [role="separator"][aria-orientation="vertical"] { background-color: var(--d-border-2) !important; }
+.dark [role="separator"][aria-orientation="vertical"]:hover,
+.dark [role="separator"][aria-orientation="vertical"]:focus { background-color: #8E44AD !important; }

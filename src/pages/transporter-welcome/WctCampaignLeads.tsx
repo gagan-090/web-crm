@@ -55,7 +55,7 @@ export const WctCampaignLeads: React.FC = () => {
   const { dial, agentState, callState } = useSanCti();
 
   const [selectedId, setSelectedId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'all' | 'uncalled' | 'hot' | 'warm' | 'cold' | 'callbacks' | 'converted'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'uncalled' | 'connected' | 'not_connected' | 'callbacks'>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'temperature' | 'newest' | 'oldest' | 'callbacks'>('temperature');
@@ -99,8 +99,9 @@ export const WctCampaignLeads: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  // Refresh after a call's disposition completes — the called lead drops out
-  // (excluded server-side, present in call_history_ivr), same as the queue.
+  // Refresh after a call's disposition completes — the lead is NOT removed,
+  // it moves out of Uncalled into Connected / Not Connected / Callbacks, and
+  // its new call joins the timeline. The tab counts move with it.
   useEffect(() => {
     const onDone = () => { refetch(); };
     window.addEventListener('san-disposition-complete', onDone);
@@ -231,9 +232,16 @@ export const WctCampaignLeads: React.FC = () => {
                     <span className="text-sm font-bold text-gray-900 truncate">{l.name}</span>
                     <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide shrink-0" style={getSourceChipStyle(l.source)}>{l.source}</span>
                   </div>
-                  <div className="text-[12px] text-gray-500 mt-1 flex justify-between">
-                    <span className="font-mono text-gray-400">**********</span>
-                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1 rounded font-mono">{l.tmid}</span>
+                  <div className="text-[12px] text-gray-500 mt-1 flex justify-between gap-2">
+                    <span className="truncate">{[l.city, l.state].filter(Boolean).join(', ')}</span>
+                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1 rounded font-mono shrink-0">{l.tmid}</span>
+                  </div>
+
+                  {/* Campaign leads are the one screen that shows the raw mobile —
+                      agents work these off the ad form and need the number itself. */}
+                  <div className="text-[12px] text-gray-700 font-mono mt-0.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[13px] text-gray-400">call</span>
+                    {l.phone || '—'}
                   </div>
                   <div className="text-[11px] text-gray-400 mt-2 flex justify-between items-center">
                     <span>Captured: {l.capturedTime}</span>
@@ -284,7 +292,8 @@ export const WctCampaignLeads: React.FC = () => {
                 <p className="text-sm text-gray-500 mt-1">
                   Contact: {selectedLead.name}
                   {(selectedLead.city || selectedLead.state) ? ` | ${[selectedLead.city, selectedLead.state].filter(Boolean).join(', ')}` : ''}
-                  {' | **********'}
+                  {selectedLead.phone ? ' | ' : ''}
+                  {selectedLead.phone ? <span className="font-mono text-gray-700">{selectedLead.phone}</span> : null}
                 </p>
               </div>
               <button onClick={() => handleCallNow(selectedLead)}

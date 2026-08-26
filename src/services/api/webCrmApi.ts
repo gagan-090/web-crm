@@ -610,6 +610,40 @@ export interface IdvDispositionOptions {
   };
 }
 
+/** One telecaller's row on the ID Verification team-progress leaderboard. */
+export interface IdvAgentStatRow {
+  agent_id: number;
+  agent_name: string;
+  subscribers: number;
+  trusted_drivers: number;
+  verified_drivers: number;
+  entitled_checks: number;
+  done_checks: number;
+  fully_verified: number;
+  pending_subscribers: number;
+  completion: number;       // done ÷ entitled across the whole book, %
+  calls_made: number;
+  connected_calls: number;
+  contacted: number;
+}
+
+export interface IdvAgentStatsResponse {
+  status: boolean;
+  data: IdvAgentStatRow[];
+  totals: {
+    agents: number;
+    subscribers: number;
+    trusted_drivers: number;
+    verified_drivers: number;
+    entitled_checks: number;
+    done_checks: number;
+    fully_verified: number;
+    calls_made: number;
+    connected_calls: number;
+    completion: number;
+  };
+}
+
 export interface RevivalOffer {
   id: number;
   user_id: number;
@@ -783,8 +817,10 @@ export interface MmDashboardResponse {
       greenline_jobs_assigned?: number;
     };
     /** The caller's OWN assigned jobs, per board tab, per status filter. */
+    // Mutually exclusive: open + hold + closed + expired = all.
+    // `expiring_soon` is a warning subset of open, never part of the total.
     job_status_counts?: Record<'regular' | 'greenline', {
-      all: number; open: number; pending: number;
+      all: number; open: number; hold: number; pending: number;
       closed: number; expired: number; expiring_soon: number;
     }>;
   };
@@ -1010,10 +1046,16 @@ export interface PlacementRow {
   id: string;
   /** call_history_ivr.id when this came off a call; null for a Driver Bank row. */
   call_id: number | null;
-  source: 'call' | 'driver_bank';
+  /** Which table this row is from. `driver_job_status` is the mapping source —
+   *  it names the job and the driver on one row — and outranks the other two
+   *  where the same job × driver appears in more than one. */
+  source: 'driver_job_status' | 'call' | 'driver_bank';
   job_id: string | null;
   job_db_id: number | null;
   job_title: string | null;
+  /** users.id of the driver; null when the outcome was filed on the
+   *  TRANSPORTER's call and no source could say which driver it was about. */
+  driver_id: number | null;
   /** Null when the outcome was filed on the TRANSPORTER's call — no column on
    *  that row names the driver, so the report says so instead of guessing. */
   driver_tmid: string | null;
@@ -1032,8 +1074,12 @@ export interface PlacementRow {
   match_status: string | null;
   /** The driver also sits in driver_bank against this job. */
   in_driver_bank: boolean;
-  /** How many qualifying calls collapsed into this one row. */
+  /** How many qualifying records collapsed into this one row. */
   entries: number;
+  /** Distinct drivers placed on this job (driver_job_status), the job's own
+   *  total — NOT narrowed by the report's filters. Null where the job is
+   *  unknown or the deployment has no driver_job_status table. */
+  job_placed_total: number | null;
 }
 
 export interface PlacementReportResponse {
@@ -1264,6 +1310,28 @@ export interface MmPlacementsResponse {
 }
 
 // ── Extended MM Types ──────────────────────────────────────────────────────
+/** Mark or clear the signed-in agent's hot flag on one lead. */
+export interface HotLeadToggleArgs {
+  /** users.id where the lead has one; campaign leads are identified by tm_id. */
+  user_id?: number | string | null;
+  tm_id?: string | null;
+  mobile?: string | null;
+  name?: string | null;
+  hot: boolean;
+}
+
+export interface HotLeadToggleResponse {
+  status: boolean;
+  message: string;
+  data: { tmid: string | null; user_id: number | null; is_hot: boolean; rows: number };
+}
+
+/** Every lead the agent has flagged — the queue marks its own rows from this. */
+export interface HotLeadKeysResponse {
+  status: boolean;
+  data: { tmids: string[]; user_ids: number[] };
+}
+
 export interface MmJobListingsResponse {
   success: boolean;
   data: {
@@ -1281,6 +1349,9 @@ export interface MmJobListingsResponse {
       load_details: string | null;
       last_call_status: string | null;
       last_call_feedback: string | null;
+      /** Free text the agent typed on that call — shown under the outcome. */
+      last_call_remarks: string | null;
+      last_call_by: string | null;
       last_call_time: string | null;
       match_status: string | null;
       license_type: string;
@@ -1297,12 +1368,37 @@ export interface MmJobListingsResponse {
       applicants_count: number;
       created_at: string;
       closed_job: number;
+      /** The agent's Open/Hold/Closed word — null on a job nobody has set. */
+      job_status: JobStatus | null;
+      job_status_remarks: string | null;
+      job_status_by_name: string | null;
       is_greenline: boolean;
       subscription_plan_id: number | null;
       plan_type: string;
     }>;
     pagination: { next_cursor: number | null; has_more: boolean; limit: number };
   };
+}
+
+/** The three states an agent can put a job in. */
+export type JobStatus = 'open' | 'hold' | 'closed';
+
+export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
+  open: 'Open',
+  hold: 'Hold',
+  closed: 'Closed',
+};
+
+/** One entry in a job's Open/Hold/Closed trail (`job_status_changes`). */
+export interface JobStatusChange {
+  id: number;
+  status: JobStatus;
+  previous_status: JobStatus | null;
+  remarks: string | null;
+  changed_by_name: string | null;
+  changed_by_role: string | null;
+  changed_at: string;
+  changed_at_display: string | null;
 }
 
 export interface MmJobDetailResponse {
@@ -1330,14 +1426,28 @@ export interface MmJobDetailResponse {
     transporter_mobile: string | null;
     assigned_admin: { id: number; name: string; email: string } | null;
     counts: { applicants: number; call_logs: number; match_making: number };
+    /** RAW `jobs.closed_job` — a STRING ('yes' / 'no' / '1' / NULL), so never
+     *  test it for truthiness: 'no' is truthy. Use `is_closed`/`job_status`. */
     closed_job: number;
     status: string | null;
     created_at: string | null;
     is_greenline?: boolean;
+    /** Where the job stands, set by the agent. Legacy jobs with no explicit
+     *  status read as 'closed' or 'open' off the closed_job flag. */
+    job_status?: JobStatus;
+    is_closed?: boolean;
+    is_on_hold?: boolean;
+    /** Why it was put there — up to 500 characters, the agent's words. */
+    job_status_remarks?: string | null;
+    job_status_by_name?: string | null;
+    /** Already formatted for display (d M Y, g:i A). */
+    job_status_at?: string | null;
     /** Ownership — false `is_mine` puts the detail screen in read-only mode. */
     assigned_to_id?: number | null;
     assigned_to_name?: string | null;
     is_mine?: boolean;
+    subscription_plan_id?: number | null;
+    plan_type?: string;
   };
 }
 
@@ -1418,19 +1528,58 @@ export interface MmApplicant {
     transporter_name?: string | null;
   }>;
   match_making_status: { status: string; feedback: string; called_at: string } | null;
-  call_timeline?: Array<{
-    call_status: string | null;
-    match_status: string | null;
-    process: string | null;
-    feedback: string | null;
-    /** Canonical disposition code (interested_job, placement_done…). */
-    disposition_sub?: string | null;
-    remarks: string | null;
-    called_by: string | null;
-    called_at: string;
-    job_id?: string | null;
-    transporter_name?: string | null;
-  }>;
+  /**
+   * One driver, one matchmaking agent. Present whenever ANY agent holds this
+   * driver — including the signed-in one, so their own screen can say "yours"
+   * instead of going quiet. Null when the driver is free.
+   */
+  call_lock?: MmDriverLock | null;
+  /**
+   * The only thing a Call button should read: it already accounts for
+   * ownership, the agent's desk and the roles that may override a lock.
+   */
+  can_call?: boolean;
+  call_timeline?: Array<MmApplicantTimelineEntry>;
+}
+
+/** A driver held by the agent who took them to interview / placement. */
+export interface MmDriverLock {
+  owner_id: number;
+  owner_name: string;
+  job_id: string | null;
+  outcome: string;
+  locked_at: string;
+  /** The signed-in agent is the one holding this driver. */
+  is_mine: boolean;
+  /** Ready to show — same wording the blocked dial returns. */
+  message: string;
+}
+
+/**
+ * One call on an APPLICANT CARD's timeline, from the CRM or the mobile app.
+ *
+ * Not to be confused with `MmCallTimelineEntry` below, which is the driver /
+ * transporter detail modals' richer row (recording, direction, duration). This
+ * one is what MmCallerController::applicantCallTimelines returns.
+ */
+export interface MmApplicantTimelineEntry {
+  /** call_history_ivr.id — null for app-side rows, which cannot be edited. */
+  call_id: number | null;
+  source: 'crm' | 'app';
+  called_by_id: number | null;
+  call_status: string | null;
+  match_status: string | null;
+  process: string | null;
+  feedback: string | null;
+  /** Canonical disposition code (interested_job, placement_done…). */
+  disposition_sub?: string | null;
+  remarks: string | null;
+  called_by: string | null;
+  called_at: string;
+  job_id?: string | null;
+  transporter_name?: string | null;
+  /** The signed-in agent logged this call, so they may correct its remark. */
+  can_edit_remarks?: boolean;
 }
 
 export interface MmDriverProfileResponse {
@@ -1541,6 +1690,9 @@ export interface MmGreenlineApplicant {
   pipeline_stage: string;
   documents_available: { profile_image: boolean; dl: boolean; pan: boolean };
   call: { called: boolean; connected: boolean; status: string | null; feedback: string | null; match_status: string | null; at: string | null };
+  /** Held by the agent who took this driver to interview / placement. */
+  call_lock?: MmDriverLock | null;
+  can_call?: boolean;
   screening: { done: boolean; score?: number | string; status?: string; decision?: string; at?: string };
   interview: {
     online_status: string | null; online_timing: string | null;
@@ -2286,6 +2438,29 @@ export const webCrmApi = baseApi.injectEndpoints({
         params: params || undefined,
       }),
     }),
+
+    /*
+     * Hot Leads — the agent's own shortlist, flagged from any queue tab.
+     * `call_history_ivr.hot_lead` is written on the MARKING agent's rows, so
+     * one desk's shortlist never reorders another's. The Matchmaking desk uses
+     * these same endpoints: its My Queue is DwCallQueue with a lead_role.
+     */
+    getDwQueueHot: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/dw/queue/hot',
+        params: params || undefined,
+      }),
+      providesTags: ['HotLeads'],
+    }),
+    /** Which leads are flagged, so the button knows its state on every tab. */
+    getDwHotLeadKeys: builder.query<HotLeadKeysResponse, void>({
+      query: () => ({ url: '/web-crm/dw/queue/hot-keys' }),
+      providesTags: ['HotLeads'],
+    }),
+    toggleDwHotLead: builder.mutation<HotLeadToggleResponse, HotLeadToggleArgs>({
+      query: (body) => ({ url: '/web-crm/dw/queue/hot', method: 'POST', body }),
+      invalidatesTags: ['HotLeads'],
+    }),
     getDwNextLead: builder.query<DwNextLeadResponse, void>({
       query: () => '/web-crm/dw/queue/next',
     }),
@@ -2420,6 +2595,23 @@ export const webCrmApi = baseApi.injectEndpoints({
         params: params || undefined,
       }),
     }),
+
+    // Hot Leads, transporter side — same contract as the DW endpoints above.
+    getWctQueueHot: builder.query<any, DwQueueParams | void>({
+      query: (params) => ({
+        url: '/web-crm/wct/queue/hot',
+        params: params || undefined,
+      }),
+      providesTags: ['HotLeads'],
+    }),
+    getWctHotLeadKeys: builder.query<HotLeadKeysResponse, void>({
+      query: () => ({ url: '/web-crm/wct/queue/hot-keys' }),
+      providesTags: ['HotLeads'],
+    }),
+    toggleWctHotLead: builder.mutation<HotLeadToggleResponse, HotLeadToggleArgs>({
+      query: (body) => ({ url: '/web-crm/wct/queue/hot', method: 'POST', body }),
+      invalidatesTags: ['HotLeads'],
+    }),
     getWctNextLead: builder.query<DwNextLeadResponse, void>({
       query: () => '/web-crm/wct/queue/next',
     }),
@@ -2484,8 +2676,10 @@ export const webCrmApi = baseApi.injectEndpoints({
       query: () => '/web-crm/wct/break-status',
     }),
     // ── Interview Done / Placed Drivers report ───────────────────────────
-    // Reads PlacementReportController: call_history_ivr is the source of truth
-    // (a placement is a dispositioned call), with driver_bank merged in.
+    // Reads PlacementReportController: driver_job_status maps job × driver
+    // (one row per DISTINCT driver on a job), call_history_ivr carries the
+    // outcome text an agent dispositioned, driver_bank the placements only it
+    // recorded. All three are folded on job × driver by the backend.
     getPlacementReport: builder.query<PlacementReportResponse, {
       tab?: 'interview_done' | 'placed';
       job_manager?: number | string;
@@ -2623,7 +2817,7 @@ export const webCrmApi = baseApi.injectEndpoints({
       query: () => '/web-crm/mm/placements',
     }),
     getMmJobListings: builder.query<MmJobListingsResponse, {
-      type?: string; section?: string; status?: string; search?: string;
+      type?: string; section?: string; status?: '' | 'open' | 'hold' | 'closed' | 'expired' | 'expiring_soon' | string; search?: string;
       license_type?: string; vehicle_type?: string; plan_type?: string;
       // scope='mine' restricts the listing to jobs assigned to the signed-in
       // caller. The endpoint is system-wide by default and annotates each row
@@ -2710,6 +2904,52 @@ export const webCrmApi = baseApi.injectEndpoints({
     >({
       query: (body) => ({ url: '/web-crm/match-making/job-brief', method: 'POST', body }),
       invalidatesTags: ['MmJobs', 'MmTransporter'],
+    }),
+
+    // Open / Hold / Closed + the reason. Closing here really closes the job:
+    // the backend writes jobs.closed_job='yes' alongside jobs.job_status, so
+    // the boards and exports that read the flag agree with this screen.
+    updateMmJobStatus: builder.mutation<
+      {
+        success: boolean;
+        message: string;
+        data: {
+          job_id: string;
+          job_status: JobStatus;
+          previous_status: JobStatus | null;
+          closed_job: string;
+          job_status_remarks: string | null;
+          job_status_by_name: string | null;
+          job_status_at: string;
+        };
+      },
+      { job_id: string; status: JobStatus; remarks?: string }
+    >({
+      query: (body) => ({ url: '/web-crm/match-making/job-status', method: 'POST', body }),
+      invalidatesTags: ['MmJobs'],
+    }),
+
+    // Correct the remark on a call already logged. Own calls only — the
+    // backend refuses another agent's row (leads/heads excepted).
+    updateMmCallRemarks: builder.mutation<
+      { success: boolean; message: string; data: { call_id: number; remarks: string | null } },
+      { call_id: number; remarks: string }
+    >({
+      query: (body) => ({ url: '/web-crm/match-making/call-remarks', method: 'POST', body }),
+      invalidatesTags: ['MmApplicants'],
+    }),
+
+    getMmDriverLock: builder.query<
+      { success: boolean; data: { driver_id: number; can_call: boolean; lock: MmDriverLock | null } },
+      number
+    >({
+      query: (driverId) => `/web-crm/match-making/driver/${driverId}/lock`,
+      providesTags: ['MmApplicants'],
+    }),
+
+    getMmJobStatusHistory: builder.query<{ success: boolean; data: JobStatusChange[] }, string>({
+      query: (jobId) => `/web-crm/match-making/job/${jobId}/status-history`,
+      providesTags: ['MmJobs'],
     }),
 
     // Logs the second leg of a conference (con call) as its own
@@ -2875,6 +3115,7 @@ export const webCrmApi = baseApi.injectEndpoints({
     // React key — the driver id repeats.
     getDriverBank: builder.query<any, {
       search?: string; job_id?: string; availability?: string;
+      vehicle_type?: string; location?: string; experience?: string;
       assigned_agent?: number; never_called_since_banked?: boolean;
       per_page?: number; cursor?: number | null;
     }>({
@@ -3141,6 +3382,10 @@ export const webCrmApi = baseApi.injectEndpoints({
     getIdvDispositionOptions: builder.query<IdvDispositionOptions, void>({
       query: () => '/web-crm/id-verification/disposition-options',
     }),
+    getIdvAgentStats: builder.query<IdvAgentStatsResponse, { search?: string } | void>({
+      query: (params) => ({ url: '/web-crm/id-verification/agent-stats', params: params || {} }),
+      providesTags: ['IdVerification'],
+    }),
     submitIdvFeedback: builder.mutation<{ status: boolean; message?: string; data?: { call_id: number } }, {
       user_id: number; call_status: string; call_feedback: string; call_remarks?: string;
       disposition_sub?: string; call_duration?: number; callback_at?: string;
@@ -3242,6 +3487,9 @@ export const {
   useLazyGetDwQueueCallbacksQuery,
   useLazyGetDwQueueCalledQuery,
   useLazyGetDwQueueAgreeSubscriptionQuery,
+  useLazyGetDwQueueHotQuery,
+  useGetDwHotLeadKeysQuery,
+  useToggleDwHotLeadMutation,
   useLazyGetDwQueueCountsQuery,
   useSkipDwLeadMutation,
   useGetDwLeadDetailQuery,
@@ -3272,6 +3520,9 @@ export const {
   useLazyGetWctQueueCallbacksQuery,
   useLazyGetWctQueueCalledQuery,
   useLazyGetWctQueueAgreeSubscriptionQuery,
+  useLazyGetWctQueueHotQuery,
+  useGetWctHotLeadKeysQuery,
+  useToggleWctHotLeadMutation,
   useLazyGetWctQueueCountsQuery,
   useSkipWctLeadMutation,
   useGetWctLeadDetailQuery,
@@ -3312,6 +3563,10 @@ export const {
   useGetMmAgentStatsQuery,
   useGetMmCallHistoryQuery,
   useSubmitMmJobBriefMutation,
+  useUpdateMmJobStatusMutation,
+  useGetMmJobStatusHistoryQuery,
+  useUpdateMmCallRemarksMutation,
+  useGetMmDriverLockQuery,
   useLogMmConferenceCallMutation,
   useSendMmConnectionRequestMutation,
   useBulkSendMmConnectionRequestMutation,
@@ -3371,6 +3626,7 @@ export const {
   useGetIdvQueueQuery,
   useGetIdvDossierQuery,
   useGetIdvDispositionOptionsQuery,
+  useGetIdvAgentStatsQuery,
   useSubmitIdvFeedbackMutation,
   useGetRevivalOffersQuery,
   useGenerateCouponMutation,

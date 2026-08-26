@@ -3,6 +3,7 @@ import { useAuth } from '../../../app/providers/AuthProvider';
 import { API_BASE_URL } from '../../../shared/constants/config';
 import { SanCtiContext } from './SanCtiContext';
 import type { SanCtiContextType, ConferenceMember, DispositionData } from './SanCtiContext';
+import { readPendingMmContext } from './mmCallContext';
 
 // Context, hook (useSanCti), and shared types live in ./SanCtiContext —
 // kept out of this file so it exports only a component and stays
@@ -719,11 +720,19 @@ export default function SanCtiProvider({
         }
       } catch (_) { /* fall through with null — backend resolves by phone */ }
     }
+    // Which job this dial is about, when it is a matchmaking one. The MM
+    // screens write that context immediately before dialling, and the backend
+    // needs it for the driver lock: a driver another agent is placing is
+    // closed to everyone, and a driver YOU are placing is closed on every job
+    // but the one you are placing him on.
+    const mmJobId = readPendingMmContext()?.jobId || undefined;
+
     const result = await apiCall('POST', '/call/initiate', {
       user_id: resolvedUserId,
       phone_number: phoneNumber,
       san_session_id: `SAN_${Date.now()}_${agentId}`,
       lead_type: leadType,
+      job_id: mmJobId,
     });
 
     if (result?.data?.call_id) {

@@ -4,7 +4,11 @@ import {
   useGetMmJobDetailQuery,
   useGetMmJobTransporterDetailQuery,
   useGetMmApplicantsFullQuery,
+  useUpdateMmCallRemarksMutation,
+  JOB_STATUS_LABEL,
   type MmApplicant,
+  type MmApplicantTimelineEntry,
+  type JobStatus,
 } from '../../services/api/webCrmApi';
 import { useMmCallFlow } from './useMmCallFlow';
 import GreenlineScreeningModal from './GreenlineScreeningModal';
@@ -17,6 +21,7 @@ import MmConferenceDispositionModal from './MmConferenceDispositionModal';
 import MmAddToCallModal from './MmAddToCallModal';
 import MmConnectionRequestModal from './MmConnectionRequestModal';
 import MmBulkConnectionModal from './MmBulkConnectionModal';
+import MmJobStatusModal from './MmJobStatusModal';
 import { openJobSession } from './mmJobSession';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import {
@@ -106,6 +111,8 @@ interface ApplicantCardProps {
   readOnly?: boolean;
   ownerName?: string | null;
   onCall: (driver: MmApplicant) => void;
+  /** Feedback for an edited remark — the page owns the toast. */
+  onToast: (msg: string) => void;
   onAddToCall: (driver: MmApplicant) => void;
   onScreen: (driver: MmApplicant, mode: 'conduct' | 'view') => void;
   onViewDetails: (driver: MmApplicant) => void;
@@ -114,7 +121,106 @@ interface ApplicantCardProps {
   canConnect: boolean;
 }
 
-const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canConference, readOnly, ownerName, onCall, onAddToCall, onScreen, onViewDetails, onConnect, canConnect }) => {
+/**
+ * The remark on one call in the timeline — the part that says what was actually
+ * agreed, as opposed to the disposition, which only says what kind of thing
+ * happened. Shown in full (it used to be truncated to one line, which made a
+ * remark worth writing worth nothing) and editable in place by the agent who
+ * wrote it: `can_edit_remarks` is decided by the backend, which refuses anyone
+ * else's row regardless of what the UI offers.
+ *
+ * The disposition itself is deliberately not editable — it drives the placement
+ * report, the incentive and the driver lock, so it moves only through the
+ * disposition flow that writes all of them at once.
+ */
+const TimelineRemark: React.FC<{
+  entry: MmApplicantTimelineEntry;
+  onSaved: (msg: string) => void;
+}> = ({ entry, onSaved }) => {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(entry.remarks || '');
+  const [error, setError] = useState<string | null>(null);
+  const [save, { isLoading }] = useUpdateMmCallRemarksMutation();
+
+  // A refetch brings new props; don't clobber what the agent is typing.
+  useEffect(() => {
+    if (!editing) setText(entry.remarks || '');
+  }, [entry.remarks, editing]);
+
+  const canEdit = !!entry.can_edit_remarks && !!entry.call_id;
+
+  const commit = async () => {
+    setError(null);
+    try {
+      await save({ call_id: entry.call_id as number, remarks: text.trim() }).unwrap();
+      setEditing(false);
+      onSaved('Remark updated ✓');
+    } catch (e: any) {
+      setError(e?.data?.message || 'Could not save the remark.');
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="mt-1" onClick={e => e.stopPropagation()}>
+        <textarea
+          autoFocus
+          rows={3}
+          value={text}
+          maxLength={1000}
+          onChange={e => setText(e.target.value)}
+          placeholder="What was agreed on this call?"
+          className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-[10px] outline-none focus:ring-1 focus:ring-[#8E44AD] resize-none"
+        />
+        <div className="flex items-center gap-2 mt-1">
+          <button
+            onClick={commit}
+            disabled={isLoading}
+            className="px-2 py-1 rounded-lg bg-[#8E44AD] text-white font-bold text-[9px] disabled:opacity-50"
+          >
+            {isLoading ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            onClick={() => { setEditing(false); setText(entry.remarks || ''); setError(null); }}
+            className="px-2 py-1 rounded-lg border border-gray-200 text-gray-600 font-bold text-[9px]"
+          >
+            Cancel
+          </button>
+          <span className="text-[9px] text-gray-400 ml-auto font-mono">{text.length}/1000</span>
+        </div>
+        {error && <p className="text-[9px] font-bold text-rose-600 mt-1">{error}</p>}
+      </div>
+    );
+  }
+
+  if (!entry.remarks) {
+    return canEdit ? (
+      <button
+        onClick={e => { e.stopPropagation(); setEditing(true); }}
+        className="mt-0.5 text-[9px] font-bold text-gray-400 hover:text-[#8E44AD] flex items-center gap-0.5"
+      >
+        <span className="material-symbols-outlined text-[11px]">add</span>Add remark
+      </button>
+    ) : null;
+  }
+
+  return (
+    <p className="text-gray-500 mt-0.5 whitespace-pre-wrap break-words leading-snug">
+      {entry.remarks}
+      {canEdit && (
+        <button
+          onClick={e => { e.stopPropagation(); setEditing(true); }}
+          title="Edit your remark"
+          className="ml-1 align-middle text-gray-300 hover:text-[#8E44AD]"
+        >
+          <span className="material-symbols-outlined text-[11px]">edit</span>
+        </button>
+      )}
+    </p>
+  );
+};
+
+const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canConference, readOnly, ownerName, onCall, onAddToCall, onScreen, onViewDetails, onConnect, canConnect, onToast }) => {
   const [expanded, setExpanded] = useState(false);
   const timeline = driver.call_timeline ?? [];
 
@@ -139,6 +245,26 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
             <span className="font-bold text-gray-850 text-xs truncate" title={driver.name}>{driver.name}</span>
             {driver.is_matched && (
               <span className="shrink-0 text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded">MATCHED</span>
+            )}
+            {/* Held by an agent — including you, so your own screen says so
+                rather than looking like every other row. */}
+            {driver.call_lock && (
+              <span
+                className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
+                  driver.call_lock.is_mine
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : 'bg-amber-100 text-amber-700'
+                }`}
+                title={driver.call_lock.message}
+              >
+                <span className="material-symbols-outlined text-[10px]">lock</span>
+                {driver.call_lock.is_mine ? 'YOURS' : driver.call_lock.owner_name}
+                {/* WHICH job he is being placed on — the part that decides
+                    whether he is callable from the job you are looking at. */}
+                {driver.call_lock.job_id && (
+                  <span className="font-mono opacity-70">· {driver.call_lock.job_id}</span>
+                )}
+              </span>
             )}
           </div>
           {/* Separators live on the chips themselves so a wrapped line never
@@ -195,6 +321,25 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
               title={`This job belongs to ${ownerName || 'another agent'} — calling is disabled`}
             >
               <span className="material-symbols-outlined text-xs">phone_disabled</span>View only
+            </span>
+          ) : driver.can_call === false ? (
+            /* One driver, one matchmaking agent. Another agent took this driver
+               to interview / placement, so calling him about THIS job would
+               undo their work — the exact thing that kept happening. The button
+               is replaced rather than hidden so the agent can see who holds him
+               and ask; the backend refuses the dial either way. */
+            <span
+              className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg font-bold text-[10px] flex items-center gap-1 cursor-not-allowed max-w-[190px]"
+              title={driver.call_lock?.message || 'Another agent has this driver.'}
+            >
+              <span className="material-symbols-outlined text-xs">lock</span>
+              {/* Your own driver, held for a DIFFERENT job: the useful thing to
+                  show is that job, not your own name. */}
+              <span className="truncate">
+                {driver.call_lock?.is_mine
+                  ? (driver.call_lock.job_id || 'On another job')
+                  : (driver.call_lock?.owner_name || 'Locked')}
+              </span>
             </span>
           ) : canConference ? (
             <button
@@ -325,9 +470,7 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
                       {entry.feedback && (
                         <p className="text-gray-700 font-semibold mt-0.5 truncate" title={entry.feedback}>{entry.feedback}</p>
                       )}
-                      {entry.remarks && (
-                        <p className="text-gray-400 mt-0.5 truncate" title={entry.remarks}>{entry.remarks}</p>
-                      )}
+                      <TimelineRemark entry={entry} onSaved={onToast} />
                       <div className="flex items-center gap-2 mt-0.5 text-[9px] text-gray-400">
                         {entry.called_by && <span>by <strong className="text-gray-600">{entry.called_by}</strong></span>}
                         <span className="ml-auto">{entry.called_at}</span>
@@ -441,6 +584,7 @@ const MmJobDetail: React.FC = () => {
   const [connectDriver, setConnectDriver] = useState<DriverRef | null>(null);
   const [showBulkConnect, setShowBulkConnect] = useState(false);
   const [showAddToCall, setShowAddToCall] = useState(false);
+  const [showJobStatus, setShowJobStatus] = useState(false);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -499,6 +643,11 @@ const MmJobDetail: React.FC = () => {
   const tx = txData?.data?.transporter;
   const txCallLogs = txData?.data?.call_logs || [];
   const pagination = applicantsData?.pagination;
+
+  const planTypeRaw = (job?.plan_type || '').toLowerCase().trim();
+  const planId = Number(job?.subscription_plan_id);
+  const isSuperPremium = planTypeRaw.includes('super') || planTypeRaw === 'super_premium' || planId === 10;
+  const isPremium = !isSuperPremium && (planTypeRaw.includes('premium') || planTypeRaw === 'premium' || planId === 9);
 
   // Accumulate cursor pages (Load More previously REPLACED the list).
   useEffect(() => {
@@ -621,6 +770,15 @@ const MmJobDetail: React.FC = () => {
   const jobOwnerName = job?.assigned_to_name ?? null;
   const readOnly = !!job && job.is_mine === false && !isGreenline;
 
+  // Where the job stands. The backend hands over one canonical word; the
+  // fallback only covers a payload from before that field existed, and it uses
+  // the same membership test the rest of the system does — `closed_job` is a
+  // string, and 'no' is truthy.
+  const jobStatus: JobStatus =
+    job?.job_status ??
+    (['yes', '1', 'true'].includes(String(job?.closed_job ?? '').toLowerCase()) ? 'closed' : 'open');
+  const jobStatusRemarks = job?.job_status_remarks ?? null;
+
   // A transporter call for THIS job is live → applicants can be conferenced in
   // rather than called separately (Task 3's transporter-first direction).
   const mmCtx = readPendingMmContext();
@@ -629,6 +787,13 @@ const MmJobDetail: React.FC = () => {
 
   const handleCallApplicant = (driver: MmApplicant) => {
     if (readOnly) { triggerToast(`This job belongs to ${jobOwnerName || 'another agent'} — calling is disabled.`); return; }
+    // The button is already replaced for a locked driver; this is the backstop
+    // for every other way this handler can be reached. The dial itself is
+    // refused by the backend regardless — see MatchmakingDriverLock.
+    if (driver.can_call === false) {
+      triggerToast(driver.call_lock?.message || 'Another agent has this driver.');
+      return;
+    }
     callApplicant({
       jobId,
       transporterName: job?.transporter_name || '',
@@ -730,6 +895,25 @@ const MmJobDetail: React.FC = () => {
             <h1 className="font-extrabold text-gray-800 truncate">{job?.job_title}</h1>
             {job && (
               <span className="ml-auto flex items-center gap-2">
+                {/* Premium / Super Premium Badge */}
+                {isSuperPremium ? (
+                  <span
+                    className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-purple-700 text-white flex items-center gap-1 shadow-sm border border-purple-800 tracking-wider"
+                    title="Super Premium Job"
+                  >
+                    <span className="material-symbols-outlined text-[13px] text-amber-300">workspace_premium</span>
+                    SUPER PREMIUM
+                  </span>
+                ) : isPremium ? (
+                  <span
+                    className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-amber-500 text-white flex items-center gap-1 shadow-sm border border-amber-600 tracking-wider"
+                    title="Premium Job"
+                  >
+                    <span className="material-symbols-outlined text-[13px] text-white">star</span>
+                    PREMIUM
+                  </span>
+                ) : null}
+
                 {/* Whose job this is — always shown, since the board spans every agent. */}
                 <span
                   className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
@@ -748,9 +932,30 @@ const MmJobDetail: React.FC = () => {
                     ? `${isGreenline ? 'GREENLINE · ' : ''}ASSIGNED TO ${(jobOwnerName || 'ANOTHER AGENT').toUpperCase()}`
                     : 'ASSIGNED TO YOU'}
                 </span>
-                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${job.closed_job ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700'}`}>
-                  {job.closed_job ? 'CLOSED' : 'OPEN'}
-                </span>
+                {/* Open · Hold · Closed. `closed_job` is a STRING ('yes'/'no'
+                    /NULL), so the status comes from the backend's canonical
+                    `job_status` — a truthiness test on the raw column called
+                    every closed_job='no' job CLOSED. */}
+                <button
+                  type="button"
+                  onClick={() => !readOnly && setShowJobStatus(true)}
+                  disabled={readOnly}
+                  title={
+                    readOnly
+                      ? `Assigned to ${jobOwnerName || 'another agent'} — only they can change the job status`
+                      : jobStatusRemarks
+                        ? `${JOB_STATUS_LABEL[jobStatus]} — ${jobStatusRemarks}\n\nClick to change`
+                        : 'Click to set the job status (Open / Hold / Closed)'
+                  }
+                  className={`px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 border transition-colors ${
+                    jobStatus === 'closed' ? 'bg-gray-100 text-gray-500 border-gray-200'
+                    : jobStatus === 'hold' ? 'bg-amber-100 text-amber-700 border-amber-200'
+                    : 'bg-green-100 text-green-700 border-green-200'
+                  } ${readOnly ? 'cursor-not-allowed opacity-70' : 'hover:brightness-95'}`}
+                >
+                  {JOB_STATUS_LABEL[jobStatus].toUpperCase()}
+                  {!readOnly && <span className="material-symbols-outlined text-[12px]">edit</span>}
+                </button>
               </span>
             )}
           </>
@@ -782,7 +987,20 @@ const MmJobDetail: React.FC = () => {
 
           {/* Job Details */}
           <div className="p-4 space-y-3 border-b border-gray-100">
-            <h2 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Job Details</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Job Details</h2>
+              {isSuperPremium ? (
+                <span className="px-2 py-0.5 rounded text-[9px] font-black bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1 shadow-2xs">
+                  <span className="material-symbols-outlined text-[12px] text-purple-700">workspace_premium</span>
+                  SUPER PREMIUM
+                </span>
+              ) : isPremium ? (
+                <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-2xs">
+                  <span className="material-symbols-outlined text-[12px] text-amber-600">star</span>
+                  PREMIUM
+                </span>
+              ) : null}
+            </div>
             {jobLoading ? (
               <div className="space-y-2">
                 {[...Array(6)].map((_, i) => <div key={i} className="h-4 bg-gray-100 rounded animate-pulse"></div>)}
@@ -1077,6 +1295,7 @@ const MmJobDetail: React.FC = () => {
                     readOnly={readOnly}
                     ownerName={jobOwnerName}
                     onCall={handleCallApplicant}
+                    onToast={triggerToast}
                     onAddToCall={handleAddApplicantToCall}
                     onScreen={handleScreen}
                     onViewDetails={handleViewDetails}
@@ -1160,6 +1379,28 @@ const MmJobDetail: React.FC = () => {
           onAdd={(driver) => {
             handleAddApplicantToCall(driver);
             setShowAddToCall(false);
+          }}
+        />
+      )}
+
+      {/* Open · Hold · Closed → written onto the `jobs` row (closed_job too) */}
+      {job && (
+        <MmJobStatusModal
+          open={showJobStatus}
+          jobId={job.job_id}
+          jobTitle={job.job_title}
+          current={jobStatus}
+          currentRemarks={jobStatusRemarks}
+          currentBy={job.job_status_by_name ?? null}
+          currentAt={job.job_status_at ?? null}
+          onClose={() => setShowJobStatus(false)}
+          onSaved={(status) => {
+            triggerToast(
+              status === 'closed' ? 'Job closed ✓'
+              : status === 'hold' ? 'Job put on hold ✓'
+              : 'Job reopened ✓'
+            );
+            refetchJob();
           }}
         />
       )}

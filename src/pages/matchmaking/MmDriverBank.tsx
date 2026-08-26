@@ -669,6 +669,9 @@ const MmDriverBank: React.FC = () => {
   const [search, setSearch]         = useState('');
   const [availFilter, setAvailFilter] = useState('');
   const [jobFilter, setJobFilter]   = useState('');
+  const [vehicleFilter, setVehicleFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
+  const [expFilter, setExpFilter]   = useState('');
   const [cursor, setCursor]         = useState<number | null>(null);
   const [allRows, setAllRows]       = useState<any[]>([]);
   const [showAdd, setShowAdd]       = useState(false);
@@ -681,6 +684,8 @@ const MmDriverBank: React.FC = () => {
 
   const { data, isLoading, isFetching, refetch } = useGetDriverBankQuery(
     { search: search || undefined, availability: availFilter || undefined, job_id: jobFilter || undefined,
+      vehicle_type: vehicleFilter || undefined, location: locationFilter || undefined,
+      experience: expFilter || undefined,
       per_page: 30, cursor: cursor ?? undefined },
     { refetchOnMountOrArgChange: true }
   );
@@ -762,7 +767,7 @@ const MmDriverBank: React.FC = () => {
   }, [data, cursor, isFetching]);
 
   // Only reset cursor on filter change; data effect handles list refresh when new data arrives.
-  useEffect(() => { setCursor(null); }, [search, availFilter, jobFilter]);
+  useEffect(() => { setCursor(null); }, [search, availFilter, jobFilter, vehicleFilter, locationFilter, expFilter]);
 
   const resetList = () => { setCursor(null); refetch(); };
 
@@ -800,9 +805,25 @@ const MmDriverBank: React.FC = () => {
             {AVAIL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
 
+          <select value={vehicleFilter} onChange={e => setVehicleFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none text-gray-700 text-[10px] font-semibold">
+            <option value="">All Vehicles</option>
+            {VEHICLE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+
+          <select value={expFilter} onChange={e => setExpFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none text-gray-700 text-[10px] font-semibold">
+            <option value="">All Experience</option>
+            {EXPERIENCE_OPTIONS.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
+          </select>
+
+          <input value={locationFilter} onChange={e => setLocationFilter(e.target.value)}
+            placeholder="Location..."
+            className="border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none text-gray-700 text-[10px] font-semibold w-28" />
+
           <input value={jobFilter} onChange={e => setJobFilter(e.target.value)}
             placeholder="Filter by Job ID..."
-            className="border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none text-gray-700 text-[10px] font-semibold w-36" />
+            className="border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none text-gray-700 text-[10px] font-semibold w-32" />
 
           <div className="ml-auto flex items-center gap-2">
             <span className="text-gray-400 text-[10px]">{total} driver{total !== 1 ? 's' : ''}</span>

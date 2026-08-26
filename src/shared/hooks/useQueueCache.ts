@@ -6,6 +6,7 @@ import {
   useLazyGetDwQueueCallbacksQuery,
   useLazyGetDwQueueCalledQuery,
   useLazyGetDwQueueAgreeSubscriptionQuery,
+  useLazyGetDwQueueHotQuery,
   useLazyGetDwQueueCountsQuery,
   useLazyGetDwQueueQuery,
   useLazyGetWctQueueFreshQuery,
@@ -14,11 +15,12 @@ import {
   useLazyGetWctQueueCallbacksQuery,
   useLazyGetWctQueueCalledQuery,
   useLazyGetWctQueueAgreeSubscriptionQuery,
+  useLazyGetWctQueueHotQuery,
   useLazyGetWctQueueCountsQuery,
   useLazyGetWctQueueQuery
 } from '../../services/api/webCrmApi';
 
-export type QueueType = 'all' | 'fresh' | 'old' | 'uncalled' | 'callbacks' | 'called' | 'agree';
+export type QueueType = 'all' | 'fresh' | 'old' | 'uncalled' | 'callbacks' | 'called' | 'agree' | 'hot';
 /** Which endpoint set backs the queue: the DW set serves every users.role except transporter. */
 export type QueueRole = 'dw' | 'wct';
 
@@ -122,6 +124,7 @@ export const useQueueCache = (
   const [triggerDwCalled] = useLazyGetDwQueueCalledQuery();
   const [triggerDwAgree] = useLazyGetDwQueueAgreeSubscriptionQuery();
   const [triggerDwAll] = useLazyGetDwQueueQuery();
+  const [triggerDwHot] = useLazyGetDwQueueHotQuery();
 
   const [triggerWctFresh] = useLazyGetWctQueueFreshQuery();
   const [triggerWctOld] = useLazyGetWctQueueOldQuery();
@@ -130,10 +133,11 @@ export const useQueueCache = (
   const [triggerWctCalled] = useLazyGetWctQueueCalledQuery();
   const [triggerWctAgree] = useLazyGetWctQueueAgreeSubscriptionQuery();
   const [triggerWctAll] = useLazyGetWctQueueQuery();
+  const [triggerWctHot] = useLazyGetWctQueueHotQuery();
 
   const t = role === 'wct'
-    ? { fresh: triggerWctFresh, old: triggerWctOld, uncalled: triggerWctUncalled, callbacks: triggerWctCallbacks, called: triggerWctCalled, agree: triggerWctAgree, all: triggerWctAll }
-    : { fresh: triggerDwFresh, old: triggerDwOld, uncalled: triggerDwUncalled, callbacks: triggerDwCallbacks, called: triggerDwCalled, agree: triggerDwAgree, all: triggerDwAll };
+    ? { fresh: triggerWctFresh, old: triggerWctOld, uncalled: triggerWctUncalled, callbacks: triggerWctCallbacks, called: triggerWctCalled, agree: triggerWctAgree, hot: triggerWctHot, all: triggerWctAll }
+    : { fresh: triggerDwFresh, old: triggerDwOld, uncalled: triggerDwUncalled, callbacks: triggerDwCallbacks, called: triggerDwCalled, agree: triggerDwAgree, hot: triggerDwHot, all: triggerDwAll };
 
   const fetchQueue = useCallback(async (_force = false) => {
     setIsFetching(true);
@@ -168,6 +172,8 @@ export const useQueueCache = (
         result = await t.callbacks(queryParams).unwrap();
       } else if (type === 'agree') {
         result = await t.agree(queryParams).unwrap();
+      } else if (type === 'hot') {
+        result = await t.hot(queryParams).unwrap();
       } else {
         result = await t.called(queryParams).unwrap();
       }
@@ -254,7 +260,7 @@ export const useQueueCache = (
 // the backend response), it's treated as no-cache so a real fetch happens —
 // otherwise a stale cache can silently mask a field as 0 forever, since
 // nothing ever invalidates it on a time basis anymore.
-const COUNTS_FIELDS = ['total', 'fresh', 'old', 'uncalled', 'callbacks', 'called_today', 'overdue_callbacks', 'agree_subscription'] as const;
+const COUNTS_FIELDS = ['total', 'fresh', 'old', 'uncalled', 'callbacks', 'called_today', 'overdue_callbacks', 'agree_subscription', 'hot'] as const;
 const isCompleteCounts = (data: any): boolean =>
   !!data && COUNTS_FIELDS.every((key) => typeof data[key] !== 'undefined');
 
@@ -279,6 +285,8 @@ export const useQueueCountsCache = (
     called_today: number;
     overdue_callbacks: number;
     agree_subscription: number;
+    /** Leads this agent has flagged as hot. */
+    hot: number;
     states?: Array<{ id: number; name: string }>;
   } | null>(() => {
     const cached = readCache(cacheKey)?.data;

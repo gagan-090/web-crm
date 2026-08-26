@@ -3,9 +3,11 @@ import {
   useGetIdvQueueQuery,
   useGetIdvDossierQuery,
   useGetIdvDispositionOptionsQuery,
+  useGetIdvAgentStatsQuery,
   useSubmitIdvFeedbackMutation,
   type IdvCheck,
   type IdvQueueRow,
+  type IdvAgentStatRow,
 } from '../../services/api/webCrmApi';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import { writePendingIdvContext, clearPendingIdvContext, isIdvCall } from '../../shared/components/cti/idvCallContext';
@@ -190,6 +192,122 @@ const QueueCard: React.FC<{ row: IdvQueueRow; active: boolean; onClick: () => vo
   </button>
 );
 
+// ── Team Progress ────────────────────────────────────────────────────────────
+//
+// The manager's read of this desk: who owns how much of the verification book,
+// and how much of it they have actually driven to done. Every number is folded
+// server-side from the same check registry a dossier uses, so a row here can
+// never disagree with the subscriber screens it summarises.
+
+const TeamStat: React.FC<{ label: string; value: React.ReactNode; sub?: string; tone?: string }> = ({ label, value, sub, tone }) => (
+  <div className="flex-1 min-w-[104px] rounded-xl border border-gray-200 bg-white px-3 py-2">
+    <div className={`text-lg font-black leading-none ${tone || 'text-gray-900'}`}>{value}</div>
+    <div className="text-[9.5px] font-bold uppercase tracking-wide text-gray-400 mt-1">{label}</div>
+    {sub && <div className="text-[9px] text-gray-400">{sub}</div>}
+  </div>
+);
+
+// The one bar that says "worked or not" — done ÷ entitled across the book.
+const CompletionBar: React.FC<{ pct: number }> = ({ pct }) => (
+  <div className="flex items-center gap-2 min-w-[120px]">
+    <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+      <div
+        className={`h-full rounded-full ${pct >= 80 ? 'bg-emerald-400' : pct >= 40 ? 'bg-amber-400' : pct > 0 ? 'bg-orange-400' : 'bg-gray-200'}`}
+        style={{ width: `${Math.max(pct, 2)}%` }}
+      />
+    </div>
+    <span className="text-[10px] font-black text-gray-600 w-8 text-right">{pct}%</span>
+  </div>
+);
+
+const TeamProgressPanel: React.FC = () => {
+  const [q, setQ] = useState('');
+  const { data, isFetching } = useGetIdvAgentStatsQuery(q ? { search: q } : {});
+  const rows: IdvAgentStatRow[] = data?.data || [];
+  const t = data?.totals;
+
+  return (
+    <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-xl flex flex-col overflow-hidden">
+      <div className="p-3 border-b border-gray-200 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-[11px] font-black uppercase tracking-wider text-indigo-700">Team Progress</h2>
+            <p className="text-[9.5px] text-gray-400">
+              Verification book by telecaller · {t?.agents ?? 0} agent{(t?.agents ?? 0) === 1 ? '' : 's'}
+            </p>
+          </div>
+          <div className="relative w-56">
+            <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">search</span>
+            <input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Find a telecaller…"
+              className="w-full pl-7 pr-2 h-8 border border-gray-200 rounded-lg text-[11px] outline-none focus:ring-1 focus:ring-indigo-300"
+            />
+          </div>
+        </div>
+
+        {/* Team totals — the same columns the rows carry, summed. */}
+        <div className="flex gap-2 flex-wrap">
+          <TeamStat label="Subscribers" value={t?.subscribers ?? 0} tone="text-indigo-700" />
+          <TeamStat label="Trusted ₹499" value={t?.trusted_drivers ?? 0} tone="text-indigo-700" />
+          <TeamStat label="Verified ₹299" value={t?.verified_drivers ?? 0} tone="text-emerald-700" />
+          <TeamStat label="Fully Verified" value={t?.fully_verified ?? 0} tone="text-emerald-700" sub={`of ${t?.subscribers ?? 0}`} />
+          <TeamStat label="Completion" value={`${t?.completion ?? 0}%`} tone="text-amber-600" sub={`${t?.done_checks ?? 0}/${t?.entitled_checks ?? 0} checks`} />
+          <TeamStat label="Calls Made" value={t?.calls_made ?? 0} sub={`${t?.connected_calls ?? 0} connected`} />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto custom-scrollbar">
+        {isFetching && rows.length === 0 ? (
+          <p className="p-6 text-center text-[11px] text-gray-400 italic">Loading team progress…</p>
+        ) : rows.length === 0 ? (
+          <p className="p-6 text-center text-[11px] text-gray-400 italic">No telecaller has a verification book yet.</p>
+        ) : (
+          <table className="w-full border-collapse min-w-[880px]">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                {['Telecaller', 'Subscribers', 'Trusted', 'Verified', 'Fully Verified', 'Completion', 'Calls', 'Connected', 'Contacted'].map((h, i) => (
+                  <th key={h} className={`py-2 px-3 text-[9.5px] font-black uppercase tracking-wide text-gray-500 border-b border-gray-200 whitespace-nowrap ${i === 0 ? 'text-left' : 'text-center'}`}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.agent_id} className={`border-b border-gray-100 hover:bg-indigo-50/30 ${i % 2 ? 'bg-gray-50/40' : 'bg-white'}`}>
+                  <td className="py-2 px-3">
+                    <div className="font-bold text-gray-800 text-[11.5px]">{r.agent_name}</div>
+                    {r.pending_subscribers > 0 && (
+                      <div className="text-[9px] text-amber-600 font-semibold">{r.pending_subscribers} still to verify</div>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-center font-black text-gray-800 text-[12px]">{r.subscribers}</td>
+                  <td className="py-2 px-3 text-center">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-700 border-indigo-200">{r.trusted_drivers}</span>
+                  </td>
+                  <td className="py-2 px-3 text-center">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">{r.verified_drivers}</span>
+                  </td>
+                  <td className="py-2 px-3 text-center text-[11px] font-bold text-emerald-700">
+                    {r.fully_verified}
+                    <span className="text-gray-300 font-normal">/{r.subscribers}</span>
+                  </td>
+                  <td className="py-2 px-3"><CompletionBar pct={r.completion} /></td>
+                  <td className="py-2 px-3 text-center text-[11px] font-bold text-gray-700">{r.calls_made}</td>
+                  <td className="py-2 px-3 text-center text-[11px] text-emerald-700 font-semibold">{r.connected_calls}</td>
+                  <td className="py-2 px-3 text-center text-[11px] text-gray-600">{r.contacted}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const IdVerificationDesk: React.FC = () => {
   const {
     dial, callState, agentState,
@@ -197,6 +315,7 @@ export const IdVerificationDesk: React.FC = () => {
     currentCallId, currentLeadId, submitDisposition,
   } = useSanCti();
 
+  const [view, setView] = useState<'desk' | 'team'>('desk');
   const [tab, setTab] = useState('pending');
   const [search, setSearch] = useState('');
   const [plan, setPlan] = useState('');
@@ -316,13 +435,36 @@ export const IdVerificationDesk: React.FC = () => {
   };
 
   return (
-    <div className="flex h-[calc(100vh-90px)] gap-3">
+    <div className="flex flex-col h-[calc(100vh-70px)] gap-2">
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50">
           {toast}
         </div>
       )}
 
+      {/* ── View toggle: one caller works the Desk; a lead reads Team Progress. ── */}
+      <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1 self-start shrink-0">
+        {([
+          { id: 'desk', label: 'Verification Desk', icon: 'badge' },
+          { id: 'team', label: 'Team Progress', icon: 'leaderboard' },
+        ] as const).map(v => (
+          <button
+            key={v.id}
+            onClick={() => setView(v.id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-colors ${
+              view === v.id ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[15px]">{v.icon}</span>
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'team' ? (
+        <TeamProgressPanel />
+      ) : (
+      <div className="flex flex-1 min-h-0 gap-3">
       {/* ── Queue ── */}
       <aside className="w-1/3 min-w-[300px] shrink-0 bg-white border border-gray-200 rounded-xl flex flex-col overflow-hidden">
         <div className="p-2.5 border-b border-gray-200 space-y-2">
@@ -595,6 +737,8 @@ export const IdVerificationDesk: React.FC = () => {
           </div>
         )}
       </section>
+      </div>
+      )}
 
       {/* ── Post-call disposition. Opens when the CALL ENDS (SAN raises
              showDispositionForm), or manually from the timeline header. ── */}

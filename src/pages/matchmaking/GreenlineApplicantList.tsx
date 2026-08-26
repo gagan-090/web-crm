@@ -97,6 +97,21 @@ const Card: React.FC<{ a: MmGreenlineApplicant } & Props> = ({ a, readOnly, owne
             >
               <span className="material-symbols-outlined text-[13px]">phone_disabled</span>View only
             </span>
+          ) : a.can_call === false ? (
+            /* Another matchmaking agent has taken this driver to interview or
+               placement — calling him about this job would undo their work.
+               The dial is refused by the backend too. */
+            <span
+              className="bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1.5 rounded-lg font-bold text-[10px] flex items-center gap-1 cursor-not-allowed max-w-[170px]"
+              title={a.call_lock?.message || 'Another agent has this driver.'}
+            >
+              <span className="material-symbols-outlined text-[13px]">lock</span>
+              <span className="truncate">
+                {a.call_lock?.is_mine
+                  ? (a.call_lock.job_id || 'On another job')
+                  : (a.call_lock?.owner_name || 'Locked')}
+              </span>
+            </span>
           ) : (
             <button
               onClick={() => onCall(ref)}

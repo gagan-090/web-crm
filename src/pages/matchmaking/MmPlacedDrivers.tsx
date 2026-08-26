@@ -6,12 +6,13 @@ import {
 
 // ── Interview Done · Placed Drivers ─────────────────────────────────────────
 //
-// A read of call_history_ivr, which is the single source of truth for a
-// placement: there is no placements table in this schema, so a placement is a
-// call an agent dispositioned as one. The backend matches the outcome text in
+// One row per job × driver. driver_job_status is what maps the two — it is the
+// only table naming the job AND the driver on one row — so the count is the
+// distinct drivers placed, not the number of times someone dispositioned a
+// call. call_history_ivr still supplies the outcome text (the backend matches
 // call_feedback, call_remarks AND disposition_sub — agents type "Matchmaking
-// done" into remarks as often as they pick it from the form — and merges in the
-// drivers the Driver Bank itself marks as placed. See PlacementReportController.
+// done" into remarks as often as they pick it from the form) and the Driver
+// Bank the placements only it recorded. See PlacementReportController.
 //
 // Nothing here is derived client-side; the tab counts, the job manager list and
 // the rows all come from that one endpoint so they cannot disagree.
@@ -184,8 +185,19 @@ const MmPlacedDrivers: React.FC = () => {
               <tr key={r.id} className="hover:bg-white transition-colors">
                 <td className="p-3 pl-4">
                   {r.job_id ? (
-                    <span className="font-mono font-bold text-[#8E44AD]" title={r.job_title || undefined}>
-                      {r.job_id}
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-mono font-bold text-[#8E44AD]" title={r.job_title || undefined}>
+                        {r.job_id}
+                      </span>
+                      {/* The job's own total, not the filtered view's. */}
+                      {tab === 'placed' && !!r.job_placed_total && r.job_placed_total > 1 && (
+                        <span
+                          className="px-1.5 py-0.5 rounded-full bg-purple-50 text-[#8E44AD] border border-purple-100 font-mono text-[9px] font-bold"
+                          title={`${r.job_placed_total} drivers placed on this job in total`}
+                        >
+                          {r.job_placed_total}
+                        </span>
+                      )}
                     </span>
                   ) : (
                     <span className="text-gray-300" title="The call was dispositioned without a job tagged on it">—</span>
@@ -197,7 +209,7 @@ const MmPlacedDrivers: React.FC = () => {
                   ) : (
                     <span
                       className="text-gray-300"
-                      title="Filed on the transporter's call — no column on that row names the driver"
+                      title="Filed on the transporter's call, and no source maps this job to a driver"
                     >
                       —
                     </span>
@@ -220,7 +232,7 @@ const MmPlacedDrivers: React.FC = () => {
                 <td className="p-3 whitespace-nowrap">
                   {r.placed_at_display}
                   {r.entries > 1 && (
-                    <span className="ml-1.5 text-gray-400" title={`${r.entries} calls carried this outcome; the first one is shown`}>
+                    <span className="ml-1.5 text-gray-400" title={`${r.entries} records carried this outcome; the first one is shown`}>
                       ×{r.entries}
                     </span>
                   )}

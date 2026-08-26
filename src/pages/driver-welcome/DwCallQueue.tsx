@@ -3,7 +3,11 @@ import {
   useGetDwLeadDetailQuery,
   useGetWctLeadDetailQuery,
   useSubmitDwFeedbackMutation,
-  useLazyGetDwGlobalSearchQuery
+  useLazyGetDwGlobalSearchQuery,
+  useGetDwHotLeadKeysQuery,
+  useGetWctHotLeadKeysQuery,
+  useToggleDwHotLeadMutation,
+  useToggleWctHotLeadMutation,
 } from '../../services/api/webCrmApi';
 import {
   useQueueCache,
@@ -199,6 +203,67 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
 
   const { counts, isFetching: isCountsFetching, refetch: refetchCounts } = useQueueCountsCache(queueRole, leadRole, activeFilters);
 
+  /* ── Hot leads ──────────────────────────────────────────────────────────
+     The agent's own shortlist. Which leads are flagged comes as one set of
+     TMIDs rather than a field on every queue row: the tabs are served by a
+     dozen different queries, and this way the flame knows its state on all of
+     them without touching any of them.
+
+     Both desks' hooks are instantiated (one is skipped) so the Rules of Hooks
+     are satisfied — the same shape useQueueCache uses for its triggers. */
+  const dwHotKeys  = useGetDwHotLeadKeysQuery(undefined, { skip: queueRole !== 'dw' });
+  const wctHotKeys = useGetWctHotLeadKeysQuery(undefined, { skip: queueRole !== 'wct' });
+  const hotKeys    = queueRole === 'wct' ? wctHotKeys : dwHotKeys;
+
+  const [toggleDwHot]  = useToggleDwHotLeadMutation();
+  const [toggleWctHot] = useToggleWctHotLeadMutation();
+
+  // Flipped locally the moment the agent clicks, so a queue of 20 rows does not
+  // wait on a round trip to show what they just did; reconciled from the
+  // server set on the next fetch.
+  const [hotOverrides, setHotOverrides] = useState<Record<string, boolean>>({});
+
+  const hotTmids = React.useMemo(
+    () => new Set((hotKeys.data?.data?.tmids ?? []).map(String)),
+    [hotKeys.data]
+  );
+
+  const isHot = (lead: any): boolean => {
+    const key = String(lead?.tmid ?? lead?.id ?? '');
+    if (key in hotOverrides) return hotOverrides[key];
+    return hotTmids.has(key) || lead?.is_hot === 1 || lead?.is_hot === true;
+  };
+
+  const handleToggleHot = async (lead: any) => {
+    const key = String(lead?.tmid ?? lead?.id ?? '');
+    const next = !isHot(lead);
+    setHotOverrides(prev => ({ ...prev, [key]: next }));
+
+    const body = {
+      // A campaign lead has no users row — it is identified by its TMID.
+      user_id: typeof lead?.id === 'number' || /^\d+$/.test(String(lead?.id ?? '')) ? lead.id : undefined,
+      tm_id: lead?.tmid || undefined,
+      mobile: lead?.mobile || undefined,
+      name: lead?.name || undefined,
+      hot: next,
+    };
+
+    try {
+      const run = queueRole === 'wct' ? toggleWctHot : toggleDwHot;
+      await run(body).unwrap();
+      triggerToast(next ? `${lead?.name || 'Lead'} marked as hot lead 🔥` : `${lead?.name || 'Lead'} removed from hot leads`);
+      refetchCounts();
+      // The Hot tab is a list OF this flag, so it has to be rebuilt.
+      if (activeTab === 'hot') {
+        invalidateQueueCache();
+        refetchQueue();
+      }
+    } catch (e: any) {
+      setHotOverrides(prev => ({ ...prev, [key]: !next }));
+      triggerToast(e?.data?.message || 'Could not update the hot lead flag.');
+    }
+  };
+
   const handleRefresh = () => {
     refetchQueue();
     refetchCounts();
@@ -300,6 +365,7 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
     if (activeTab === 'callbacks') return l.overdue ? 'border-[#E74C3C]' : 'border-[#F1C40F]'; // Red or Yellow
     if (activeTab === 'called') return 'border-[#27AE60]'; // Green
     if (activeTab === 'agree') return 'border-[#16A34A]'; // Deep green — money on the table
+    if (activeTab === 'hot') return 'border-[#EA580C]';   // Orange — the agent's own shortlist
     return 'border-gray-200';
   };
 
@@ -817,6 +883,16 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                     Agree ({counts?.agree_subscription ?? 0})
                   </span>
                 )
+              },
+              // The agent's own shortlist — leads they flagged from any tab.
+              {
+                id: 'hot',
+                label: (
+                  <span className="flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[13px]">local_fire_department</span>
+                    Hot ({counts?.hot ?? 0})
+                  </span>
+                )
               }
             ].map(tab => (
               <button
@@ -944,13 +1020,27 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                   )}
                 </div>
 
-                <div className="flex flex-col justify-center">
+                <div className="flex flex-col justify-center gap-1.5">
                   <button 
                     onClick={(e) => { e.stopPropagation(); handleCallNow(l); }}
                     className="w-8 h-8 rounded-full bg-[#27AE60] hover:bg-[#219653] text-white flex items-center justify-center shadow transition-transform active:scale-95"
                     title="Call Lead"
                   >
                     <span className="material-symbols-outlined text-[16px]">call</span>
+                  </button>
+                  {/* Mark as hot — available on EVERY tab, including leads
+                      nobody has dialled yet (the backend writes the flag on a
+                      marker row when there is no call to carry it). */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleToggleHot(l); }}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shadow transition-transform active:scale-95 border ${
+                      isHot(l)
+                        ? 'bg-orange-500 border-orange-500 text-white hover:bg-orange-600'
+                        : 'bg-white border-gray-200 text-gray-400 hover:text-orange-500 hover:border-orange-300'
+                    }`}
+                    title={isHot(l) ? 'Remove from hot leads' : 'Mark as hot lead'}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">local_fire_department</span>
                   </button>
                 </div>
               </div>

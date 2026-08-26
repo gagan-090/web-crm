@@ -14,6 +14,7 @@ const planBadge = (plan: string) => {
 
 const statusBadge = (status: string) => {
   if (status === 'OPEN') return 'bg-green-100 text-green-700';
+  if (status === 'HOLD') return 'bg-amber-100 text-amber-700';
   if (status === 'CLOSED') return 'bg-gray-100 text-gray-500';
   if (status === 'EXPIRED') return 'bg-red-100 text-red-600';
   return 'bg-amber-100 text-amber-700';
@@ -78,23 +79,46 @@ const JobCard: React.FC<{ job: any; onClick: () => void; onViewTransporter: () =
       )}
     </div>
 
-    {/* Latest transporter call outcome */}
+    {/* Latest transporter call outcome, and what the agent wrote about it */}
     {job.last_call_status && (
-      <div className="flex items-center gap-1.5 mt-2 text-[9.5px]">
-        <span className={`font-bold px-1.5 py-0.5 rounded capitalize ${
-          job.last_call_status === 'connected' ? 'bg-green-50 text-green-700' :
-          job.last_call_status === 'callback_later' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-500'
-        }`}>
-          {String(job.last_call_status).replace('_', ' ')}
-        </span>
-        {job.last_call_feedback && <span className="text-gray-500 truncate" title={job.last_call_feedback}>{job.last_call_feedback}</span>}
-        {job.last_call_time && <span className="text-gray-400 ml-auto shrink-0">{job.last_call_time}</span>}
+      <div className="mt-2 text-[9.5px]">
+        <div className="flex items-center gap-1.5">
+          <span className={`font-bold px-1.5 py-0.5 rounded capitalize ${
+            job.last_call_status === 'connected' ? 'bg-green-50 text-green-700' :
+            job.last_call_status === 'callback_later' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-500'
+          }`}>
+            {String(job.last_call_status).replace('_', ' ')}
+          </span>
+          {job.last_call_feedback && <span className="text-gray-500 truncate" title={job.last_call_feedback}>{job.last_call_feedback}</span>}
+          {job.last_call_time && <span className="text-gray-400 ml-auto shrink-0">{job.last_call_time}</span>}
+        </div>
+        {/* The outcome says what happened; the remark says what was agreed —
+            which is the part the next agent to open this job actually needs.
+            Two lines here, the whole thing on hover and in the timeline. */}
+        {job.last_call_remarks && (
+          <p
+            className="mt-1 text-[9.5px] text-gray-500 italic line-clamp-2 leading-snug border-l-2 border-gray-200 pl-1.5"
+            title={`${job.last_call_remarks}${job.last_call_by ? ` — ${job.last_call_by}` : ''}`}
+          >
+            “{job.last_call_remarks}”
+            {job.last_call_by && <span className="not-italic text-gray-400"> — {job.last_call_by}</span>}
+          </p>
+        )}
       </div>
     )}
 
     <div className="flex justify-between items-center mt-3 pt-2.5 border-t border-gray-100">
       <div className="flex items-center gap-1.5">
-        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${statusBadge(job.status)}`}>{job.status}</span>
+        <span
+          className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${statusBadge(job.status)}`}
+          title={
+            job.job_status_remarks
+              ? `${job.job_status_remarks}${job.job_status_by_name ? ` — ${job.job_status_by_name}` : ''}`
+              : undefined
+          }
+        >
+          {job.status}
+        </span>
         {job.deadline && (
           <span className="text-[9px] text-gray-400 font-semibold">
             Due {new Date(job.deadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
@@ -476,7 +500,7 @@ export const MmJobBoard: React.FC = () => {
   // Caller's own count for the active tab under a specific status pill. Prefers
   // the grid's live count; falls back to the dashboard's assigned totals (never
   // the system-wide `stats`, which count every job ever posted).
-  const myStatusCount = (statusKey: '' | 'open' | 'closed' | 'expired' | 'expiring_soon'): number | undefined => {
+  const myStatusCount = (statusKey: '' | 'open' | 'hold' | 'closed' | 'expired' | 'expiring_soon'): number | undefined => {
     const live = liveCounts[countKeyFor(activeTab, statusKey)];
     if (live !== undefined) return live;
     const bucket = statusCounts?.[activeTab];
@@ -530,6 +554,7 @@ export const MmJobBoard: React.FC = () => {
               {[
                 { label: 'All',           value: '',              count: myStatusCount('') },
                 { label: 'Open',          value: 'open',          count: myStatusCount('open') },
+                { label: 'Hold',          value: 'hold',          count: myStatusCount('hold') },
                 { label: 'Closed',        value: 'closed',        count: myStatusCount('closed') },
                 { label: 'Expired',       value: 'expired',       count: myStatusCount('expired') },
                 { label: 'Expiring Soon', value: 'expiring_soon', count: myStatusCount('expiring_soon'), warn: true },

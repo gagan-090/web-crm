@@ -52,7 +52,8 @@ export const baseApi = createApi({
     'WebRoles',
     'CrmThemes',
     'IdVerification',
-    'Revival'
+    'Revival',
+    'HotLeads'
   ],
   endpoints: () => ({}), // Endpoints will be injected by domain features
 });

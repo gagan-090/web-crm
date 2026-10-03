@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Role, ROLE_SHORT_CODES } from '../../shared/constants/roles';
 import { API_BASE_URL } from '../../shared/constants/config';
+import { useSessionHeartbeat } from '../../features/auth/session/useSessionHeartbeat';
+import { forceLogout } from '../../features/auth/session/forceLogout';
 
 
 export interface User {
@@ -46,8 +48,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               'Accept': 'application/json',
             },
           })
-            .then(r => r.json())
+            .then(async r => {
+              // A stored session that the server no longer accepts — the seat
+              // was taken over on another device, or the token was revoked.
+              // Sign this stale tab out instead of silently keeping it.
+              if (r.status === 401) {
+                let code = '';
+                try { const j = await r.json(); code = j?.code || ''; } catch { /* no body */ }
+                forceLogout(code === 'SESSION_SUPERSEDED' ? 'superseded' : 'expired');
+                return null;
+              }
+              return r.json();
+            })
             .then(json => {
+              if (!json) return; // 401 handled above (redirect in flight)
               if (json?.status && json?.user) {
                 const refreshed: User = {
                   ...parsed,
@@ -75,6 +89,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(false);
     }
   }, []);
+
+  // Hold this device's single-session seat while logged in. Pings the backend
+  // keep-alive and signs out cleanly if the seat is taken over elsewhere.
+  useSessionHeartbeat(user?.token ?? null);
 
   const login = async (email: string, _role?: Role, password?: string): Promise<User | null> => {
     setIsLoading(true);
@@ -121,12 +139,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      // Single-session block: this account is already live on another device.
+      // Surface the server's specific message so the agent knows why, rather
+      // than the generic "invalid credentials".
+      if (response.status === 409) {
+        const j = await response.json().catch(() => null);
+        setIsLoading(false);
+        const conflict = new Error(j?.message || 'This account is already signed in on another device. Log out there first.');
+        (conflict as Error & { sessionConflict?: boolean }).sessionConflict = true;
+        throw conflict;
+      }
+
       setIsLoading(false);
       return null;
 
     } catch (err) {
       clearTimeout(timeoutId);
       setIsLoading(false);
+      // Let the single-session conflict surface its specific message to the
+      // login screen; only network/abort errors fall through to a null result.
+      if ((err as { sessionConflict?: boolean })?.sessionConflict) {
+        throw err;
+      }
       return null;
     }
   };
@@ -141,6 +175,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await (window as any).__sanCtiLogout?.();
     } catch (_) { /* best-effort — never block sign-out */ }
+
+    // Tell the backend to revoke this token and FREE the single-session seat
+    // immediately, so the agent can sign in on another device right away
+    // instead of waiting for the stale-session TTL to lapse. Best-effort: a
+    // failure here must never block the local sign-out below.
+    try {
+      const token = user?.token;
+      if (token) {
+        await fetch(`${API_BASE}/web-crm/logout`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+        });
+      }
+    } catch (_) { /* best-effort */ }
+
     setUser(null);
     localStorage.clear();
   };

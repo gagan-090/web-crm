@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGetMmCallHistoryQuery, type MmCallHistoryRow } from '../../services/api/webCrmApi';
+import { useGetMmCallHistoryQuery, useLazyGetMmCallHistoryQuery, type MmCallHistoryRow } from '../../services/api/webCrmApi';
+import { HarshitExcelExport } from '../../shared/components/HarshitExcelExport';
+import type { ExcelColumn } from '../../shared/utils/exportExcel';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import { writePendingMmContext } from '../../shared/components/cti/mmCallContext';
 import {
@@ -89,6 +91,8 @@ const MmCallHistory: React.FC = () => {
     search: search || undefined,
     ...(period === 'custom' ? { date_from: dateFrom || undefined, date_to: dateTo || undefined } : {}),
   });
+  // On-demand fetch for the Excel export — pulls the whole filtered log.
+  const [triggerMmAll] = useLazyGetMmCallHistoryQuery();
 
   const rows: MmCallHistoryRow[] = data?.data || [];
   const total = data?.pagination.total ?? 0;
@@ -278,6 +282,37 @@ const MmCallHistory: React.FC = () => {
           </button>
         )}
 
+        <HarshitExcelExport
+          filename="mm_call_history"
+          fetchAll={async (rng) => {
+            const res = await triggerMmAll({
+              per_page: 'all',
+              period: (rng.date_from || rng.date_to) ? 'custom' : 'all',
+              call_status: callStatus || undefined,
+              feedback: feedback || undefined,
+              search: search || undefined,
+              ...((rng.date_from || rng.date_to) ? { date_from: rng.date_from, date_to: rng.date_to } : {}),
+            }).unwrap();
+            return res.data || [];
+          }}
+          columns={[
+            { header: 'Lead Name', value: (r: MmCallHistoryRow) => r.lead_name },
+            { header: 'TMID', value: (r: MmCallHistoryRow) => r.lead_tmid },
+            { header: 'Mobile', value: (r: MmCallHistoryRow) => r.lead_mobile },
+            { header: 'Role', value: (r: MmCallHistoryRow) => r.lead_role },
+            { header: 'Direction', value: (r: MmCallHistoryRow) => r.direction },
+            { header: 'Call Status', value: (r: MmCallHistoryRow) => (r.call_status || '').replace(/_/g, ' ') },
+            { header: 'Feedback', value: (r: MmCallHistoryRow) => r.feedback },
+            { header: 'Match Status', value: (r: MmCallHistoryRow) => r.match_status },
+            { header: 'Disposition', value: (r: MmCallHistoryRow) => r.disposition_sub },
+            { header: 'Remarks', value: (r: MmCallHistoryRow) => r.remarks },
+            { header: 'Duration', value: (r: MmCallHistoryRow) => formatDuration(r.duration_seconds) },
+            { header: 'Job', value: (r: MmCallHistoryRow) => r.job_title },
+            { header: 'Transporter', value: (r: MmCallHistoryRow) => r.transporter_name },
+            { header: 'Date & Time', value: (r: MmCallHistoryRow) => r.called_at },
+            { header: 'Recording URL', value: (r: MmCallHistoryRow) => r.recording_url },
+          ] as ExcelColumn<MmCallHistoryRow>[]}
+        />
         <button
           onClick={() => refetch()}
           disabled={isFetching}
@@ -339,8 +374,19 @@ const MmCallHistory: React.FC = () => {
                 </td>
                 <td className="p-3 pl-0">
                   <div className="flex flex-col">
-                    <span className="font-bold text-gray-800">{r.lead_name || '—'}</span>
-                    {r.lead_tmid && <span className="font-mono text-[10px] text-gray-400">{r.lead_tmid}</span>}
+                    {/* Off-system calls are often against an unregistered number —
+                        show the mobile when there is no registered lead name. */}
+                    <span className="font-bold text-gray-800">{r.lead_name || r.lead_mobile || '—'}</span>
+                    {r.lead_tmid
+                      ? <span className="font-mono text-[10px] text-gray-400">{r.lead_tmid}</span>
+                      : (r.lead_name && r.lead_mobile && <span className="font-mono text-[10px] text-gray-400">{r.lead_mobile}</span>)}
+                    {/* Call placed to the driver's relative, about this driver. */}
+                    {r.relative && (
+                      <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 w-fit">
+                        <span className="material-symbols-outlined text-[12px]">family_restroom</span>
+                        Called {r.relative.relation}{r.relative.name ? ` · ${r.relative.name}` : ''}{r.relative.number_masked ? ` (${r.relative.number_masked})` : ''}
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="p-3 capitalize font-semibold text-gray-600">{r.lead_role || '—'}</td>
@@ -395,8 +441,10 @@ const MmCallHistory: React.FC = () => {
                   )}
                 </td>
                 <td className="p-3">
-                  <span className="text-[10px] text-gray-500 font-semibold">{r.process || '—'}</span>
-                  {r.direction && (
+                  <span className="text-[10px] text-gray-500 font-semibold">{(r as any).is_manual ? 'Off-system' : (r.process || '—')}</span>
+                  {(r as any).is_manual ? (
+                    <span className="block text-[9px] text-gray-400 uppercase">incoming · {String((r as any).channel || '').replace('_', '-')}</span>
+                  ) : r.direction && (
                     <span className="block text-[9px] text-gray-400 uppercase">{r.direction}</span>
                   )}
                 </td>

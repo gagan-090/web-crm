@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
 import RoleGuard from './RoleGuard';
+import SingleTabGuard from '../features/auth/session/SingleTabGuard';
 import DashboardLayout from '../layouts/DashboardLayout';
 import CallerLayout from '../layouts/CallerLayout';
 import LoginPage from '../features/auth/pages/LoginPage';
@@ -93,6 +94,7 @@ import WctCallQueue from '../pages/transporter-welcome/WctCallQueue';
 import WctPerformanceStats from '../pages/transporter-welcome/WctPerformanceStats';
 import WctDispositionGate from '../pages/transporter-welcome/WctDispositionGate';
 import WctD7UpsellQueue from '../pages/transporter-welcome/WctD7UpsellQueue';
+import WctExpiringSoon from '../pages/transporter-welcome/WctExpiringSoon';
 import WctCampaignLeads from '../pages/transporter-welcome/WctCampaignLeads';
 import WctCallHistory from '../pages/transporter-welcome/WctCallHistory';
 import WctIncomingCalls from '../pages/transporter-welcome/WctIncomingCalls';
@@ -110,6 +112,7 @@ import MmScriptLibrary from '../pages/matchmaking/MmScriptLibrary';
 import MmJobBoard from '../pages/matchmaking/MmJobBoard';
 import MmJobSearch from '../pages/matchmaking/MmJobSearch';
 import MmJobDetail from '../pages/matchmaking/MmJobDetail';
+import MmApplicantMatchmaking from '../pages/matchmaking/MmApplicantMatchmaking';
 import MmTrainingHub from '../pages/matchmaking/MmTrainingHub';
 import MmPlacementHistory from '../pages/matchmaking/MmPlacementHistory';
 import MmCallHistory from '../pages/matchmaking/MmCallHistory';
@@ -134,13 +137,20 @@ import AbscondingProtocolTracker from '../pages/special-categories/AbscondingPro
 
 // Incentive Engine Pages
 import MyIncentivePage from '../pages/incentive/MyIncentivePage';
+import MyRevenueTarget from '../pages/incentive/MyRevenueTarget';
 import PodIncentiveSummary from '../pages/team-lead/PodIncentiveSummary';
 import IncentiveCommandCenter from '../pages/telecalling-head/IncentiveCommandCenter';
 import PayrollExport from '../pages/telecalling-head/PayrollExport';
+import RevenueChallenge from '../pages/telecalling-head/RevenueChallenge';
+import ConnectivitySla from '../pages/telecalling-head/ConnectivitySla';
 import IncentiveConfiguration from '../pages/admin/IncentiveConfiguration';
 import ParityEquityDashboard from '../pages/admin/ParityEquityDashboard';
 import WebRoles from '../pages/admin/WebRoles';
 import CrmThemeSwitcher from '../pages/admin/CrmThemeSwitcher';
+import TeleUiDashboard from '../pages/shared/TeleUiDashboard';
+import ManualCallUpload from '../pages/shared/ManualCallUpload';
+import Notepad from '../pages/shared/Notepad';
+import TrucksKnowledge from '../pages/shared/TrucksKnowledge';
 
 const RoleHomeRedirect: React.FC = () => {
   const { role } = usePermissions();
@@ -176,17 +186,28 @@ export const AppRoutes: React.FC = () => {
             web-roles: no login, no dashboard chrome, opens at /crm/theme. */}
         <Route path="/theme" element={<CrmThemeSwitcher />} />
 
+        {/* Public standalone wall-board — Team-Leader command dashboard. No login,
+            no chrome; opens at /crm/teleui and polls /api/web-crm/teleui/data. */}
+        <Route path="/teleui" element={<TeleUiDashboard />} />
+
         {/* Dashboard Layout - Protected & Guarded */}
         <Route
           path="/"
           element={
             <ProtectedRoute>
-              <DashboardLayout />
+              <SingleTabGuard>
+                <DashboardLayout />
+              </SingleTabGuard>
             </ProtectedRoute>
           }
         >
           {/* Default dashboard redirect based on role */}
           <Route index element={<RoleHomeRedirect />} />
+
+          {/* Manual off-system call logger — any signed-in caller. */}
+          <Route path="manual-call" element={<RoleGuard><ManualCallUpload /></RoleGuard>} />
+          <Route path="notepad" element={<RoleGuard><Notepad /></RoleGuard>} />
+          <Route path="trucks-knowledge" element={<RoleGuard><TrucksKnowledge /></RoleGuard>} />
 
           {/* Live Core Features (Redux Connected) */}
           <Route path="th/overview-live" element={<RoleGuard permission="leads:view"><ThHomeDashboard /></RoleGuard>} />
@@ -282,6 +303,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="wct/wct-performance-stats" element={<RoleGuard permission="calls:dial"><WctPerformanceStats /></RoleGuard>} />
           <Route path="wct/wct-disposition-gate" element={<RoleGuard permission="calls:dial"><WctDispositionGate /></RoleGuard>} />
           <Route path="wct/wct-d7-upsell-queue" element={<RoleGuard permission="calls:dial"><WctD7UpsellQueue /></RoleGuard>} />
+          <Route path="wct/wct-expiring-soon" element={<RoleGuard permission="calls:dial"><WctExpiringSoon /></RoleGuard>} />
           <Route path="wct/wct-campaign-leads" element={<RoleGuard permission="calls:dial"><WctCampaignLeads /></RoleGuard>} />
           <Route path="wct/wct-call-history" element={<RoleGuard permission="calls:dial"><WctCallHistory /></RoleGuard>} />
           <Route path="wct/wct-incoming-calls" element={<RoleGuard permission="calls:dial"><WctIncomingCalls /></RoleGuard>} />
@@ -309,6 +331,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="mm/mm-campaign-leads" element={<RoleGuard permission="calls:dial"><MmCampaignLeads /></RoleGuard>} />
           <Route path="mm/mm-placed-drivers" element={<RoleGuard permission="calls:dial"><MmPlacedDrivers /></RoleGuard>} />
           <Route path="mm/mm-job-board" element={<RoleGuard permission="calls:dial"><MmJobBoard /></RoleGuard>} />
+          <Route path="mm/mm-applicant-matchmaking" element={<RoleGuard permission="calls:dial"><MmApplicantMatchmaking /></RoleGuard>} />
           <Route path="mm/mm-job-search" element={<RoleGuard permission="calls:dial"><MmJobSearch /></RoleGuard>} />
           <Route path="mm/mm-job-detail" element={<RoleGuard permission="calls:dial"><MmJobDetail /></RoleGuard>} />
           <Route path="mm/mm-training-hub" element={<RoleGuard permission="calls:dial"><MmTrainingHub /></RoleGuard>} />
@@ -325,12 +348,15 @@ export const AppRoutes: React.FC = () => {
           <Route path="sc/absconding-protocol-tracker" element={<RoleGuard permission="calls:dial"><AbscondingProtocolTracker /></RoleGuard>} />
 
           {/* ── Incentive Engine Routes ── */}
+          <Route path="my-target" element={<RoleGuard permission="calls:dial"><MyRevenueTarget /></RoleGuard>} />
           <Route path="dw/my-incentive" element={<RoleGuard permission="calls:dial"><MyIncentivePage /></RoleGuard>} />
           <Route path="wct/my-incentive" element={<RoleGuard permission="calls:dial"><MyIncentivePage /></RoleGuard>} />
           <Route path="mm/my-incentive" element={<RoleGuard permission="calls:dial"><MyIncentivePage /></RoleGuard>} />
           <Route path="sc/my-incentive" element={<RoleGuard permission="calls:dial"><MyIncentivePage /></RoleGuard>} />
           <Route path="tl/team-incentive" element={<RoleGuard permission="leads:view"><PodIncentiveSummary /></RoleGuard>} />
           <Route path="th/incentive-command-center" element={<RoleGuard permission="leads:view"><IncentiveCommandCenter /></RoleGuard>} />
+          <Route path="th/revenue-challenge" element={<RoleGuard permission="leads:view"><RevenueChallenge /></RoleGuard>} />
+          <Route path="th/connectivity-sla" element={<RoleGuard permission="calls:view"><ConnectivitySla /></RoleGuard>} />
           <Route path="th/payroll-export" element={<RoleGuard permission="leads:view"><PayrollExport /></RoleGuard>} />
           <Route path="admin/incentive-config" element={<RoleGuard permission="admin:view"><IncentiveConfiguration /></RoleGuard>} />
           <Route path="admin/parity-dashboard" element={<RoleGuard permission="admin:view"><ParityEquityDashboard /></RoleGuard>} />

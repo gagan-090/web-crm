@@ -185,6 +185,39 @@ export function useMmCallFlow({ onToast, onLogSaved }: UseMmCallFlowOptions = {}
   }, [guardMessage, toast, dial]);
 
   /**
+   * Dial a driver straight from the Driver Database modal (not a job applicant).
+   * Same matchmaking flow as callApplicant — the call is tagged with the job and
+   * the match outcome from the disposition — but its process is stamped
+   * 'driverbase-matchmaking' so these outreach calls are distinguishable from
+   * calls made off a job's own applicant list.
+   */
+  const callDatabaseDriver = useCallback((args: {
+    jobId: string;
+    transporter?: { id: number; name: string; mobile: string; unique_id?: string };
+    driver: { driver_id: number; name: string; mobile: string; unique_id: string };
+    isGreenline?: boolean;
+  }) => {
+    const { jobId, driver, transporter, isGreenline } = args;
+    const blocked = guardMessage();
+    if (blocked) { toast(blocked); return; }
+    if (!driver.mobile) { toast('This driver has no phone number on record.'); return; }
+
+    writePendingMmContext({
+      kind: 'driver',
+      jobId,
+      leadId: driver.driver_id,
+      name: driver.name,
+      isGreenline: !!isGreenline,
+      process: 'driverbase-matchmaking',
+      conferenced: [],
+      conferenceParty: transporter?.mobile
+        ? { id: transporter.id, name: transporter.name, mobile: transporter.mobile, unique_id: transporter.unique_id, role: 'transporter' }
+        : undefined,
+    });
+    dial(driver.mobile, driver.driver_id, driver.name, driver.unique_id, 'driver');
+  }, [guardMessage, toast, dial]);
+
+  /**
    * Bridge an applicant into the live transporter call (Task 3's direction).
    * The SAN widget performs the actual conferencing; the leg is logged through
    * the same event path the call bar uses so there is a single code path.
@@ -286,7 +319,7 @@ export function useMmCallFlow({ onToast, onLogSaved }: UseMmCallFlowOptions = {}
            (detail.submitted.disposition === 'callback_later' ? 'callback' : 'pending'))
         : undefined;
 
-      tagCall({ call_id: callId, job_id: pending.jobId, match_status: matchStatus })
+      tagCall({ call_id: callId, job_id: pending.jobId, match_status: matchStatus, process: pending.process })
         .unwrap()
         .then(() => onLogSaved?.(pending))
         .catch((err) => {
@@ -307,6 +340,7 @@ export function useMmCallFlow({ onToast, onLogSaved }: UseMmCallFlowOptions = {}
   return {
     callTransporter,
     callApplicant,
+    callDatabaseDriver,
     addApplicantToConference,
     // Job brief (transporter job details → `jobs`)
     jobBriefTarget,

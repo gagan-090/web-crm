@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGetDwCallHistoryQuery } from '../../services/api/webCrmApi';
+import { useGetDwCallHistoryQuery, useLazyGetDwCallHistoryQuery } from '../../services/api/webCrmApi';
+import { HarshitExcelExport } from '../../shared/components/HarshitExcelExport';
+import type { ExcelColumn } from '../../shared/utils/exportExcel';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import {
   DWC_CONNECTED_OPTIONS,
@@ -67,6 +69,8 @@ export const DwCallHistory: React.FC = () => {
     feedback: feedbackFilter !== 'all' ? feedbackFilter : undefined,
     per_page: 15
   });
+  // Separate on-demand fetch for the Excel export — pulls the whole filtered log.
+  const [triggerDwAll] = useLazyGetDwCallHistoryQuery();
 
   const records = response?.data || [];
   const feedbackOptions = response?.feedback_options || [];
@@ -185,6 +189,33 @@ export const DwCallHistory: React.FC = () => {
             <h2 className="text-2xl font-bold text-gray-800">Completed Call Logs & Feedback</h2>
           </div>
           <div className="flex items-center gap-2 self-start md:self-auto">
+            <HarshitExcelExport
+              filename="dw_call_history"
+              fetchAll={async (range) => {
+                const res = await triggerDwAll({
+                  per_page: 'all',
+                  search: searchQuery || undefined,
+                  feedback: feedbackFilter !== 'all' ? feedbackFilter : undefined,
+                  date_from: range.date_from,
+                  date_to: range.date_to,
+                }).unwrap();
+                return res.data || [];
+              }}
+              columns={[
+                { header: 'Name', value: (r: any) => r.name },
+                { header: 'TMID', value: (r: any) => r.tmid },
+                { header: 'Mobile', value: (r: any) => r.mobile },
+                { header: 'Direction', value: (r: any) => (String(r.process).toLowerCase() === 'incoming' ? 'Incoming' : 'Outgoing') },
+                { header: 'Call Status', value: (r: any) => (r.call_status || '').replace(/_/g, ' ') },
+                { header: 'Feedback', value: (r: any) => r.call_feedback },
+                { header: 'Remarks', value: (r: any) => r.call_remarks },
+                { header: 'Duration', value: (r: any) => formatDuration(r.duration_secs) },
+                { header: 'Call Type', value: (r: any) => r.call_type },
+                { header: 'Process', value: (r: any) => r.process },
+                { header: 'Date & Time', value: (r: any) => r.date_display },
+                { header: 'Recording URL', value: (r: any) => r.recording_url },
+              ] as ExcelColumn<any>[]}
+            />
             <button
               onClick={() => refetch()}
               disabled={isFetching}
@@ -417,8 +448,12 @@ export const DwCallHistory: React.FC = () => {
                       {formatDuration(r.duration_secs)}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-xs font-bold text-gray-800 capitalize">{r.call_type}</div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">{r.process}</div>
+                      <div className="text-xs font-bold text-gray-800 capitalize">
+                        {r.is_manual ? 'Off-system' : r.call_type}
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        {r.is_manual ? `Incoming · ${String(r.channel || '').replace('_', '-')}` : r.process}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-xs font-medium text-gray-500">
                       {r.date_display}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useGetMmDriverProfileQuery } from '../../services/api/webCrmApi';
+import DriverExtraContactsPanel from './DriverExtraContactsPanel';
 
 // Driver images/documents are served from the TruckMitr public bucket (same
 // base the mobile app uses). Relative paths get prefixed; full URLs pass through.
@@ -124,7 +125,7 @@ export const DriverDetailsModal: React.FC<Props> = ({ open, driverId, driverName
   const callTimeline = d?.call_timeline ?? [];
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="relative bg-gray-50 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
@@ -325,6 +326,14 @@ export const DriverDetailsModal: React.FC<Props> = ({ open, driverId, driverName
                 )}
               </div>
 
+              {/* ── Family / friends who can reach the driver ── */}
+              <DriverExtraContactsPanel
+                contacts={d.extra_contacts ?? []}
+                driverId={driverId}
+                driverName={driverName}
+                driverTmid={uniqueId}
+              />
+
               {/* ── Complete call timeline ── */}
               <div className="bg-white rounded-xl border border-gray-200 p-3.5">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider mb-2 text-[#8E44AD]">
@@ -355,6 +364,11 @@ export const DriverDetailsModal: React.FC<Props> = ({ open, driverId, driverName
                           )}
                           {c.transporter_name && (
                             <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded">{c.transporter_name}</span>
+                          )}
+                          {c.relative && (
+                            <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                              Called {c.relative.relation}{c.relative.name ? ` · ${c.relative.name}` : ''}{c.relative.number_masked ? ` (${c.relative.number_masked})` : ''}
+                            </span>
                           )}
                           <span className="ml-auto text-[9px] text-gray-400 font-mono">
                             {new Date(c.called_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}

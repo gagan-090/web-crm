@@ -2,7 +2,10 @@ import React, { useEffect, useState } from 'react';
 import {
   useGetPlacementReportQuery,
   type PlacementRow,
+  type PlacementReportTab,
 } from '../../services/api/webCrmApi';
+import { useMmCallFlow } from './useMmCallFlow';
+import DriverDetailsModal from './DriverDetailsModal';
 
 // ── Interview Done · Placed Drivers ─────────────────────────────────────────
 //
@@ -20,18 +23,55 @@ import {
 const PER_PAGE = 25;
 
 const TABS = [
+  { value: 'all' as const, label: 'All', icon: 'list' },
   { value: 'interview_done' as const, label: 'Interview Done', icon: 'record_voice_over' },
   { value: 'placed' as const, label: 'Placed Drivers', icon: 'handshake' },
 ];
 
+// Colour the outcome chip in the combined "All" view so Interview Done and
+// Matchmaking/Placement Done rows are told apart at a glance.
+const outcomeBadge = (outcome: string): string => {
+  const o = (outcome || '').toLowerCase();
+  if (o.includes('interview')) return 'bg-purple-50 text-[#8E44AD] border-purple-200';
+  if (o.includes('matchmaking') || o.includes('placement') || o.includes('placed')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  return 'bg-gray-50 text-gray-500 border-gray-200';
+};
+
 const MmPlacedDrivers: React.FC = () => {
-  const [tab, setTab] = useState<'interview_done' | 'placed'>('interview_done');
+  const [tab, setTab] = useState<PlacementReportTab>('all');
   const [jobManager, setJobManager] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [term, setTerm] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+
+  // Toast + the driver whose job feedback is open. The feedback view is the same
+  // read-only DriverDetailsModal the Job Board opens, so an agent reads the exact
+  // timeline here that they would there.
+  const [toast, setToast] = useState<string | null>(null);
+  const [detailsDriver, setDetailsDriver] = useState<{ id: number; name: string; tmid: string } | null>(null);
+  const flashToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3500); };
+
+  // Same SAN CTI dial the Job Board uses: the call is placed on the DRIVER's own
+  // call_history_ivr row, so the global disposition modal opens on hang-up with
+  // the MM options (incl. "Placement Done"), and — because the driver is named
+  // on the row — a placement filed here can never fall into the "—" gap.
+  const { callApplicant } = useMmCallFlow({ onToast: flashToast });
+
+  const handleCall = (r: PlacementRow) => {
+    if (!r.driver_id || !r.driver_mobile) { flashToast('No driver phone number on this row.'); return; }
+    callApplicant({
+      jobId: r.job_id || '',
+      transporterName: r.transporter_name || '',
+      driver: {
+        driver_id: r.driver_id,
+        name: r.driver_name || 'Driver',
+        mobile: r.driver_mobile,
+        unique_id: r.driver_tmid || '',
+      },
+    });
+  };
 
   useEffect(() => {
     const t = setTimeout(() => { setSearch(term.trim()); setPage(1); }, 300);
@@ -163,7 +203,7 @@ const MmPlacedDrivers: React.FC = () => {
         </button>
 
         <span className="text-gray-400 font-bold shrink-0 ml-auto">
-          {isFetching ? 'Loading…' : `${total.toLocaleString()} ${tab === 'placed' ? 'placements' : 'interviews'}`}
+          {isFetching ? 'Loading…' : `${total.toLocaleString()} ${tab === 'placed' ? 'placements' : tab === 'interview_done' ? 'interviews' : 'records'}`}
         </span>
       </div>
 
@@ -176,7 +216,9 @@ const MmPlacedDrivers: React.FC = () => {
               <th className="p-3">Driver TMID</th>
               <th className="p-3">Driver Name</th>
               <th className="p-3">Transporter TMID</th>
-              <th className="p-3">{tab === 'placed' ? 'Placed' : 'Interview'} Date &amp; Time</th>
+              {tab === 'all' && <th className="p-3">Outcome</th>}
+              <th className="p-3">{tab === 'placed' ? 'Placed' : tab === 'interview_done' ? 'Interview' : 'Recorded'} Date &amp; Time</th>
+              <th className="p-3">Joining Date (DOJ)</th>
               <th className="p-3 pr-4">Job Manager Name</th>
             </tr>
           </thead>
@@ -184,24 +226,39 @@ const MmPlacedDrivers: React.FC = () => {
             {rows.map(r => (
               <tr key={r.id} className="hover:bg-white transition-colors">
                 <td className="p-3 pl-4">
-                  {r.job_id ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="font-mono font-bold text-[#8E44AD]" title={r.job_title || undefined}>
-                        {r.job_id}
-                      </span>
-                      {/* The job's own total, not the filtered view's. */}
-                      {tab === 'placed' && !!r.job_placed_total && r.job_placed_total > 1 && (
-                        <span
-                          className="px-1.5 py-0.5 rounded-full bg-purple-50 text-[#8E44AD] border border-purple-100 font-mono text-[9px] font-bold"
-                          title={`${r.job_placed_total} drivers placed on this job in total`}
+                  <div className="flex items-center gap-2">
+                    {/* Call section — dial the driver. Fixed-width slot so the Job
+                        IDs stay aligned whether or not a row is callable. */}
+                    <span className="w-6 shrink-0 flex items-center justify-center">
+                      {r.driver_id && r.driver_mobile && (
+                        <button
+                          onClick={() => handleCall(r)}
+                          title="Call driver"
+                          className="w-6 h-6 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-700 flex items-center justify-center transition-colors"
                         >
-                          {r.job_placed_total}
-                        </span>
+                          <span className="material-symbols-outlined text-[13px]">call</span>
+                        </button>
                       )}
                     </span>
-                  ) : (
-                    <span className="text-gray-300" title="The call was dispositioned without a job tagged on it">—</span>
-                  )}
+                    {r.job_id ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-[#8E44AD]" title={r.job_title || undefined}>
+                          {r.job_id}
+                        </span>
+                        {/* The job's own total, not the filtered view's. */}
+                        {tab === 'placed' && !!r.job_placed_total && r.job_placed_total > 1 && (
+                          <span
+                            className="px-1.5 py-0.5 rounded-full bg-purple-50 text-[#8E44AD] border border-purple-100 font-mono text-[9px] font-bold"
+                            title={`${r.job_placed_total} drivers placed on this job in total`}
+                          >
+                            {r.job_placed_total}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300" title="The call was dispositioned without a job tagged on it">—</span>
+                    )}
+                  </div>
                 </td>
                 <td className="p-3">
                   {r.driver_tmid ? (
@@ -216,19 +273,38 @@ const MmPlacedDrivers: React.FC = () => {
                   )}
                 </td>
                 <td className="p-3 font-semibold text-gray-800">
-                  {r.driver_name || <span className="text-gray-300">—</span>}
-                  {r.in_driver_bank && (
-                    <span
-                      className="ml-1.5 align-middle px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold uppercase"
-                      title="Also recorded in the Driver Bank"
-                    >
-                      Bank
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {r.driver_id ? (
+                      <button
+                        onClick={() => setDetailsDriver({ id: r.driver_id!, name: r.driver_name || 'Driver', tmid: r.driver_tmid || '' })}
+                        className="text-left text-gray-800 hover:text-[#8E44AD] hover:underline"
+                        title="Open driver job feedback"
+                      >
+                        {r.driver_name || 'Driver'}
+                      </button>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                    {r.in_driver_bank && (
+                      <span
+                        className="align-middle px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold uppercase"
+                        title="Also recorded in the Driver Bank"
+                      >
+                        Bank
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="p-3 font-mono text-[11px]">
                   {r.transporter_tmid || <span className="text-gray-300 font-sans">—</span>}
                 </td>
+                {tab === 'all' && (
+                  <td className="p-3">
+                    <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-bold border whitespace-nowrap ${outcomeBadge(r.outcome)}`}>
+                      {r.outcome}
+                    </span>
+                  </td>
+                )}
                 <td className="p-3 whitespace-nowrap">
                   {r.placed_at_display}
                   {r.entries > 1 && (
@@ -236,6 +312,11 @@ const MmPlacedDrivers: React.FC = () => {
                       ×{r.entries}
                     </span>
                   )}
+                </td>
+                <td className="p-3 whitespace-nowrap">
+                  {r.joining_date_display
+                    ? <span className="font-semibold text-emerald-700">{r.joining_date_display}</span>
+                    : <span className="text-gray-300">—</span>}
                 </td>
                 <td className="p-3 pr-4 font-semibold">
                   {r.job_manager || <span className="text-gray-300">—</span>}
@@ -248,7 +329,7 @@ const MmPlacedDrivers: React.FC = () => {
 
             {!isFetching && rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-10 text-center text-gray-400 italic">
+                <td colSpan={tab === 'all' ? 8 : 7} className="p-10 text-center text-gray-400 italic">
                   {isError
                     ? 'Could not load the report.'
                     : hasFilters
@@ -282,6 +363,23 @@ const MmPlacedDrivers: React.FC = () => {
               Next
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Driver job feedback — the same read-only timeline the Job Board opens. */}
+      {detailsDriver && (
+        <DriverDetailsModal
+          open={!!detailsDriver}
+          driverId={detailsDriver.id}
+          driverName={detailsDriver.name}
+          uniqueId={detailsDriver.tmid}
+          onClose={() => setDetailsDriver(null)}
+        />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-[11px] font-semibold px-4 py-2 rounded-lg shadow-lg">
+          {toast}
         </div>
       )}
     </main>

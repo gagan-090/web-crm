@@ -21,6 +21,17 @@ export interface DispositionData {
   disposition_sub?: string | null;
   callback_sub?: string | null;
   feedback_stage?: string | null;
+  /** Driver's joining date+time (ISO). Mandatory for MM Matchmaking/Interview Done. */
+  joining_date?: string | null;
+  /** Driver's family / friends (MM Interview / Placement Done). */
+  extra_contacts?: ExtraContact[] | null;
+}
+
+/** One additional contact for a driver — stored on call_history_ivr. */
+export interface ExtraContact {
+  relation: string;
+  name: string;
+  number: string;
 }
 
 export interface ConferenceMember {

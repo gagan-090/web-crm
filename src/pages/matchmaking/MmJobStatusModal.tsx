@@ -2,23 +2,30 @@ import React, { useEffect, useState } from 'react';
 import {
   useUpdateMmJobStatusMutation,
   useGetMmJobStatusHistoryQuery,
+  useGetMmJobPlacementCandidatesQuery,
   JOB_STATUS_LABEL,
   type JobStatus,
 } from '../../services/api/webCrmApi';
 
-// ── Job status: Open · Hold · Closed ────────────────────────────────────────
+// ── Job status: Open · Hold · Closed · Fulfilled ────────────────────────────
 //
 // The agent's own call on where the job stands, with the reason in their words.
 //
-// Closing here CLOSES THE JOB: the backend writes jobs.closed_job='yes' next to
-// jobs.job_status, so the job board's Closed tab, the exports and the mobile app
-// — all of which read that flag — agree with this screen. Hold is not a close:
-// the job stays on the open boards, marked as paused, because a transporter who
-// is unreachable this week is not a job that is over.
+// Closing OR fulfilling here CLOSES THE JOB: the backend writes
+// jobs.closed_job='yes' next to jobs.job_status, so the job board, the exports
+// and the mobile app — all of which read that flag — agree with this screen.
+// Hold is not a close: the job stays on the open boards, marked as paused,
+// because a transporter who is unreachable this week is not a job that is over.
 //
-// The remark is capped at 500 characters both here and in the backend
-// validation, and it is REQUIRED for Hold and Closed — a paused or finished job
-// with no reason is what leaves the next agent guessing.
+// FULFILLED is a close with a record: the driver requirement was MET. Choosing
+// it opens a picker of the job's own applicants; the agent selects the driver(s)
+// who filled it — at most as many as the job needs — and their TMIDs are saved
+// on jobs.driver_placed. The board files a fulfilled job under its own green
+// bucket, apart from a plain Closed.
+//
+// The remark is capped at 500 characters and REQUIRED for Hold and Closed — a
+// paused or finished job with no reason is what leaves the next agent guessing.
+// It stays optional for Fulfilled: the chosen drivers ARE the reason.
 
 const MAX_REMARKS = 500;
 
@@ -36,6 +43,12 @@ const OPTIONS: { value: JobStatus; icon: string; hint: string; active: string }[
     active: 'border-amber-500 bg-amber-50 text-amber-700',
   },
   {
+    value: 'fulfilled',
+    icon: 'task_alt',
+    hint: 'Driver requirement met — pick who filled it',
+    active: 'border-emerald-500 bg-emerald-50 text-emerald-700',
+  },
+  {
     value: 'closed',
     icon: 'cancel',
     hint: 'Finished — closes the job everywhere',
@@ -51,20 +64,47 @@ interface Props {
   currentRemarks?: string | null;
   currentBy?: string | null;
   currentAt?: string | null;
+  /** Seats the job needs — the cap on how many drivers a fulfil can select. */
+  driversNeeded?: number | null;
+  /** TMIDs already recorded as placed, so the picker opens with them ticked. */
+  placedDrivers?: string[] | null;
   onClose: () => void;
   onSaved: (status: JobStatus) => void;
 }
 
 const MmJobStatusModal: React.FC<Props> = ({
-  open, jobId, jobTitle, current, currentRemarks, currentBy, currentAt, onClose, onSaved,
+  open, jobId, jobTitle, current, currentRemarks, currentBy, currentAt,
+  driversNeeded, placedDrivers, onClose, onSaved,
 }) => {
   const [status, setStatus] = useState<JobStatus>(current);
   const [remarks, setRemarks] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  // TMIDs the agent has ticked in the Fulfilled picker.
+  const [picked, setPicked] = useState<string[]>([]);
+  // Free-text filter over the applicant list (name / TMID / mobile).
+  const [candSearch, setCandSearch] = useState('');
 
   const [save, { isLoading }] = useUpdateMmJobStatusMutation();
   const { data: history } = useGetMmJobStatusHistoryQuery(jobId, { skip: !open || !jobId });
+
+  // Applicants to pick from — fetched only once the agent chooses Fulfilled.
+  const isFulfilling = status === 'fulfilled';
+  const { data: candData, isFetching: loadingCandidates } = useGetMmJobPlacementCandidatesQuery(
+    jobId,
+    { skip: !open || !jobId || !isFulfilling },
+  );
+  const applicants = candData?.data.applicants ?? [];
+  // Filter by name / TMID / mobile — so a big applicant list is searchable.
+  const q = candSearch.trim().toLowerCase();
+  const filteredApplicants = q
+    ? applicants.filter(a =>
+        (a.name || '').toLowerCase().includes(q) ||
+        (a.tmid || '').toLowerCase().includes(q) ||
+        (a.mobile || '').toLowerCase().includes(q))
+    : applicants;
+  // The seat cap: the endpoint is authoritative, the prop covers the first paint.
+  const cap = Math.max(1, candData?.data.drivers_needed ?? driversNeeded ?? 1);
 
   // Reopening the modal starts from what the job is now, not from whatever was
   // typed and abandoned last time.
@@ -74,14 +114,35 @@ const MmJobStatusModal: React.FC<Props> = ({
       setRemarks('');
       setError(null);
       setShowHistory(false);
+      setCandSearch('');
+      setPicked(Array.isArray(placedDrivers) ? placedDrivers.filter(Boolean) : []);
     }
-  }, [open, current]);
+  }, [open, current, placedDrivers]);
+
+  // Seed the ticks from whatever the server already has placed the moment the
+  // candidates arrive (covers a fulfilled job re-opened to edit its drivers).
+  useEffect(() => {
+    if (isFulfilling && candData?.data.placed?.length && picked.length === 0) {
+      setPicked(candData.data.placed.filter(Boolean).slice(0, cap));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candData, isFulfilling]);
 
   if (!open) return null;
 
+  const toggle = (tmid: string) => {
+    setError(null);
+    setPicked(prev => {
+      if (prev.includes(tmid)) return prev.filter(t => t !== tmid);
+      if (prev.length >= cap) return prev;   // hard cap — can't tick past the seats
+      return [...prev, tmid];
+    });
+  };
+
   const trimmed = remarks.trim();
-  const needsRemark = status !== 'open';
-  const unchanged = status === current && !trimmed;
+  const needsRemark = status === 'hold' || status === 'closed';
+  const validFulfil = !isFulfilling || (picked.length > 0 && picked.length <= cap);
+  const unchanged = status === current && !trimmed && !isFulfilling;
 
   const submit = async () => {
     setError(null);
@@ -89,12 +150,22 @@ const MmJobStatusModal: React.FC<Props> = ({
       setError('Add a remark explaining why the job is being put on hold or closed.');
       return;
     }
+    if (isFulfilling && picked.length === 0) {
+      setError('Pick at least one applicant who fills this job.');
+      return;
+    }
     try {
-      await save({ job_id: jobId, status, remarks: trimmed || undefined }).unwrap();
+      await save({
+        job_id: jobId,
+        status,
+        remarks: trimmed || undefined,
+        placed_drivers: isFulfilling ? picked : undefined,
+      }).unwrap();
       onSaved(status);
       onClose();
     } catch (e: any) {
       setError(
+        e?.data?.errors?.placed_drivers?.[0] ||
         e?.data?.errors?.remarks?.[0] ||
         e?.data?.message ||
         'Could not update the job status. Try again.'
@@ -165,6 +236,99 @@ const MmJobStatusModal: React.FC<Props> = ({
             })}
           </div>
 
+          {/* Fulfilled → pick the applicants who filled the job (≤ seats) */}
+          {isFulfilling && (
+            <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/40 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider">
+                  Placed drivers
+                </p>
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${
+                  picked.length > cap ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-700'
+                }`}>
+                  {picked.length} / {cap} selected
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-500 mb-2">
+                This job needs <b>{cap}</b> driver{cap !== 1 ? 's' : ''}. Tick the applicant{cap !== 1 ? 's' : ''} who filled it.
+              </p>
+
+              {/* Search the applicants by name, TMID or mobile */}
+              {applicants.length > 0 && (
+                <div className="relative mb-2">
+                  <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">search</span>
+                  <input
+                    value={candSearch}
+                    onChange={e => setCandSearch(e.target.value)}
+                    placeholder="Search name, TMID or mobile…"
+                    className="w-full pl-7 pr-7 py-1.5 border border-gray-200 rounded-lg text-[11px] outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+                  />
+                  {candSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCandSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {loadingCandidates ? (
+                <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-gray-400">
+                  <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                  Loading applicants…
+                </div>
+              ) : applicants.length === 0 ? (
+                <div className="py-6 text-center text-[11px] text-gray-400">
+                  <span className="material-symbols-outlined text-2xl block mb-1">person_off</span>
+                  No one has applied to this job yet, so there is nobody to place.
+                </div>
+              ) : filteredApplicants.length === 0 ? (
+                <div className="py-6 text-center text-[11px] text-gray-400">
+                  No applicant matches “{candSearch}”.
+                </div>
+              ) : (
+                <ul className="space-y-1 max-h-56 overflow-y-auto custom-scrollbar pr-0.5">
+                  {filteredApplicants.map(a => {
+                    const tmid = a.tmid || '';
+                    const on = !!tmid && picked.includes(tmid);
+                    const capped = !on && picked.length >= cap;
+                    return (
+                      <li key={a.driver_id}>
+                        <button
+                          type="button"
+                          disabled={!tmid || capped}
+                          onClick={() => tmid && toggle(tmid)}
+                          title={!tmid ? 'This applicant has no TMID and cannot be placed' : capped ? `Only ${cap} can be placed` : undefined}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border text-left transition-colors ${
+                            on ? 'border-emerald-500 bg-white'
+                              : capped || !tmid ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
+                              : 'border-gray-200 bg-white hover:border-emerald-300'
+                          }`}
+                        >
+                          <span className={`material-symbols-outlined text-[18px] ${on ? 'text-emerald-600' : 'text-gray-300'}`}>
+                            {on ? 'check_box' : 'check_box_outline_blank'}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-bold text-[11px] text-gray-800 truncate">{a.name}</span>
+                            <span className="block font-mono text-[10px] text-gray-400 truncate">
+                              {a.tmid || 'No TMID'}{a.mobile ? ` · ${a.mobile}` : ''}
+                            </span>
+                          </span>
+                          {a.applied_at && (
+                            <span className="text-[9px] text-gray-400 shrink-0">{a.applied_at}</span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+
           {/* Remarks */}
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -185,6 +349,7 @@ const MmJobStatusModal: React.FC<Props> = ({
               placeholder={
                 status === 'closed' ? 'Why is this job being closed? (e.g. all positions filled)'
                 : status === 'hold' ? 'Why is this job on hold, and until when?'
+                : status === 'fulfilled' ? 'Anything worth noting about the placement (optional)'
                 : 'Anything worth noting (optional)'
               }
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[11px] outline-none focus:ring-1 focus:ring-[#8E44AD] resize-none"
@@ -243,14 +408,18 @@ const MmJobStatusModal: React.FC<Props> = ({
           </button>
           <button
             onClick={submit}
-            disabled={isLoading || unchanged}
-            title={unchanged ? 'Pick a different status, or add a remark' : undefined}
+            disabled={isLoading || unchanged || !validFulfil}
+            title={
+              unchanged ? 'Pick a different status, or add a remark'
+              : !validFulfil ? 'Pick at least one applicant who fills this job'
+              : undefined
+            }
             className="px-4 py-1.5 rounded-lg bg-[#8E44AD] text-white font-bold text-[11px] hover:bg-[#7d3c98] disabled:opacity-50 flex items-center gap-1.5"
           >
             {isLoading && (
               <span className="material-symbols-outlined text-[14px] animate-spin">progress_activity</span>
             )}
-            Save status
+            {isFulfilling ? 'Mark fulfilled' : 'Save status'}
           </button>
         </div>
       </div>

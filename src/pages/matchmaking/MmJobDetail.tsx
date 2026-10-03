@@ -7,16 +7,19 @@ import {
   useUpdateMmCallRemarksMutation,
   JOB_STATUS_LABEL,
   type MmApplicant,
-  type MmApplicantTimelineEntry,
+  type MmApplicantCounts,
+  type MmApplicantBucket,
   type JobStatus,
 } from '../../services/api/webCrmApi';
 import { useMmCallFlow } from './useMmCallFlow';
 import GreenlineScreeningModal from './GreenlineScreeningModal';
 import DriverDetailsModal from './DriverDetailsModal';
+import DriverDatabaseModal from './DriverDatabaseModal';
 import TransporterDetailsModal from './TransporterDetailsModal';
 import ResizeHandle, { useResizablePane } from '../../shared/components/ResizeHandle';
 import GreenlineApplicantList from './GreenlineApplicantList';
 import MmJobBriefModal from './MmJobBriefModal';
+import DriverExtraContactsPanel from './DriverExtraContactsPanel';
 import MmConferenceDispositionModal from './MmConferenceDispositionModal';
 import MmAddToCallModal from './MmAddToCallModal';
 import MmConnectionRequestModal from './MmConnectionRequestModal';
@@ -104,6 +107,8 @@ const ErrorPanel: React.FC<{ label: string; onRetry: () => void }> = ({ label, o
 // ── Applicant Card ────────────────────────────────────────────────────────────
 interface ApplicantCardProps {
   driver: MmApplicant;
+  /** The job being viewed — the Call Timeline's "This Job" filter keys off it. */
+  jobId: string;
   isGreenline: boolean;
   /** True while a transporter call for THIS job is live — enables "Add Call". */
   canConference: boolean;
@@ -134,7 +139,10 @@ interface ApplicantCardProps {
  * disposition flow that writes all of them at once.
  */
 const TimelineRemark: React.FC<{
-  entry: MmApplicantTimelineEntry;
+  // Minimal shape so the same in-place editor serves both the applicant call
+  // timeline and the transporter call log — ownership (can_edit_remarks) is
+  // always decided by the backend.
+  entry: { remarks?: string | null; call_id?: number | null; can_edit_remarks?: boolean };
   onSaved: (msg: string) => void;
 }> = ({ entry, onSaved }) => {
   const [editing, setEditing] = useState(false);
@@ -220,9 +228,16 @@ const TimelineRemark: React.FC<{
   );
 };
 
-const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canConference, readOnly, ownerName, onCall, onAddToCall, onScreen, onViewDetails, onConnect, canConnect, onToast }) => {
+const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, jobId, isGreenline, canConference, readOnly, ownerName, onCall, onAddToCall, onScreen, onViewDetails, onConnect, canConnect, onToast }) => {
   const [expanded, setExpanded] = useState(false);
   const timeline = driver.call_timeline ?? [];
+  // Timeline defaults to THIS job's calls only — a driver's card carries every
+  // call anyone ever made to him across all jobs, and the agent wants the
+  // history that bears on the job in front of them. The toggle expands it to
+  // the full "All Call history".
+  const [timelineThisJob, setTimelineThisJob] = useState(true);
+  const hasOtherJobs = timeline.some(e => e.job_id !== jobId);
+  const visibleTimeline = timelineThisJob ? timeline.filter(e => e.job_id === jobId) : timeline;
 
   return (
     <div className={`bg-white border rounded-xl transition-shadow ${driver.is_matched ? 'border-green-300 shadow-green-50 shadow' : 'border-gray-200 hover:shadow-sm'}`}>
@@ -251,14 +266,20 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
             {driver.call_lock && (
               <span
                 className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
-                  driver.call_lock.is_mine
+                  driver.call_lock.is_mine || driver.call_lock.is_job_owner
                     ? 'bg-indigo-100 text-indigo-700'
                     : 'bg-amber-100 text-amber-700'
                 }`}
                 title={driver.call_lock.message}
               >
                 <span className="material-symbols-outlined text-[10px]">lock</span>
-                {driver.call_lock.is_mine ? 'YOURS' : driver.call_lock.owner_name}
+                {/* You took the lock → YOURS. You inherited the job it belongs to
+                    → YOURS · via <original owner>. Otherwise it's theirs. */}
+                {driver.call_lock.is_mine
+                  ? 'YOURS'
+                  : driver.call_lock.is_job_owner
+                    ? `YOURS · via ${driver.call_lock.owner_name}`
+                    : driver.call_lock.owner_name}
                 {/* WHICH job he is being placed on — the part that decides
                     whether he is callable from the job you are looking at. */}
                 {driver.call_lock.job_id && (
@@ -402,6 +423,12 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
                 </span>
                 <p className="text-[10px] text-gray-500 mt-1">{driver.match_making_status.feedback}</p>
                 <p className="text-[9px] text-gray-400">{driver.match_making_status.called_at}</p>
+                {driver.match_making_status.joining_date && (
+                  <p className="text-[9.5px] font-bold text-emerald-700 mt-1 flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-[12px]">event_available</span>
+                    Joining: {driver.match_making_status.joining_date}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -422,21 +449,58 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
             </div>
           )}
 
+          {/* Family / friends saved on Interview / Placement Done — callable. */}
+          <DriverExtraContactsPanel
+            hideWhenEmpty
+            contacts={driver.extra_contacts ?? []}
+            driverId={driver.driver_id}
+            driverName={driver.name}
+            driverTmid={driver.unique_id}
+            onToast={onToast}
+            canCall={!readOnly && driver.can_call !== false}
+            disabledReason={readOnly
+              ? `Assigned to ${ownerName || 'another agent'} — view only`
+              : driver.call_lock?.message}
+          />
+
           {/* Full Call Timeline */}
           {timeline.length > 0 ? (
             <div className="bg-white rounded-lg p-2 border border-gray-100">
-              <p className="text-[9px] text-gray-400 uppercase font-bold mb-2">
-                Call Timeline <span className="text-gray-300 font-normal">({timeline.length} entries)</span>
-              </p>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-[9px] text-gray-400 uppercase font-bold">
+                  Call Timeline{' '}
+                  <span className="text-gray-300 font-normal">
+                    ({visibleTimeline.length} {timelineThisJob ? 'for this job' : 'entries'})
+                  </span>
+                </p>
+                {/* Timeline shows THIS job's calls by default; this toggle swaps
+                    to the driver's full history. Shown only when there IS other
+                    history to expand into. Label = the view you'll switch to. */}
+                {hasOtherJobs && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setTimelineThisJob(v => !v); }}
+                    title={timelineThisJob
+                      ? 'Showing calls for THIS job only — click to show all call history'
+                      : `Showing ALL call history — click to show only calls about ${jobId}`}
+                    className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded border flex items-center gap-0.5 transition-colors bg-white text-gray-500 border-gray-200 hover:text-[#8E44AD] hover:border-[#8E44AD]"
+                  >
+                    <span className="material-symbols-outlined text-[11px]">{timelineThisJob ? 'history' : 'filter_list'}</span>
+                    {timelineThisJob ? 'All Call history' : 'This Job'}
+                  </button>
+                )}
+              </div>
+              {visibleTimeline.length === 0 ? (
+                <p className="text-[10px] text-gray-400 italic text-center py-3">No calls for this job yet.</p>
+              ) : (
               <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-                {timeline.map((entry, i) => (
+                {visibleTimeline.map((entry, i) => (
                   <div key={i} className="flex gap-2 items-start text-[10px]">
                     <div className="shrink-0 mt-0.5">
                       <div className={`w-2 h-2 rounded-full mt-0.5 ${
                         entry.call_status === 'connected' ? 'bg-green-500' :
                         entry.call_status === 'not_connected' ? 'bg-red-400' : 'bg-amber-400'
                       }`} />
-                      {i < timeline.length - 1 && (
+                      {i < visibleTimeline.length - 1 && (
                         <div className="w-px h-full bg-gray-200 ml-[3px] mt-0.5 min-h-[12px]" />
                       )}
                     </div>
@@ -461,6 +525,11 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
                             {entry.job_id}
                           </span>
                         )}
+                        {entry.relative && (
+                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                            Called {entry.relative.relation}{entry.relative.name ? ` · ${entry.relative.name}` : ''}{entry.relative.number_masked ? ` (${entry.relative.number_masked})` : ''}
+                          </span>
+                        )}
                         {entry.transporter_name && (
                           <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1 py-0.5 rounded">
                             {entry.transporter_name}
@@ -479,6 +548,7 @@ const ApplicantCard: React.FC<ApplicantCardProps> = ({ driver, isGreenline, canC
                   </div>
                 ))}
               </div>
+              )}
             </div>
           ) : driver.last_call_time ? (
             <div className="bg-white rounded-lg p-2 border border-gray-100">
@@ -572,6 +642,13 @@ const MmJobDetail: React.FC = () => {
   const [applicantStatus, setApplicantStatus] = useState('');
   const [applicantPage, setApplicantPage] = useState<number | null>(null);
   const [allApplicants, setAllApplicants] = useState<MmApplicant[]>([]);
+  const [counts, setCounts] = useState<MmApplicantCounts>({});
+  // The pipeline-stage bucket bar (server-side filter). '' / 'all' = every applicant.
+  const [bucket, setBucket] = useState<MmApplicantBucket | ''>('');
+  // "Today" — only drivers who applied to this job today.
+  const [todayOnly, setTodayOnly] = useState(false);
+  // Driver Database outreach modal (call any registered driver for this job).
+  const [showDriverDb, setShowDriverDb] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [screenTarget, setScreenTarget] = useState<{ driver: DriverRef; mode: 'conduct' | 'view' } | null>(null);
   const [detailsDriver, setDetailsDriver] = useState<DriverRef | null>(null);
@@ -595,6 +672,7 @@ const MmJobDetail: React.FC = () => {
   const {
     callTransporter,
     callApplicant,
+    callDatabaseDriver,
     addApplicantToConference,
     jobBriefTarget,
     openJobBrief,
@@ -635,7 +713,7 @@ const MmJobDetail: React.FC = () => {
     // 'new'/'connected', and 'connected' must mean the LATEST feedback is
     // connected (not-connected / call-back are excluded). Only `search` is
     // forwarded so the server keeps returning the full applicant set.
-    { jobId, per_page: 30, cursor: applicantPage ?? undefined, search: search || undefined },
+    { jobId, per_page: 30, cursor: applicantPage ?? undefined, search: search || undefined, status: bucket || undefined, today: todayOnly || undefined },
     { skip: !jobId }
   );
 
@@ -660,21 +738,29 @@ const MmJobDetail: React.FC = () => {
         return [...prev, ...rows.filter(a => !ids.has(a.application_id))];
       });
     }
+    // Job-wide bucket counts come back on every request (independent of the
+    // active bucket) — keep the latest for the header bar.
+    if (applicantsData?.counts) setCounts(applicantsData.counts);
   }, [applicantsData, applicantPage]);
 
-  // Search restarts server pagination from page 1. The status filter is purely
-  // client-side (below), so it must NOT reset the accumulated pages.
+  // Search and the bucket filter both run server-side, so either one restarts
+  // pagination from page 1.
   useEffect(() => {
     setApplicantPage(null);
-  }, [search]);
+  }, [search, bucket, todayOnly]);
 
-  // The feedback filter keys off `call_status`, which the backend already
-  // derives from each applicant's MOST RECENT call across every source:
+  // Most feedback chips key off `call_status`, which the backend derives from
+  // each applicant's MOST RECENT call across every source:
   //   New       → never called
   //   Connected → latest call connected
-  //   Pending   → called, but the latest outcome is not-connected / call-back
   // So "Connected" shows only applicants whose latest feedback is connected;
   // a driver whose most recent status is not-connected or call-back stays out.
+  //
+  // Pending is the exception: it is scoped to THIS job. It means "still owed a
+  // call for the job in front of me" — an applicant with no call tagged with
+  // this job_id — regardless of whether he was reached on some other job. The
+  // global call_status is useless for that, since a driver connected on job A
+  // is still un-worked on job B.
     // Canonical feedback key for a timeline entry: the disposition code the
     // agent picked (interested_job, placement_done…), falling back to the raw
     // call_feedback text when no code was stored.
@@ -697,7 +783,9 @@ const MmJobDetail: React.FC = () => {
       case 'new':            return a.call_status === 'New';
       case 'connected':      return a.call_status === 'Connected';
       case 'not_connected':  return a.call_status === 'Not Connected';
-      case 'pending':        return a.call_status === 'Pending';
+      // Uncalled FOR THIS JOB: no timeline entry tagged with this job_id,
+      // whatever his call history on other jobs looks like.
+      case 'pending':        return !(a.call_timeline ?? []).some(e => e.job_id === jobId);
       case 'not_interested': return a.call_status === 'Not Interested';
       default:               return true; // 'All'
     }
@@ -714,7 +802,7 @@ const MmJobDetail: React.FC = () => {
     { label: 'New', value: 'new', title: 'Never called' },
     { label: 'Connected', value: 'connected', title: 'Latest call connected' },
     { label: 'Not Connected', value: 'not_connected', title: 'Called, but the latest call did not connect' },
-    { label: 'Pending', value: 'pending', title: 'Latest call was a scheduled call-back — still owed' },
+    { label: 'Pending', value: 'pending', title: 'Not yet called for this job — still owed a call' },
     { label: 'Not Interested', value: 'not_interested', title: 'Latest feedback is Not Interested' },
   ];
 
@@ -778,6 +866,13 @@ const MmJobDetail: React.FC = () => {
     job?.job_status ??
     (['yes', '1', 'true'].includes(String(job?.closed_job ?? '').toLowerCase()) ? 'closed' : 'open');
   const jobStatusRemarks = job?.job_status_remarks ?? null;
+
+  // Placed drivers to render on a fulfilled job: prefer the name+TMID pairs the
+  // backend resolves, falling back to the raw TMIDs if only those are present.
+  const placedDriversList: Array<{ tmid: string; name: string | null }> =
+    job?.placed_drivers?.length
+      ? job.placed_drivers
+      : (job?.driver_placed ?? []).map((t) => ({ tmid: t, name: null }));
 
   // A transporter call for THIS job is live → applicants can be conferenced in
   // rather than called separately (Task 3's transporter-first direction).
@@ -948,12 +1043,17 @@ const MmJobDetail: React.FC = () => {
                         : 'Click to set the job status (Open / Hold / Closed)'
                   }
                   className={`px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 border transition-colors ${
-                    jobStatus === 'closed' ? 'bg-gray-100 text-gray-500 border-gray-200'
+                    jobStatus === 'fulfilled' ? 'bg-emerald-500 text-white border-emerald-600'
+                    : jobStatus === 'closed' ? 'bg-gray-100 text-gray-500 border-gray-200'
                     : jobStatus === 'hold' ? 'bg-amber-100 text-amber-700 border-amber-200'
                     : 'bg-green-100 text-green-700 border-green-200'
                   } ${readOnly ? 'cursor-not-allowed opacity-70' : 'hover:brightness-95'}`}
                 >
+                  {jobStatus === 'fulfilled' && <span className="material-symbols-outlined text-[12px]">task_alt</span>}
                   {JOB_STATUS_LABEL[jobStatus].toUpperCase()}
+                  {jobStatus === 'fulfilled' && (job.driver_placed?.length ?? 0) > 0 && (
+                    <span className="ml-0.5 px-1 rounded-full bg-white/25 font-black">{job.driver_placed!.length}</span>
+                  )}
                   {!readOnly && <span className="material-symbols-outlined text-[12px]">edit</span>}
                 </button>
               </span>
@@ -1052,6 +1152,92 @@ const MmJobDetail: React.FC = () => {
               </div>
             ) : null}
           </div>
+
+          {/* Job Status — Open / Hold / Closed / Fulfilled + remarks, and the
+              placed drivers when the requirement was met. */}
+          {job && !jobLoading && (
+            <div className="p-4 space-y-2 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Job Status</h2>
+                <button
+                  type="button"
+                  onClick={() => !readOnly && setShowJobStatus(true)}
+                  disabled={readOnly}
+                  title={readOnly ? `Assigned to ${jobOwnerName || 'another agent'} — only they can change it` : 'Change job status'}
+                  className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+                    readOnly ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-[#8E44AD] hover:bg-purple-50'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[14px]">edit</span>
+                  Change
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 border ${
+                  jobStatus === 'fulfilled' ? 'bg-emerald-500 text-white border-emerald-600'
+                  : jobStatus === 'closed' ? 'bg-gray-100 text-gray-500 border-gray-200'
+                  : jobStatus === 'hold' ? 'bg-amber-100 text-amber-700 border-amber-200'
+                  : 'bg-green-100 text-green-700 border-green-200'
+                }`}>
+                  {jobStatus === 'fulfilled' && <span className="material-symbols-outlined text-[13px]">task_alt</span>}
+                  {JOB_STATUS_LABEL[jobStatus].toUpperCase()}
+                </span>
+                {/* Approval is separate from Open/Hold/Closed: an unapproved
+                    job is not live in the app yet. */}
+                {job.approval_status && (
+                  <span
+                    title={job.approval_status === 'pending' ? 'Waiting for approval — not live in the app yet' : 'Approved — live in the app'}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-black border flex items-center gap-1 ${
+                      job.approval_status === 'pending'
+                        ? 'bg-sky-50 text-sky-700 border-sky-200'
+                        : 'bg-white text-green-700 border-green-200'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[13px]">
+                      {job.approval_status === 'pending' ? 'hourglass_top' : 'verified'}
+                    </span>
+                    {job.approval_status === 'pending' ? 'PENDING APPROVAL' : 'APPROVED'}
+                  </span>
+                )}
+                {(job.job_status_by_name || job.job_status_at) && (
+                  <span className="text-[9px] text-gray-400 font-semibold">
+                    {job.job_status_by_name}{job.job_status_at ? ` · ${job.job_status_at}` : ''}
+                  </span>
+                )}
+              </div>
+
+              {jobStatusRemarks && (
+                <div className="rounded-lg bg-gray-50 border border-gray-100 px-2.5 py-1.5">
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Remarks</span>
+                  <p className="text-[10px] text-gray-600 whitespace-pre-wrap break-words">“{jobStatusRemarks}”</p>
+                </div>
+              )}
+
+              {/* Placed drivers on a fulfilled job — name · TMID */}
+              {jobStatus === 'fulfilled' && placedDriversList.length > 0 && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-2.5 py-2">
+                  <span className="text-[9px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-0.5 mb-1.5">
+                    <span className="material-symbols-outlined text-[12px]">local_shipping</span>
+                    Placed drivers ({placedDriversList.length})
+                  </span>
+                  <ul className="space-y-1.5">
+                    {placedDriversList.map((d) => (
+                      <li key={d.tmid} className="flex items-center gap-2 min-w-0">
+                        <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[9px] font-black shrink-0">
+                          {(d.name || 'D').charAt(0).toUpperCase()}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-bold text-[11px] text-gray-800 truncate">{d.name || 'Driver'}</span>
+                          <span className="block font-mono text-[9px] text-emerald-700">{d.tmid}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Transporter Profile */}
           <div className="p-4 space-y-3 border-b border-gray-100">
@@ -1152,7 +1338,13 @@ const MmJobDetail: React.FC = () => {
                       <span className="text-gray-400">{new Date(log.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
                     </div>
                     {log.call_feedback && <p className="text-gray-600 mt-0.5">{log.call_feedback}</p>}
-                    {log.assigned_admin_name && <p className="text-gray-400">by {log.assigned_admin_name}</p>}
+                    {/* Remarks — shown in full, and editable in place by the agent
+                        who logged the call (backend enforces own-calls-only). */}
+                    <TimelineRemark
+                      entry={{ remarks: log.call_remarks, call_id: log.id, can_edit_remarks: log.can_edit_remarks }}
+                      onSaved={triggerToast}
+                    />
+                    {log.assigned_admin_name && <p className="text-gray-400 mt-0.5">by {log.assigned_admin_name}</p>}
                   </div>
                 ))}
               </div>
@@ -1186,6 +1378,42 @@ const MmJobDetail: React.FC = () => {
             />
           ) : (
           <>
+          {/* Pipeline-stage filter bar — clickable buttons with a live count,
+              each narrows the applicant list (server-side, across ALL applicants
+              not just the loaded page). The counts are job-wide and stay put as
+              you switch buckets. */}
+          <div className="px-4 py-2.5 bg-white border-b border-gray-200 flex flex-wrap gap-1.5 shrink-0">
+            {([
+              ['', 'All', 'Every applicant on this job'],
+              ['connected', 'Connected', 'At least one connected call FOR THIS JOB'],
+              ['pending', 'Pending', 'Not a single call placed for this job yet'],
+              ['interview_done', 'Interview Done', 'Interview Done logged for this job'],
+              ['matchmaking_done', 'Matchmaking Done', 'Matchmaking / Selected logged for this job'],
+              ['not_connected', 'Not Connected', 'Latest call for this job did not connect'],
+              ['no_response', 'No Response', 'Calls made for this job, but none ever connected'],
+              ['driverbase', 'From Driver DB', 'Reached via a Driver-Database call (driverbase-matchmaking)'],
+            ] as [MmApplicantBucket | '', string, string][]).map(([value, label, title]) => {
+              const active = bucket === value || (value === '' && !bucket);
+              const count = value === '' ? counts.all : counts[value as MmApplicantBucket];
+              return (
+                <button
+                  key={value || 'all'}
+                  onClick={() => setBucket(value)}
+                  title={title}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-colors ${
+                    active ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                  {count !== undefined && (
+                    <span className={`text-[9px] font-extrabold px-1 py-0.5 rounded ${active ? 'bg-white/25' : 'bg-gray-100 text-gray-600'}`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
           {/* Applicant filter bar — wraps onto extra rows as the pane narrows.
               Without flex-wrap the search field was squeezed down to just its
               magnifier icon and the "Send Connection to Transporter" button was
@@ -1234,19 +1462,32 @@ const MmJobDetail: React.FC = () => {
               <span className={`material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-[14px] pointer-events-none ${applicantStatus ? 'text-white' : 'text-gray-400'}`}>expand_more</span>
             </div>
 
-            {/* …and the same filter as quick chips. */}
-            <div className="flex flex-wrap gap-1.5">
-              {FEEDBACK_FILTERS.filter(o => o.value !== 'not_interested').map(opt => (
-                <button
-                  key={opt.value}
-                  title={opt.title}
-                  onClick={() => setApplicantStatus(opt.value)}
-                  className={`px-2.5 py-1 rounded-lg font-bold border text-[10px] transition-colors ${applicantStatus === opt.value ? 'bg-[#8E44AD] text-white border-[#8E44AD]' : 'bg-white text-gray-500 border-gray-200'}`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            {/* Today — only drivers who applied to this job today. */}
+            <button
+              onClick={() => setTodayOnly(v => !v)}
+              title="Show only drivers who applied today"
+              className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold transition-colors ${
+                todayOnly ? 'bg-[#8E44AD] text-white border-[#8E44AD]' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[14px]">today</span>
+              Today
+            </button>
+
+            {/* Driver Database — call any matching registered driver for this job. */}
+            <button
+              onClick={() => setShowDriverDb(true)}
+              title="Browse the full driver database, matched to this job, and call directly"
+              className="shrink-0 flex items-center gap-1 bg-[#1A5276] hover:bg-[#154360] text-white px-3 py-1.5 rounded-lg font-bold text-[10px] shadow-sm"
+            >
+              <span className="material-symbols-outlined text-[14px]">database</span>
+              Driver Database
+            </button>
+
+            {/* Coarse call-status chips removed — the pipeline bucket bar above
+                (Uncalled / Called / Connected / …) now covers them, and does so
+                server-side across every applicant. The dropdown still offers the
+                agent-marked feedback filters. */}
             <span className="text-gray-400 text-[10px] shrink-0 whitespace-nowrap">
               {applicantStatus || search
                 ? `${filteredApplicants.length} shown · ${applicantsData?.total_applicants || 0} total`
@@ -1290,6 +1531,7 @@ const MmJobDetail: React.FC = () => {
                   <ApplicantCard
                     key={driver.application_id}
                     driver={driver}
+                    jobId={jobId}
                     isGreenline={isGreenline}
                     canConference={canConference}
                     readOnly={readOnly}
@@ -1328,6 +1570,34 @@ const MmJobDetail: React.FC = () => {
           driverName={detailsDriver.name}
           uniqueId={detailsDriver.unique_id}
           onClose={() => setDetailsDriver(null)}
+        />
+      )}
+
+      {/* Driver Database — browse the whole driver pool matched to this job and
+          call directly (logged as driverbase-matchmaking against this job). */}
+      {showDriverDb && job && (
+        <DriverDatabaseModal
+          open
+          jobId={job.job_id}
+          jobTitle={job.job_title}
+          job={{
+            job_location: job.job_location,
+            route: job.route,
+            vehicle_type: job.vehicle_type,
+            license_type: job.license_type,
+            salary_range: job.salary_range,
+          }}
+          onCall={(d) => {
+            if (!d.phone) { triggerToast('This driver has no phone number on record.'); return; }
+            callDatabaseDriver({
+              jobId: job.job_id,
+              isGreenline,
+              transporter: tx ? { id: tx.id, name: tx.name, mobile: tx.mobile, unique_id: tx.unique_id } : undefined,
+              driver: { driver_id: d.id, name: d.name, mobile: d.phone, unique_id: d.tmid },
+            });
+          }}
+          onViewDetails={(d) => setDetailsDriver({ driver_id: d.id, name: d.name, mobile: d.phone, unique_id: d.tmid })}
+          onClose={() => setShowDriverDb(false)}
         />
       )}
 
@@ -1393,10 +1663,13 @@ const MmJobDetail: React.FC = () => {
           currentRemarks={jobStatusRemarks}
           currentBy={job.job_status_by_name ?? null}
           currentAt={job.job_status_at ?? null}
+          driversNeeded={job.drivers_needed ?? (Number(job.number_of_drivers_required) || 1)}
+          placedDrivers={job.driver_placed ?? null}
           onClose={() => setShowJobStatus(false)}
           onSaved={(status) => {
             triggerToast(
-              status === 'closed' ? 'Job closed ✓'
+              status === 'fulfilled' ? 'Job fulfilled ✓'
+              : status === 'closed' ? 'Job closed ✓'
               : status === 'hold' ? 'Job put on hold ✓'
               : 'Job reopened ✓'
             );

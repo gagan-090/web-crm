@@ -766,6 +766,15 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/wct/wct-expiring-soon',
+    name: 'Expiring Soon',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'hourglass_bottom',
+    showInMenu: true
+  },
+  {
     path: '/wct/wct-disposition-gate',
     name: 'Disposition Gate',
     role: 'Transporter Welcome',
@@ -829,6 +838,15 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'calls:dial',
     layout: 'dashboard',
     icon: 'search',
+    showInMenu: true
+  },
+  {
+    path: '/mm/mm-applicant-matchmaking',
+    name: 'Applicant Matchmaking',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'person_search',
     showInMenu: true
   },
   {
@@ -1178,6 +1196,44 @@ export const dynamicRoutes: RouteItem[] = [
   },
 
   // ==================== INCENTIVE ENGINE (All Caller Roles) ====================
+  // Revenue Challenge — personal "My Target" screen, one entry per calling desk
+  // (the menu filters by exact role match), all pointing at the shared page.
+  {
+    path: '/my-target',
+    name: 'My Target',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'rocket_launch',
+    showInMenu: true
+  },
+  {
+    path: '/my-target',
+    name: 'My Target',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'rocket_launch',
+    showInMenu: true
+  },
+  {
+    path: '/my-target',
+    name: 'My Target',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'rocket_launch',
+    showInMenu: true
+  },
+  {
+    path: '/my-target',
+    name: 'My Target',
+    role: 'Special Categories',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'rocket_launch',
+    showInMenu: true
+  },
   {
     path: '/dw/my-incentive',
     name: 'My Incentives',
@@ -1233,6 +1289,33 @@ export const dynamicRoutes: RouteItem[] = [
     showInMenu: true
   },
   {
+    path: '/th/revenue-challenge',
+    name: 'Revenue Challenge',
+    role: 'Telecalling Head',
+    permission: 'leads:view',
+    layout: 'dashboard',
+    icon: 'rocket_launch',
+    showInMenu: true
+  },
+  {
+    path: '/th/connectivity-sla',
+    name: 'Connectivity SLA',
+    role: 'Telecalling Head',
+    permission: 'calls:view',
+    layout: 'dashboard',
+    icon: 'timer',
+    showInMenu: true
+  },
+  {
+    path: '/th/connectivity-sla',
+    name: 'Connectivity SLA',
+    role: 'Team Leader',
+    permission: 'calls:view',
+    layout: 'dashboard',
+    icon: 'timer',
+    showInMenu: true
+  },
+  {
     path: '/th/payroll-export',
     name: 'Payroll Export',
     role: 'Telecalling Head',
@@ -1257,6 +1340,100 @@ export const dynamicRoutes: RouteItem[] = [
     permission: 'admin:view',
     layout: 'dashboard',
     icon: 'balance',
+    showInMenu: true
+  },
+
+  // ==================== OUT-SYSTEM (MANUAL) CALL — all caller roles ==========
+  // Log incoming toll-free / WhatsApp calls taken on the agent's own phone,
+  // with a recording upload, straight into call_history_ivr. Shared page at
+  // /manual-call; one menu entry per caller role so it shows on each sidebar.
+  {
+    path: '/manual-call',
+    name: 'Out System Call',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'add_call',
+    showInMenu: true
+  },
+  {
+    path: '/manual-call',
+    name: 'Out System Call',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'add_call',
+    showInMenu: true
+  },
+  {
+    path: '/manual-call',
+    name: 'Out System Call',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'add_call',
+    showInMenu: true
+  },
+
+  // ==================== NOTEPAD — all caller roles ==========================
+  // Private per-agent scratchpad (any language / emoji, autosaves every 15s).
+  // Shared page at /notepad; one menu entry per caller role so it shows on each
+  // sidebar.
+  {
+    path: '/notepad',
+    name: 'Notepad',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'sticky_note_2',
+    showInMenu: true
+  },
+  {
+    path: '/notepad',
+    name: 'Notepad',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'sticky_note_2',
+    showInMenu: true
+  },
+  {
+    path: '/notepad',
+    name: 'Notepad',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'sticky_note_2',
+    showInMenu: true
+  },
+
+  // ==================== TRUCKS KNOWLEDGE — all caller roles =================
+  // Training PDFs (public/training) viewed inline at /trucks-knowledge.
+  {
+    path: '/trucks-knowledge',
+    name: 'Trucks Knowledge',
+    role: 'Driver Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'picture_as_pdf',
+    showInMenu: true
+  },
+  {
+    path: '/trucks-knowledge',
+    name: 'Trucks Knowledge',
+    role: 'Transporter Welcome',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'picture_as_pdf',
+    showInMenu: true
+  },
+  {
+    path: '/trucks-knowledge',
+    name: 'Trucks Knowledge',
+    role: 'Matchmaking',
+    permission: 'calls:dial',
+    layout: 'dashboard',
+    icon: 'picture_as_pdf',
     showInMenu: true
   }
 ];

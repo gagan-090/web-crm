@@ -193,6 +193,7 @@ export const WctCallQueue: React.FC = () => {
 
   const [sortBy, setSortBy] = useState<'sla' | 'reg' | 'callbacks'>('sla');
   const [toast, setToast] = useState<string | null>(null);
+  const [copiedMobileId, setCopiedMobileId] = useState<string | null>(null);
 
   // Note auto-save states
   const [notesText, setNotesText] = useState<string>('');
@@ -315,6 +316,40 @@ export const WctCallQueue: React.FC = () => {
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  /** Show only the first 2 and last 3 digits of the 10-digit mobile. */
+  const maskMobile = (mobile?: string | null): string => {
+    if (!mobile) return '';
+    const digits = String(mobile).replace(/\D/g, '');
+    const last10 = digits.slice(-10);
+    if (last10.length < 5) return '••••••';
+    return `${last10.slice(0, 2)}•••••${last10.slice(-3)}`;
+  };
+
+  /** Copy the FULL, unmasked mobile to the clipboard. */
+  const handleCopyMobile = async (mobile: string | null | undefined, leadId: string) => {
+    if (!mobile) { triggerToast('No phone number on file for this lead.'); return; }
+    const full = String(mobile).replace(/\s+/g, '');
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(full);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = full;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopiedMobileId(leadId);
+      setTimeout(() => setCopiedMobileId(prev => (prev === leadId ? null : prev)), 1500);
+      triggerToast(`Mobile copied: ${full}`);
+    } catch {
+      triggerToast('Could not copy the mobile number.');
+    }
   };
 
   const getBorderColorClass = (l: TransporterLead) => {
@@ -622,9 +657,24 @@ export const WctCallQueue: React.FC = () => {
                   }`}
                 >
                   <div className="flex-1 min-w-0 pr-2 space-y-1">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-start justify-between gap-2">
                       <span className="text-sm font-bold text-gray-900 truncate">{l.companyName}</span>
-                      <span className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1 rounded">{l.tmid}</span>
+                      <div className="flex flex-col items-end gap-0.5 shrink-0">
+                        <span className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1 rounded">{l.tmid}</span>
+                        {l.phone && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleCopyMobile(l.phone, l.id); }}
+                            className="flex items-center gap-0.5 font-mono text-[10px] text-gray-500 hover:text-[#27AE60] transition-colors"
+                            title="Copy full mobile number"
+                          >
+                            <span>{maskMobile(l.phone)}</span>
+                            <span className="material-symbols-outlined text-[12px]">
+                              {copiedMobileId === l.id ? 'check' : 'content_copy'}
+                            </span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                     
                     <div className="text-[12px] text-gray-500">Contact: {l.contactName}</div>

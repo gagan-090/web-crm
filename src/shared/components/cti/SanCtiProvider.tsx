@@ -1137,6 +1137,8 @@ export default function SanCtiProvider({
         disposition_sub: dispositionData.disposition_sub || null,
         callback_sub: dispositionData.callback_sub || null,
         feedback_stage: dispositionData.feedback_stage || null,
+        joining_date: dispositionData.joining_date || null,
+        extra_contacts: dispositionData.extra_contacts?.length ? dispositionData.extra_contacts : undefined,
         lead_type: currentLeadTypeRef.current,
       });
     }

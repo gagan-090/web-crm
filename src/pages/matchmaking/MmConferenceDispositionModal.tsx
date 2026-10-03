@@ -3,6 +3,7 @@ import {
   MM_TRANSPORTER_CONNECTED_OPTIONS,
   MM_DRIVER_CONNECTED_OPTIONS,
   DWC_NOT_CONNECTED_OPTIONS,
+  JOINING_DATE_SUBS,
 } from '../../shared/components/cti/PostCallDispositionModal';
 import { useSubmitMmConferenceDispositionMutation } from '../../services/api/webCrmApi';
 import type { MmConferenceParty } from '../../shared/components/cti/mmCallContext';
@@ -33,6 +34,7 @@ const MmConferenceDispositionModal: React.FC<Props> = ({ open, party, callId, on
   const [level1, setLevel1] = useState<'connected' | 'not_connected' | ''>('connected');
   const [sub, setSub] = useState('');
   const [notes, setNotes] = useState('');
+  const [joiningDate, setJoiningDate] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
@@ -41,9 +43,15 @@ const MmConferenceDispositionModal: React.FC<Props> = ({ open, party, callId, on
     ? MM_TRANSPORTER_CONNECTED_OPTIONS
     : MM_DRIVER_CONNECTED_OPTIONS;
 
+  // Matchmaking Done / Interview Done need the driver's joining date+time here
+  // too — this modal posts to the same /call/disposition endpoint, which makes
+  // it mandatory for the MM desk.
+  const needsJoiningDate = JOINING_DATE_SUBS.includes(sub);
+
   // Same rule the global modal applies: a level-1 AND a level-2 choice are
-  // both required before the disposition can be submitted.
-  const canSubmit = !!level1 && !!sub && !isLoading;
+  // both required before the disposition can be submitted — plus the joining
+  // date when the outcome demands it.
+  const canSubmit = !!level1 && !!sub && !(needsJoiningDate && !joiningDate) && !isLoading;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -55,6 +63,7 @@ const MmConferenceDispositionModal: React.FC<Props> = ({ open, party, callId, on
         disposition: level1,
         disposition_sub: sub,
         notes: notes || null,
+        joining_date: needsJoiningDate ? (joiningDate || null) : null,
       }).unwrap();
       onSubmitted({ disposition: level1, disposition_sub: sub });
       onClose();
@@ -147,6 +156,24 @@ const MmConferenceDispositionModal: React.FC<Props> = ({ open, party, callId, on
                   ))}
             </div>
           </div>
+
+          {/* Driver Joining Date — mandatory for Matchmaking/Interview Done. */}
+          {needsJoiningDate && (
+            <label className="block">
+              <span className="text-[9.5px] text-amber-600 font-bold uppercase tracking-wider block mb-1">
+                Driver Joining Date &amp; Time *
+              </span>
+              <input
+                type="datetime-local"
+                value={joiningDate}
+                onChange={e => setJoiningDate(e.target.value)}
+                className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-800 outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+              />
+              <span className="block text-[10px] text-amber-700 mt-1">
+                When is this driver due to join? You'll get a reminder 24 hours before.
+              </span>
+            </label>
+          )}
 
           {/* Notes */}
           <label className="block">

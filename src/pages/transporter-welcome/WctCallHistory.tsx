@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { useGetWctCallHistoryQuery } from '../../services/api/webCrmApi';
+import { useGetWctCallHistoryQuery, useLazyGetWctCallHistoryQuery } from '../../services/api/webCrmApi';
+import { HarshitExcelExport } from '../../shared/components/HarshitExcelExport';
+import type { ExcelColumn } from '../../shared/utils/exportExcel';
 import { useSanCti } from '../../shared/components/cti/SanCtiContext';
 import {
   DWC_CONNECTED_OPTIONS,
@@ -79,6 +81,8 @@ export const WctCallHistory: React.FC = () => {
     call_status: statusFilter !== 'all' ? statusFilter : undefined,
     per_page: pageSize,
   });
+  // On-demand fetch for the Excel export — pulls the whole filtered log.
+  const [triggerWctAll] = useLazyGetWctCallHistoryQuery();
 
   const records = response?.data || [];
   const feedbackOptions = response?.feedback_options || [];
@@ -149,6 +153,35 @@ export const WctCallHistory: React.FC = () => {
             <h2 className="text-2xl font-bold text-gray-800">Completed Call Logs &amp; Feedback</h2>
           </div>
           <div className="flex items-center gap-2 self-start md:self-auto">
+            <HarshitExcelExport
+              filename="wct_call_history"
+              fetchAll={async (rng) => {
+                const res = await triggerWctAll({
+                  per_page: 'all',
+                  search: searchQuery || undefined,
+                  feedback: feedbackFilter !== 'all' ? feedbackFilter : undefined,
+                  direction: directionFilter !== 'all' ? directionFilter : undefined,
+                  call_status: statusFilter !== 'all' ? statusFilter : undefined,
+                  date_from: rng.date_from,
+                  date_to: rng.date_to,
+                }).unwrap();
+                return res.data || [];
+              }}
+              columns={[
+                { header: 'Name', value: (r: any) => r.name },
+                { header: 'TMID', value: (r: any) => r.tmid },
+                { header: 'Mobile', value: (r: any) => r.mobile },
+                { header: 'Direction', value: (r: any) => (String(r.process).toLowerCase() === 'incoming' ? 'Incoming' : 'Outgoing') },
+                { header: 'Call Status', value: (r: any) => (r.call_status || '').replace(/_/g, ' ') },
+                { header: 'Feedback', value: (r: any) => r.call_feedback },
+                { header: 'Remarks', value: (r: any) => r.call_remarks },
+                { header: 'Duration', value: (r: any) => formatDuration(r.duration_secs) },
+                { header: 'Call Type', value: (r: any) => r.call_type },
+                { header: 'Process', value: (r: any) => r.process },
+                { header: 'Date & Time', value: (r: any) => r.date_display },
+                { header: 'Recording URL', value: (r: any) => r.recording_url },
+              ] as ExcelColumn<any>[]}
+            />
             <button onClick={() => refetch()} disabled={isFetching}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#FB641B] border border-[#FB641B]/30 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors disabled:opacity-60"
               title="Refresh call history">
@@ -314,8 +347,12 @@ export const WctCallHistory: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 font-mono text-xs">{formatDuration(r.duration_secs)}</td>
                     <td className="px-6 py-4">
-                      <div className="text-xs font-bold text-gray-800 capitalize">{r.call_type}</div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">{r.process}</div>
+                      <div className="text-xs font-bold text-gray-800 capitalize">
+                        {(r as any).is_manual ? 'Off-system' : r.call_type}
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        {(r as any).is_manual ? `Incoming · ${String((r as any).channel || '').replace('_', '-')}` : r.process}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-xs font-medium text-gray-500">{r.date_display}</td>
                     <td className="px-6 py-4">

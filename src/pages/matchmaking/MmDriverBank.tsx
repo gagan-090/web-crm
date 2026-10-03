@@ -53,9 +53,15 @@ const EXPERIENCE_OPTIONS = [
   { value: '2-3 Yrs',           label: '2–3 Years' },
   { value: '3-5 Yrs',           label: '3–5 Years' },
   { value: '5-7 Yrs',           label: '5–7 Years' },
+  // The app's profile bucket — banked drivers inherit it from their profile.
+  { value: '6-10 Yrs',          label: '6–10 Years' },
   { value: '7-10 Yrs',          label: '7–10 Years' },
   { value: '10+ Yrs',           label: '10+ Years' },
 ];
+
+// 'N/A' was stored by the app for "unknown"; treat it (and blanks) as missing.
+const missingExperience = (v?: string | null) =>
+  !v || ['n/a', 'na', 'null', '-', '—'].includes(v.trim().toLowerCase());
 
 const INCOME_OPTIONS = [
   { value: '< ₹15,000',        label: 'Below ₹15,000' },
@@ -88,6 +94,49 @@ const dur = (s?: number | null) => {
   const n = Number(s ?? 0);
   if (!n) return '0s';
   return n >= 60 ? `${Math.floor(n / 60)}m ${n % 60}s` : `${n}s`;
+};
+
+/**
+ * Partial mask — first 2 and last 3 digits, dots between — instead of the old
+ * all-asterisks blob. The number stays hidden but the copy button lifts the
+ * FULL number to the clipboard, so agents can still dial it off-app.
+ */
+const maskMobile = (mobile?: string | null): string => {
+  if (!mobile) return '—';
+  const digits = String(mobile).replace(/\D/g, '');
+  const last10 = digits.slice(-10);
+  if (last10.length < 5) return '••••••';
+  return `${last10.slice(0, 2)}•••••${last10.slice(-3)}`;
+};
+
+const BankMobile: React.FC<{ mobile?: string | null }> = ({ mobile }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!mobile) return;
+    try {
+      await navigator.clipboard?.writeText(String(mobile).replace(/\s+/g, ''));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — nothing to do */
+    }
+  };
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span>{maskMobile(mobile)}</span>
+      {mobile && (
+        <button
+          type="button"
+          onClick={copy}
+          title={copied ? 'Copied!' : 'Copy full number'}
+          className={`transition-colors ${copied ? 'text-emerald-600' : 'text-gray-400 hover:text-gray-700'}`}
+        >
+          <span className="material-symbols-outlined text-[13px] align-middle">{copied ? 'check' : 'content_copy'}</span>
+        </button>
+      )}
+    </span>
+  );
 };
 
 /**
@@ -375,7 +424,7 @@ export const DriverForm: React.FC<{
     location:       seed.location       ?? '',
     license_type:   seed.license_type   ?? '',
     vehicle_type:   seed.vehicle_type   ?? '',
-    experience:     seed.experience     ?? '',
+    experience:     missingExperience(seed.experience) ? '' : seed.experience,
     current_income: seed.current_income ?? '',
     availability:   seed.availability   ?? 'available',
     feedback:       seed.feedback       ?? '',
@@ -410,6 +459,9 @@ export const DriverForm: React.FC<{
     setErrMsg('');
     if (!form.name.trim())   { setErrMsg('Driver name is required'); return; }
     if (!form.mobile.trim()) { setErrMsg('Mobile number is required'); return; }
+    // Every banked driver must carry an experience — matching drivers to jobs
+    // depends on it.
+    if (!form.experience)    { setErrMsg('Experience is required'); return; }
     try {
       const payload = { ...form, user_id: form.user_id ? Number(form.user_id) : undefined };
       if (isEdit) await updateDriver({ id: initial.id, ...payload }).unwrap();
@@ -531,10 +583,15 @@ export const DriverForm: React.FC<{
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] text-gray-600 font-semibold mb-0.5">Experience</label>
-                <select value={form.experience} onChange={e => set('experience', e.target.value)} className={fld}>
+                <label className="block text-[10px] text-gray-600 font-semibold mb-0.5">Experience *</label>
+                <select value={form.experience} onChange={e => set('experience', e.target.value)}
+                  className={`${fld} ${!form.experience ? 'border-red-300' : ''}`}>
                   <option value="">— Select —</option>
                   {EXPERIENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {/* Keep a stored value that isn't one of the standard options. */}
+                  {form.experience && !EXPERIENCE_OPTIONS.some(o => o.value === form.experience) && (
+                    <option value={form.experience}>{form.experience}</option>
+                  )}
                 </select>
               </div>
               <div>
@@ -905,7 +962,7 @@ const MmDriverBank: React.FC = () => {
                       </>
                     )}
                   </td>
-                  <td className="py-2 px-3 font-mono text-[10px]">{isRepeat ? '' : '**********'}</td>
+                  <td className="py-2 px-3 font-mono text-[10px]">{isRepeat ? '' : <BankMobile mobile={row.mobile} />}</td>
                   <td className="py-2 px-3 font-mono text-[10px] text-gray-500">{isRepeat ? '' : (row.tmid || '—')}</td>
                   <td className="py-2 px-3 font-mono text-[10px] text-[#8E44AD]">
                     {row.job_id || <span className="text-gray-300 font-sans">no job linked</span>}
@@ -929,7 +986,18 @@ const MmDriverBank: React.FC = () => {
                     <div className="text-[10px]">{row.vehicle_type || '—'}</div>
                     <div className="text-[9px] text-gray-400">{row.license_type || ''}</div>
                   </td>
-                  <td className="py-2 px-3 text-[10px]">{row.experience || '—'}</td>
+                  <td className="py-2 px-3 text-[10px]">
+                    {!missingExperience(row.experience) ? row.experience : isRepeat ? '' : (
+                      // Neither the bank nor the driver's profile knows it — ask.
+                      <button
+                        onClick={() => setEditDriver({ ...row, id: row.driver_bank_id ?? row.id })}
+                        className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100"
+                        title="Experience missing — ask the driver and add it"
+                      >
+                        + Add experience
+                      </button>
+                    )}
+                  </td>
                   <td className="py-2 px-3">
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${availCls(row.availability)}`}>
                       {availLbl(row.availability)}
@@ -1172,7 +1240,7 @@ const DriverDetailModal: React.FC<{ driverId: number; onClose: () => void }> = (
             <div>
               <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Masked Mobile</p>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="font-mono text-gray-800 font-bold">**********</span>
+                <span className="font-mono text-gray-800 font-bold"><BankMobile mobile={driver.mobile} /></span>
                 <button onClick={() => triggerCall(driver.name, driver.mobile, 'Driver Bank', driver.tmid || 'DR', undefined, { source: 'driver-bank', driverBankId: driverId, jobId: driver.job_id }, driver.user_id ? Number(driver.user_id) : 0, 'driver_bank')}
                   className="w-5 h-5 rounded-full bg-green-600 hover:bg-green-700 text-white flex items-center justify-center transition-all">
                   <span className="material-symbols-outlined text-[10px]">call</span>
@@ -1193,7 +1261,7 @@ const DriverDetailModal: React.FC<{ driverId: number; onClose: () => void }> = (
             </div>
             <div>
               <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Experience</p>
-              <p className="text-gray-800 font-semibold mt-0.5">{driver.experience || '—'}</p>
+              <p className="text-gray-800 font-semibold mt-0.5">{missingExperience(driver.experience) ? '—' : driver.experience}</p>
             </div>
             <div>
               <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Current Income</p>

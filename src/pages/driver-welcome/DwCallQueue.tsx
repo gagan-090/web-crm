@@ -88,6 +88,7 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
   const [currentPage, setCurrentPage] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
   const [playingQueueId, setPlayingQueueId] = useState<string | number | null>(null);
+  const [copiedMobileId, setCopiedMobileId] = useState<string | number | null>(null);
   const [playingHistoryIdx, setPlayingHistoryIdx] = useState<number | null>(null);
   const [viewerDoc, setViewerDoc] = useState<{ url: string; label: string } | null>(null);
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
@@ -348,6 +349,18 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
   const ivrHistory = detailResponse?.data?.ivr_history || [];
   const mmHistory = detailResponse?.data?.mm_history || [];
   const appliedJobs = detailResponse?.data?.applied_jobs || [];
+
+  // Applied-jobs tier filter (All / Standard / Premium / Super Premium). Tier is
+  // set by the backend from the transporter's job-posting plan.
+  const [jobTierFilter, setJobTierFilter] = useState<'all' | 'standard' | 'premium' | 'super_premium'>('all');
+  const jobTierCounts: Record<string, number> = { all: appliedJobs.length, standard: 0, premium: 0, super_premium: 0 };
+  appliedJobs.forEach((j: any) => {
+    const t = (j.tier as string) || 'standard';
+    if (jobTierCounts[t] != null) jobTierCounts[t]++;
+  });
+  const filteredAppliedJobs = jobTierFilter === 'all'
+    ? appliedJobs
+    : appliedJobs.filter((j: any) => ((j.tier as string) || 'standard') === jobTierFilter);
   const documents = detailResponse?.data?.documents || [];
   const completionPct = Math.max(0, Math.min(100, Number(driverProfile?.profile_completion ?? 0)));
   const completionColor = completionPct >= 80 ? '#27AE60' : completionPct >= 50 ? '#F39C12' : '#E74C3C';
@@ -355,6 +368,45 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  /**
+   * Show only the first 2 and last 3 digits of the 10-digit mobile; everything
+   * in between becomes dots. Works for any user role (driver, transporter,
+   * association, foreman, puncture, dhaba) since they all share this queue.
+   */
+  const maskMobile = (mobile?: string | null): string => {
+    if (!mobile) return '';
+    const digits = String(mobile).replace(/\D/g, '');
+    const last10 = digits.slice(-10);
+    if (last10.length < 5) return '••••••'; // too short to mask meaningfully
+    return `${last10.slice(0, 2)}•••••${last10.slice(-3)}`;
+  };
+
+  /** Copy the FULL, unmasked mobile to the clipboard (agents dial off-app too). */
+  const handleCopyMobile = async (mobile: string | null | undefined, leadId: string | number) => {
+    if (!mobile) { triggerToast('No phone number on file for this lead.'); return; }
+    const full = String(mobile).replace(/\s+/g, '');
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(full);
+      } else {
+        // Fallback for non-secure contexts where the async clipboard API is unavailable.
+        const ta = document.createElement('textarea');
+        ta.value = full;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopiedMobileId(leadId);
+      setTimeout(() => setCopiedMobileId(prev => (prev === leadId ? null : prev)), 1500);
+      triggerToast(`Mobile copied: ${full}`);
+    } catch {
+      triggerToast('Could not copy the mobile number.');
+    }
   };
 
   const getBorderColorClass = (l: any) => {
@@ -951,9 +1003,24 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                 }`}
               >
                 <div className="flex-1 min-w-0 pr-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-start justify-between gap-2">
                     <span className="text-sm font-bold text-gray-900 truncate">{l.name}</span>
-                    <span className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1 rounded">{l.tmid}</span>
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <span className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1 rounded">{l.tmid}</span>
+                      {l.mobile && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleCopyMobile(l.mobile, l.id); }}
+                          className="flex items-center gap-0.5 font-mono text-[10px] text-gray-500 hover:text-[#27AE60] transition-colors"
+                          title="Copy full mobile number"
+                        >
+                          <span>{maskMobile(l.mobile)}</span>
+                          <span className="material-symbols-outlined text-[12px]">
+                            {copiedMobileId === l.id ? 'check' : 'content_copy'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="text-[12px] text-gray-500 mt-0.5">{l.city}, {l.state}</div>
@@ -1287,6 +1354,24 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                     <span className="font-bold text-gray-800 mt-0.5 block">{driverProfile.education || 'N/A'}</span>
                   </div>
                   <div>
+                    <span className="text-gray-400 block uppercase text-[9px]">Mobile</span>
+                    <span className="font-bold text-gray-800 mt-0.5 flex items-center gap-1">
+                      <span className="font-mono">{driverProfile.mobile ? maskMobile(driverProfile.mobile) : 'N/A'}</span>
+                      {driverProfile.mobile && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleCopyMobile(driverProfile.mobile, driverProfile.id); }}
+                          title="Copy full mobile number"
+                          className={`transition-colors ${copiedMobileId === driverProfile.id ? 'text-emerald-600' : 'text-gray-400 hover:text-gray-700'}`}
+                        >
+                          <span className="material-symbols-outlined text-[13px] align-middle">
+                            {copiedMobileId === driverProfile.id ? 'check' : 'content_copy'}
+                          </span>
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  <div>
                     <span className="text-gray-400 block uppercase text-[9px]">Email</span>
                     <span className="font-bold text-gray-800 mt-0.5 block truncate">**********</span>
                   </div>
@@ -1371,13 +1456,43 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
               <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1">
                 <span className="material-symbols-outlined text-[16px]">work</span> Applied Jobs ({appliedJobs.length})
               </h3>
+              {appliedJobs.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {([
+                    { id: 'all', label: 'All' },
+                    { id: 'standard', label: 'Standard' },
+                    { id: 'premium', label: 'Premium' },
+                    { id: 'super_premium', label: 'Super Premium' },
+                  ] as const).map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => setJobTierFilter(t.id)}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-colors ${
+                        jobTierFilter === t.id
+                          ? 'bg-[#27AE60] text-white border-[#27AE60]'
+                          : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      {t.label} <span className="opacity-70">({jobTierCounts[t.id]})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {appliedJobs.length > 0 ? (
+                filteredAppliedJobs.length > 0 ? (
                 <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
-                  {appliedJobs.map((job: any, idx: number) => (
+                  {filteredAppliedJobs.map((job: any, idx: number) => (
                     <div key={idx} className="border border-gray-200 rounded p-3 bg-white text-xs">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="font-bold text-gray-900">{job.job_title || 'N/A'} (ID: {job.job_id})</span>
-                        <span className="text-gray-500">{new Date(job.applied_at).toLocaleDateString()}</span>
+                      <div className="flex justify-between items-center gap-2 mb-2">
+                        <span className="font-bold text-gray-900 flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{job.job_title || 'N/A'} (ID: {job.job_id})</span>
+                          <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                            job.tier === 'super_premium' ? 'bg-purple-100 text-purple-700'
+                              : job.tier === 'premium' ? 'bg-amber-100 text-amber-700'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>{job.tier_label || 'Standard'}</span>
+                        </span>
+                        <span className="text-gray-500 shrink-0">{new Date(job.applied_at).toLocaleDateString()}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 mb-3">
                         <div>
@@ -1416,6 +1531,9 @@ export const DwCallQueue: React.FC<DwCallQueueProps> = ({ deskKey = 'dw', defaul
                     </div>
                   ))}
                 </div>
+                ) : (
+                  <p className="text-xs text-gray-400 italic">No {jobTierFilter.replace('_', ' ')} jobs among these applications.</p>
+                )
               ) : (
                 <p className="text-xs text-gray-400 italic">No job applications found.</p>
               )}

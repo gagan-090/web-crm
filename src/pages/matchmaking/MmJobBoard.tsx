@@ -14,7 +14,9 @@ const planBadge = (plan: string) => {
 
 const statusBadge = (status: string) => {
   if (status === 'OPEN') return 'bg-green-100 text-green-700';
+  if (status === 'FULFILLED') return 'bg-emerald-500 text-white';
   if (status === 'HOLD') return 'bg-amber-100 text-amber-700';
+  if (status === 'PENDING') return 'bg-sky-100 text-sky-700';
   if (status === 'CLOSED') return 'bg-gray-100 text-gray-500';
   if (status === 'EXPIRED') return 'bg-red-100 text-red-600';
   return 'bg-amber-100 text-amber-700';
@@ -26,16 +28,32 @@ const daysSince = (dateStr: string) => {
 };
 
 // ── Job Card ─────────────────────────────────────────────────────────────────
-const JobCard: React.FC<{ job: any; onClick: () => void; onViewTransporter: () => void }> = ({ job, onClick, onViewTransporter }) => (
+const JobCard: React.FC<{ job: any; onClick: () => void; onViewTransporter: () => void }> = ({ job, onClick, onViewTransporter }) => {
+  // A fulfilled job wears a green overlay so a filled requirement reads at a
+  // glance — the seats are met, and the card says so before it is opened.
+  const fulfilled = job.status === 'FULFILLED';
+  return (
   <div
     onClick={onClick}
-    className="bg-white border border-gray-200 rounded-xl p-3.5 shadow-sm hover:shadow-md hover:border-[#8E44AD]/40 transition-all cursor-pointer group"
+    className={`relative border rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all cursor-pointer group ${
+      fulfilled
+        ? 'bg-emerald-50 border-emerald-300 hover:border-emerald-400'
+        : 'bg-white border-gray-200 hover:border-[#8E44AD]/40'
+    }`}
   >
+    {fulfilled && (
+      <span className="absolute top-2 right-2 flex items-center gap-0.5 text-[8.5px] font-black uppercase tracking-wide bg-emerald-500 text-white px-1.5 py-0.5 rounded-full shadow-sm">
+        <span className="material-symbols-outlined text-[11px]">task_alt</span>
+        Fulfilled{(job.driver_placed?.length ?? 0) > 0 ? ` · ${job.driver_placed.length}` : ''}
+      </span>
+    )}
     <div className="flex justify-between items-start mb-2">
       <span className="font-mono text-[10px] font-bold text-black">{job.job_id}</span>
-      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${planBadge(job.plan_type)}`}>
-        {job.plan_type}
-      </span>
+      {!fulfilled && (
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${planBadge(job.plan_type)}`}>
+          {job.plan_type}
+        </span>
+      )}
     </div>
 
     <h3 className="font-extrabold text-gray-850 text-xs leading-tight line-clamp-2 group-hover:text-[#8E44AD] transition-colors mb-1">
@@ -107,6 +125,24 @@ const JobCard: React.FC<{ job: any; onClick: () => void; onViewTransporter: () =
       </div>
     )}
 
+    {/* Who filled the job — name · TMID for each placed driver */}
+    {fulfilled && (job.placed_drivers?.length ?? 0) > 0 && (
+      <div className="mt-2 rounded-lg border border-emerald-200 bg-white/70 px-2 py-1.5">
+        <p className="text-[8.5px] font-black uppercase tracking-wide text-emerald-700 mb-1 flex items-center gap-0.5">
+          <span className="material-symbols-outlined text-[11px]">local_shipping</span>
+          Placed {job.placed_drivers.length > 1 ? `(${job.placed_drivers.length})` : ''}
+        </p>
+        <ul className="space-y-0.5">
+          {job.placed_drivers.map((d: any) => (
+            <li key={d.tmid} className="flex items-center gap-1 min-w-0">
+              <span className="font-bold text-[10px] text-gray-800 truncate">{d.name || 'Driver'}</span>
+              <span className="font-mono text-[9px] text-emerald-700 shrink-0">· {d.tmid}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
     <div className="flex justify-between items-center mt-3 pt-2.5 border-t border-gray-100">
       <div className="flex items-center gap-1.5">
         <span
@@ -117,7 +153,7 @@ const JobCard: React.FC<{ job: any; onClick: () => void; onViewTransporter: () =
               : undefined
           }
         >
-          {job.status}
+          {job.status === 'PENDING' ? 'PENDING APPROVAL' : job.status}
         </span>
         {job.deadline && (
           <span className="text-[9px] text-gray-400 font-semibold">
@@ -134,7 +170,8 @@ const JobCard: React.FC<{ job: any; onClick: () => void; onViewTransporter: () =
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // ── Jobs Grid ─────────────────────────────────────────────────────────────────
 const JobsGrid: React.FC<{
@@ -414,7 +451,7 @@ const GlobalJobSearch: React.FC<{ value: string; onChange: (v: string) => void }
                     <span className="font-mono text-[10px] font-bold text-black shrink-0">{job.job_id}</span>
                     <span className="font-bold text-gray-800 text-[11px] truncate flex-1">{job.job_title}</span>
                     <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded shrink-0 ${statusBadge(job.status)}`}>
-                      {job.status}
+                      {job.status === 'PENDING' ? 'PENDING APPROVAL' : job.status}
                     </span>
                     {/* Ownership: YOURS (callable) vs another agent (view-only) */}
                     <span
@@ -500,7 +537,7 @@ export const MmJobBoard: React.FC = () => {
   // Caller's own count for the active tab under a specific status pill. Prefers
   // the grid's live count; falls back to the dashboard's assigned totals (never
   // the system-wide `stats`, which count every job ever posted).
-  const myStatusCount = (statusKey: '' | 'open' | 'hold' | 'closed' | 'expired' | 'expiring_soon'): number | undefined => {
+  const myStatusCount = (statusKey: '' | 'open' | 'pending' | 'hold' | 'closed' | 'fulfilled' | 'expired' | 'expiring_soon'): number | undefined => {
     const live = liveCounts[countKeyFor(activeTab, statusKey)];
     if (live !== undefined) return live;
     const bucket = statusCounts?.[activeTab];
@@ -554,7 +591,10 @@ export const MmJobBoard: React.FC = () => {
               {[
                 { label: 'All',           value: '',              count: myStatusCount('') },
                 { label: 'Open',          value: 'open',          count: myStatusCount('open') },
+                // Not approved yet (jobs.status = 0) — not live in the app.
+                { label: 'Pending Approval', value: 'pending',    count: myStatusCount('pending') },
                 { label: 'Hold',          value: 'hold',          count: myStatusCount('hold') },
+                { label: 'Fulfilled',     value: 'fulfilled',     count: myStatusCount('fulfilled') },
                 { label: 'Closed',        value: 'closed',        count: myStatusCount('closed') },
                 { label: 'Expired',       value: 'expired',       count: myStatusCount('expired') },
                 { label: 'Expiring Soon', value: 'expiring_soon', count: myStatusCount('expiring_soon'), warn: true },

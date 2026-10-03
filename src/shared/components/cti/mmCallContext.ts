@@ -32,6 +32,12 @@ export interface PendingMmContext {
   name: string; // who was called — for agent-facing messages
   isGreenline?: boolean;
   /**
+   * Origin marker stamped onto call_history_ivr.process when the call is tagged.
+   * A call started from the Driver Database modal sets 'driverbase-matchmaking';
+   * left unset, the backend uses its default ('matchmaking').
+   */
+  process?: string;
+  /**
    * Pre-resolved conference counterpart offered by the call bar's "Add Call":
    * for an applicant call this is the job's transporter (Task 2). Transporter
    * calls leave this unset — the agent picks an applicant from the list

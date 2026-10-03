@@ -268,6 +268,8 @@ export interface DwLeadDetailResponse {
       call_feedback: string | null;
       call_remarks: string | null;
       call_recording: string | null;
+      recording_url?: string | null;
+      recording_source?: string | null;
       created_at: string;
       active_time?: number;
     }>;
@@ -376,8 +378,19 @@ export interface DwCallbacksResponse {
     reason: string;
     logged_at: string;
     scheduled_for: string;
+    callback_at?: string | null;
+    call_status?: string | null;
+    callback_resolution?: string | null;
+    call_feedback?: string | null;
   }>;
   total: number;
+}
+
+/** Master-calendar filters for the callbacks query. */
+export interface CallbacksParams {
+  status?: 'active' | 'done' | 'cancelled' | 'all';
+  from?: string;
+  to?: string;
 }
 
 export interface DwCallHistoryResponse {
@@ -592,12 +605,34 @@ export interface IdvDossierResponse {
     plan: { best: string | null; best_amount: number; types: string[]; paid_at: string | null; is_top_plan: boolean };
     summary: IdvQueueRow extends never ? never : {
       plan: string | null; plan_amount: number; entitled_count: number; done_count: number;
-      pending_count: number; attention_count: number; completion: number;
+      pending_count: number; attention_count: number; failed_count?: number; completion: number;
+      failed_checks?: string[];
       last_call: { status: string; feedback: string; by: string; at: string } | null;
     };
     checks: IdvCheck[];
     payments: { plan: string; type: string; amount: number; paid_at: string; start_at: string | null; end_at: string | null }[];
     calls: IdvCall[];
+  };
+}
+
+export interface IdvVerificationField {
+  name: string;
+  label: string;
+  type: string;          // text | textarea | date | datetime | number | select
+  options?: string[];
+}
+
+export interface IdvVerificationDetailResponse {
+  status: boolean;
+  data: {
+    key: string;
+    label: string;
+    table: string;
+    /** DAV / Court can be filled by the agent; DL / PAN / Aadhaar / Face are view-only. */
+    editable: boolean;
+    fields: IdvVerificationField[];
+    record: Record<string, string | number | null> | null;
+    filled: boolean;
   };
 }
 
@@ -615,11 +650,15 @@ export interface IdvAgentStatRow {
   agent_id: number;
   agent_name: string;
   subscribers: number;
+  subscriber_drivers: number;
+  subscriber_transporters: number;
   trusted_drivers: number;
   verified_drivers: number;
   entitled_checks: number;
   done_checks: number;
   fully_verified: number;
+  fully_verified_drivers: number;
+  fully_verified_transporters: number;
   pending_subscribers: number;
   completion: number;       // done ÷ entitled across the whole book, %
   calls_made: number;
@@ -627,21 +666,487 @@ export interface IdvAgentStatRow {
   contacted: number;
 }
 
+export interface IdvDocCompletionItem {
+  entitled: number;
+  done: number;
+  pending: number;
+  pct: number;
+}
+
 export interface IdvAgentStatsResponse {
   status: boolean;
   data: IdvAgentStatRow[];
+  doc_completion?: Record<string, IdvDocCompletionItem>;
+  range?: { key: string; label: string; from: string | null; to: string | null };
   totals: {
     agents: number;
     subscribers: number;
+    subscriber_drivers: number;
+    subscriber_transporters: number;
     trusted_drivers: number;
     verified_drivers: number;
     entitled_checks: number;
     done_checks: number;
     fully_verified: number;
+    fully_verified_drivers: number;
+    fully_verified_transporters: number;
     calls_made: number;
     connected_calls: number;
     completion: number;
+    doc_completion?: Record<string, IdvDocCompletionItem>;
   };
+}
+
+/** One row in the Date-wise Verification Checks Excel-style Sheet */
+/**
+ * Per-check counts for one attribution bucket. `self` = the driver completed
+ * the check on their own; `agent` = it landed on/after the agent's first
+ * connected call, i.e. the agent's calling produced it.
+ */
+export interface IdvCheckSplit {
+  dl: number;
+  pan: number;
+  aadhaar: number;
+  face: number;
+  court: number;
+  dav: number;
+  rc: number;
+  challan: number;
+  total: number;
+}
+
+export interface IdvDailyCheckStatRow {
+  date: string;
+  formatted_date: string; // e.g. "01-Sep-2024"
+  day_name: string; // e.g. "Mon"
+  dl_check: number; // combined (self + agent), one column per check
+  pan_check: number;
+  aadhaar_check: number;
+  face_check: number;
+  court_check: number;
+  dav_check: number;
+  rc_check: number;
+  challan_check: number;
+  total: number;
+  self: IdvCheckSplit; // driver's own self-service checks that day
+  agent: IdvCheckSplit; // checks the agent's call produced that day
+}
+
+export interface IdvDailyCheckStatsResponse {
+  status: boolean;
+  range: string;
+  from: string;
+  to: string;
+  scope: string;
+  agent_id?: number;
+  agent_name?: string;
+  agent_scoped?: boolean;
+  data: IdvDailyCheckStatRow[];
+  totals: IdvCheckSplit & {
+    self: IdvCheckSplit;
+    agent: IdvCheckSplit;
+  };
+}
+
+/** Date window for the self scorecard's call metrics. */
+export type IdvSelfRange = 'today' | 'yesterday' | 'week' | 'month' | 'last_month' | 'all' | 'custom';
+
+/** The signed-in telecaller's own ID-verification scorecard. */
+export interface IdvSelfStatsResponse {
+  status: boolean;
+  data: {
+    agent_id: number;
+    agent_name: string;
+    range: { key: string; label: string; from: string | null; to: string | null };
+    /** Dialling effort inside the selected date window. */
+    calls: {
+      total: number;
+      connected: number;
+      not_connected: number;
+      /** Neither connected nor not-connected — callbacks / feedback-pending. */
+      other: number;
+      driver: number;
+      transporter: number;
+      contacted: number;
+      connect_rate: number;
+    };
+    /** The verification book they own — current snapshot, not date-ranged. */
+    book: {
+      subscribers: number;
+      subscriber_drivers: number;
+      subscriber_transporters: number;
+      entitled_checks: number;
+      done_checks: number;
+      fully_verified: number;
+      under_progress: number;
+      /** Fully-verified subscribers ÷ the whole book, %. */
+      completion: number;
+      /** Individual checks done ÷ entitled, %. */
+      check_completion: number;
+    };
+    doc_completion?: Record<string, IdvDocCompletionItem>;
+  };
+}
+
+/** One entitled verification on a self-subscriber row. */
+export interface IdvSelfSubscriberCheck {
+  key: string;
+  label: string;
+  icon: string;
+  /** clean | attention | failed | pending | not_done */
+  state: string;
+  /** completed (clean) · in_progress (running/flagged) · to_do (never run). */
+  bucket: 'completed' | 'in_progress' | 'to_do';
+  /** When the check was last run, when known. */
+  at?: string | null;
+}
+
+/**
+ * The shared shape the ID-verification desk table renders. A subscriber row and
+ * a call-history row are both an IdvDeskUser, so one row component renders both
+ * pixel-for-pixel. It deliberately omits `calls`, which each subtype defines
+ * differently (a count on the subscriber row, the timeline on the call row).
+ */
+export interface IdvDeskUser {
+  id: number;
+  tmid: string | null;
+  name: string;
+  mobile?: string | null;
+  license_number?: string | null;
+  rc_number?: string | null;
+  role: string;
+  location: string;
+  /** When this caller last called them — shown in the CONTACT column. */
+  last_call_at: string | null;
+  plan: string | null;
+  plan_amount: number;
+  entitled: number;
+  completed: number;
+  in_progress: number;
+  to_do: number;
+  /** Verified (clean) checks ÷ entitled, %. */
+  completion: number;
+  checks: IdvSelfSubscriberCheck[];
+}
+
+/** One user on the caller's desk list (subscriber and/or reached), with breakdown. */
+export interface IdvSelfSubscriberRow extends IdvDeskUser {
+  last_paid_at: string | null;
+  /** Assigned to the signed-in caller — their own subscriber. */
+  is_mine: boolean;
+  /** The caller has called this user at least once on the verification desk. */
+  reached: boolean;
+  /** How many times the caller reached them. */
+  calls: number;
+  connected_calls: number;
+}
+
+export interface IdvSelfSubscribersResponse {
+  status: boolean;
+  data: IdvSelfSubscriberRow[];
+  pagination: { total: number; per_page: number; current_page: number; last_page: number };
+}
+
+/**
+ * One REACHED user on the Call History screen. Same IdvDeskUser shape as the
+ * subscriber row (so the same table row renders both), plus this caller's call
+ * counts and the full call TIMELINE for that user, which the row expands to
+ * reveal.
+ */
+export interface IdvSelfCallRow extends IdvDeskUser {
+  /** How many times this caller called them (in the window), and how many connected. */
+  call_count: number;
+  connected_count: number;
+  /** Every call this caller made to them, newest first. */
+  calls: IdvCall[];
+}
+
+export interface IdvSelfCallsResponse {
+  status: boolean;
+  data: IdvSelfCallRow[];
+  range: { key: string; label: string; from: string | null; to: string | null };
+  totals: {
+    total: number;
+    connected: number;
+    not_connected: number;
+    callback_later: number;
+    contacted: number;
+    connect_rate: number;
+  };
+  pagination: { total: number; per_page: number; current_page: number; last_page: number };
+}
+
+// ── Revenue Challenge (September 2026 Targets & Incentives) ──────────────────
+export type RcCategory = 'driver' | 'transporter' | 'matchmaking' | 'other';
+
+export interface RcAgentRow {
+  name: string;
+  admin_id: number | null;
+  /** Whether the target name resolved to an active roster member. */
+  matched: boolean;
+  role: string | null;
+  category: RcCategory;
+  monthly_target: number;
+  period_target: number;
+  achieved_period: number;
+  achieved_month: number;
+  pct_period: number;
+  pct_month: number;
+  remaining_period: number;
+  /** ₹1,000 achievement incentive (≥ ₹5,000 collected in the sprint). */
+  achievement_unlocked: boolean;
+  achievement_reward: number;
+  achievement_gate: number;
+  achievement_remaining: number;
+  /** ₹100 per driver placed (Successful Recruitment). */
+  placements_period: number;
+  placements_month: number;
+  placement_rate: number;
+  placement_incentive_period: number;
+  placement_incentive_month: number;
+  rank: number;
+}
+
+export interface RcCategoryLeader {
+  category: RcCategory;
+  admin_id: number;
+  name: string;
+  role: string | null;
+  revenue: number;
+  award: number;
+}
+
+export interface RcSprint {
+  key: string;
+  label: string;
+  share: number;
+  target: number;
+  from: string;
+  to: string;
+}
+
+export interface RcPolicyRow {
+  team: string;
+  product: string;
+  price: number | null;
+  incentive: number;
+  rule: string;
+  condition: string;
+}
+
+export interface RevenueChallengeResponse {
+  status: boolean;
+  data: {
+    contest: {
+      title: string;
+      month_label: string;
+      month_goal: number;
+      month_achieved: number;
+      month_pct: number;
+      as_of: string;
+    };
+    period: {
+      key: string;
+      label: string;
+      share: number;
+      from: string;
+      to: string;
+      is_current: boolean;
+      target: number;
+      achieved: number;
+      pct: number;
+      days_left: number;
+    };
+    sprints: RcSprint[];
+    agents: RcAgentRow[];
+    category_leaders: {
+      driver: RcCategoryLeader | null;
+      transporter: RcCategoryLeader | null;
+      matchmaking: RcCategoryLeader | null;
+    };
+    category_award: number;
+    team_incentives: {
+      matchmaking_per_joining: number;
+      verification_share_pct: number;
+      verification_revenue: number;
+      verification_pool: number;
+    };
+    incentive_policy: RcPolicyRow[];
+  };
+}
+
+/** The signed-in agent's own challenge card (My Target screen + login popup). */
+export interface MyRcSprint {
+  key: string;
+  label: string;
+  share: number;
+  team_target: number;
+  my_target: number;
+  achieved: number;
+  from: string;
+  to: string;
+  is_current: boolean;
+}
+
+export interface MyRcBreakdown {
+  type: string;
+  label: string;
+  category: RcCategory;
+  amount: number;
+  count: number;
+}
+
+export interface MyRcDaily {
+  date: string;
+  label: string;
+  amount: number;
+}
+
+export interface MyRevenueChallengeResponse {
+  status: boolean;
+  data: {
+    agent: { id: number; name: string; role: string; category: RcCategory; has_target: boolean };
+    breakdown: MyRcBreakdown[];
+    daily: MyRcDaily[];
+    contest: {
+      title: string;
+      month_label: string;
+      month_goal: number;
+      sprint_key: string;
+      sprint_label: string;
+      sprint_share: number;
+      sprint_from: string;
+      sprint_to: string;
+      current_sprint: string;
+      days_left: number;
+      is_current: boolean;
+      as_of: string;
+    };
+    my: {
+      monthly_target: number;
+      period_target: number;
+      achieved_period: number;
+      achieved_month: number;
+      pct_period: number;
+      pct_month: number;
+      remaining_period: number;
+      remaining_month: number;
+      achievement_gate: number;
+      achievement_unlocked: boolean;
+      achievement_reward: number;
+      achievement_remaining: number;
+      // ₹100 per driver placed (Successful Recruitment).
+      placements_period: number;
+      placements_month: number;
+      placement_rate: number;
+      placement_incentive_period: number;
+      placement_incentive_month: number;
+    };
+    category_standing: {
+      category: RcCategory;
+      rank: number | null;
+      total_peers: number;
+      is_leader: boolean;
+      award: number;
+      leader_name: string | null;
+      leader_revenue: number;
+    };
+    sprints: MyRcSprint[];
+    team: { sprint_target: number; sprint_achieved: number; month_goal: number; month_achieved: number };
+    awards: { category_award: number; achievement_reward: number; achievement_gate: number };
+  };
+}
+
+/**
+ * User Connectivity SLA — the 20-minute first-call rule (framework Parameter 1).
+ * Derived server-side from users.Created_at + call_history_ivr; nothing stored.
+ */
+export type SlaStatus = 'met' | 'late' | 'not_called' | 'pending';
+export type SlaConnectivity = 'connected' | 'callback' | 'not_connected' | 'in_progress' | 'not_attempted';
+export type SlaRange = 'today' | 'yesterday' | '7d' | 'month' | 'custom';
+
+export interface SlaRow {
+  user_id: number;
+  tmid: string;
+  name: string;
+  mobile: string;
+  role: string;
+  type_label: string;
+  assigned_to: number | null;
+  assigned_name: string | null;
+  registered_at: string;
+  after_hours: boolean;
+  clock_start: string;
+  deadline: string;
+  first_attempt_at: string | null;
+  first_attempt_by: string | null;
+  tat_min: number | null;
+  late_by_min: number | null;
+  sla_status: SlaStatus;
+  attempts: number;
+  connectivity: SlaConnectivity;
+  reason: string | null;
+  reason_label: string | null;
+  /** Only on `running` rows from /me. */
+  seconds_left?: number;
+}
+
+export interface SlaTally {
+  registrations: number;
+  met: number;
+  late: number;
+  not_called: number;
+  pending: number;
+  breached: number;
+  due: number;
+  unassigned: number;
+  attempted: number;
+  connected: number;
+  compliance_pct: number | null;
+  avg_tat_min: number | null;
+  connect_rate_pct: number | null;
+  avg_attempts: number | null;
+}
+
+export interface SlaReport {
+  window: { range: SlaRange; from: string; to: string };
+  rules: { sla_minutes: number; window: string; duty_close: string; days: string };
+  as_of: string;
+  summary: SlaTally;
+  by_type: Array<SlaTally & { key: string; label: string }>;
+  daily: Array<{ date: string; registrations: number; met: number; breached: number; pending: number; compliance_pct: number | null }>;
+  reasons: Array<{ key: string; label: string; count: number }>;
+  list: { data: SlaRow[]; total: number; page: number; per_page: number; last_page: number };
+}
+
+export interface SlaAgentRow extends SlaTally {
+  agent_id: number | null;
+  name: string;
+  desk: string | null;
+  /** ₹ collected in the same window (framework Parameter 2). */
+  revenue: number;
+}
+
+export interface ConnectivitySlaResponse {
+  status: boolean;
+  data: SlaReport & { by_agent: SlaAgentRow[] };
+}
+
+export interface MyConnectivitySlaResponse {
+  status: boolean;
+  data: SlaReport & { running: SlaRow[]; overdue: SlaRow[] };
+}
+
+export interface SlaQuery {
+  range?: SlaRange;
+  from?: string;
+  to?: string;
+  role?: string;
+  agent_id?: number | string;
+  status?: string;
+  search?: string;
+  page?: number;
+  per_page?: number;
 }
 
 export interface RevivalOffer {
@@ -792,6 +1297,135 @@ export interface WctD7UpsellResponse {
   };
 }
 
+export type WctExpiringWindow = 'tomorrow' | '3days' | 'week' | 'expired';
+/** pending = not yet called for this subscription; called = renewal call made. */
+export type WctExpiringTab = 'pending' | 'called';
+/** all = whole desk; mine = only transporters assigned to the calling agent. */
+export type WctExpiringScope = 'all' | 'mine';
+
+export interface WctExpiringLead {
+  id: number;
+  tmid: string;
+  company_name: string;
+  contact_name: string;
+  phone: string;
+  location: string;
+  fleet_size: string | null;
+  plan_label: string;
+  amount: number;
+  started_at: string | null;
+  expires_at: string;
+  /** Calendar days left — 0 = today, 1 = tomorrow, negative = expired that many days ago. */
+  days_left: number;
+  /** Already past its expiry and not renewed. */
+  expired: boolean;
+  assigned_name: string | null;
+  renew_calls: number;
+  last_call_at: string | null;
+  last_call_status: string | null;
+  last_call_feedback: string | null;
+  last_call_note: string | null;
+  last_call_by: string | null;
+}
+
+export interface WctExpiringResponse {
+  status: boolean;
+  data: {
+    window: WctExpiringWindow;
+    tab: WctExpiringTab;
+    scope: WctExpiringScope;
+    /** YYYY-MM the Expired filter is narrowed to, or null for all months. */
+    month: string | null;
+    /** Months with expiries in the active tab, newest first — for the month picker. */
+    expired_months: { month: string; label: string; count: number }[];
+    counts: Record<WctExpiringWindow, number>;
+    tab_counts: Record<WctExpiringTab, number>;
+    leads: WctExpiringLead[];
+    pagination: { total: number; per_page: number; current_page: number; last_page: number };
+  };
+}
+
+export type MmApplicantStatus =
+  | 'matched' | 'interview_done' | 'rejected' | 'not_interested' | 'follow_up'
+  | 'interested' | 'connected' | 'not_reachable' | 'new' | 'pending';
+export type MmJobTier = 'standard' | 'premium' | 'super_premium';
+
+/** One application assigned to an MM agent (applyjobs.assigned_to). */
+export interface MmApplicantItem {
+  application_id: number;
+  applied_at: string;
+  /** applyjobs.accept_reject_status — the transporter's own decision. */
+  transporter_decision: 'pending' | 'accepted' | 'rejected';
+  status: MmApplicantStatus;
+  status_label: string;
+  mm_agent: { id: number; name: string | null };
+  driver: {
+    id: number; name: string | null; tmid: string | null;
+    /** For the dialler only — never rendered on matchmaking screens. */
+    mobile: string | null;
+    location: string | null; registered_at: string | null;
+  };
+  job: {
+    id: number; code: string | null; title: string | null; location: string | null; route: string | null;
+    vehicle: string | null; salary: string | null; experience: string | null; licence: string | null;
+    drivers_required: number | null; tier: MmJobTier | null; is_greenline: boolean;
+    created_at: string | null; verified: boolean; active: boolean; state: string; agent_name: string | null;
+  } | null;
+  transporter: {
+    id: number; company: string | null; contact: string | null; tmid: string | null;
+    /** For the dialler / conference only — never rendered. */
+    mobile: string | null;
+    agent_name: string | null;
+  } | null;
+  calls: {
+    count: number; last_at: string | null; last_status: string | null; last_outcome: string | null;
+    last_by: string | null; last_note: string | null; follow_up_at: string | null;
+    follow_up_overdue: boolean;
+  };
+  call_lock: { owner_name: string; job_id: string | null; message: string } | null;
+  can_call: boolean;
+}
+
+export interface MmApplicantsSummary {
+  total: number;
+  status: Record<MmApplicantStatus, number>;
+  by_tier: Record<MmJobTier, number>;
+  applied_today: number;
+  followups_today: number;
+  followups_overdue: number;
+  never_called: number;
+  called_today: number;
+}
+
+export interface MmApplicantsParams {
+  status?: MmApplicantStatus;
+  tier?: MmJobTier;
+  from?: string;
+  to?: string;
+  followup?: 'today' | 'overdue' | 'upcoming' | 'any';
+  call?: 'never' | 'connected' | 'not_connected';
+  search?: string;
+  sort?: 'applied_desc' | 'applied_asc' | 'last_call' | 'followup';
+  page?: number;
+  per_page?: number;
+  /** Team leads / heads only: an agent id, or 'all'. */
+  agent_id?: number | 'all';
+}
+
+export interface MmApplicantsResponse {
+  status: boolean;
+  message?: string;
+  data: {
+    summary: MmApplicantsSummary;
+    statuses: { key: MmApplicantStatus; label: string }[];
+    items: MmApplicantItem[];
+    /** Present only for team leads / heads. */
+    agents: { id: number; name: string; is_active: number }[] | null;
+    agent_id: number | null;
+    pagination: { total: number; per_page: number; current_page: number; last_page: number };
+  };
+}
+
 export interface MmDashboardResponse {
   status: boolean;
   data: {
@@ -804,6 +1438,7 @@ export interface MmDashboardResponse {
       approved_jobs: { count: number };
       pending_jobs: { count: number };
       closed_jobs: { count: number };
+      fulfilled_jobs?: { count: number };
       expired_jobs: { count: number };
       expiring_soon_jobs: { count: number };
       total_applicants: { count: number };
@@ -821,7 +1456,7 @@ export interface MmDashboardResponse {
     // `expiring_soon` is a warning subset of open, never part of the total.
     job_status_counts?: Record<'regular' | 'greenline', {
       all: number; open: number; hold: number; pending: number;
-      closed: number; expired: number; expiring_soon: number;
+      closed: number; fulfilled: number; expired: number; expiring_soon: number;
     }>;
   };
 }
@@ -879,6 +1514,7 @@ export interface MmDriver {
   lastCallAt: string | null;
   experience: string;
   routes: string;
+  operatingStates?: string | null;
   matchScore: number | null;
   lastCall: string;
 }
@@ -892,7 +1528,7 @@ export interface MmDriversResponse {
 /** Every filter accepted by GET /web-crm/mm/drivers. Lists are sent as CSV. */
 export interface MmDriverSearchParams {
   search?: string;
-  state_id?: number | string;
+  state_id?: number | string | Array<number | string>;
   preferred_state_id?: number | string;
   city?: string;
   license?: string[];
@@ -919,6 +1555,12 @@ export interface MmDriverSearchParams {
   sort?: string;
   page?: number;
   per_page?: number;
+  /** 'yes' = has a captured payment, 'no' = never paid. */
+  subscribed?: 'yes' | 'no';
+  /** Leave out drivers another agent holds via the driver lock… */
+  hide_locked?: 1;
+  /** …judged against this job code (its current owner still sees its locked drivers). */
+  lock_job_id?: string;
 }
 
 export interface MmDriverFiltersResponse {
@@ -1065,6 +1707,9 @@ export interface PlacementRow {
   transporter_name: string | null;
   placed_at: string;
   placed_at_display: string;
+  /** Driver's date of joining (raw ISO + pre-formatted), null when not set. */
+  joining_date: string | null;
+  joining_date_display: string | null;
   last_activity_at: string;
   job_manager: string | null;
   job_manager_id: number | null;
@@ -1082,11 +1727,13 @@ export interface PlacementRow {
   job_placed_total: number | null;
 }
 
+export type PlacementReportTab = 'all' | 'interview_done' | 'placed';
+
 export interface PlacementReportResponse {
   status: boolean;
-  tab: 'interview_done' | 'placed';
+  tab: PlacementReportTab;
   rows: PlacementRow[];
-  counts: { interview_done: number; placed: number };
+  counts: { all: number; interview_done: number; placed: number };
   job_managers: PlacementJobManager[];
   pagination: { total: number; per_page: number; current_page: number; last_page: number };
 }
@@ -1119,6 +1766,8 @@ export interface MmCallHistoryRow {
   callback_at: string | null;
   recording: string | null;
   called_at: string;
+  /** Set when this call went to one of the driver's relatives, not the driver. */
+  relative?: MmRelativeOnCall | null;
 }
 
 export interface MmCallHistoryResponse {
@@ -1368,10 +2017,15 @@ export interface MmJobListingsResponse {
       applicants_count: number;
       created_at: string;
       closed_job: number;
-      /** The agent's Open/Hold/Closed word — null on a job nobody has set. */
+      /** The agent's Open/Hold/Closed/Fulfilled word — null on a job nobody has set. */
       job_status: JobStatus | null;
       job_status_remarks: string | null;
       job_status_by_name: string | null;
+      /** Seats the job needs, and — on a fulfilled job — the placed drivers' TMIDs. */
+      drivers_needed?: number;
+      driver_placed?: string[] | null;
+      /** The placed drivers with their names, for the fulfilled card. */
+      placed_drivers?: Array<{ tmid: string; name: string | null }>;
       is_greenline: boolean;
       subscription_plan_id: number | null;
       plan_type: string;
@@ -1380,13 +2034,15 @@ export interface MmJobListingsResponse {
   };
 }
 
-/** The three states an agent can put a job in. */
-export type JobStatus = 'open' | 'hold' | 'closed';
+/** The states an agent can put a job in. `fulfilled` = the driver requirement
+ *  was met; it also closes the job, but is its own green bucket on the board. */
+export type JobStatus = 'open' | 'hold' | 'closed' | 'fulfilled';
 
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   open: 'Open',
   hold: 'Hold',
   closed: 'Closed',
+  fulfilled: 'Fulfilled',
 };
 
 /** One entry in a job's Open/Hold/Closed trail (`job_status_changes`). */
@@ -1437,6 +2093,14 @@ export interface MmJobDetailResponse {
     job_status?: JobStatus;
     is_closed?: boolean;
     is_on_hold?: boolean;
+    is_fulfilled?: boolean;
+    /** jobs.status: 'pending' = waiting for approval (not live in the app yet). */
+    approval_status?: 'approved' | 'pending';
+    /** Seats the job needs, and — on a fulfilled job — the placed drivers' TMIDs. */
+    drivers_needed?: number;
+    driver_placed?: string[] | null;
+    /** The placed drivers with their names, for the fulfilled state. */
+    placed_drivers?: Array<{ tmid: string; name: string | null }>;
     /** Why it was put there — up to 500 characters, the agent's words. */
     job_status_remarks?: string | null;
     job_status_by_name?: string | null;
@@ -1492,7 +2156,9 @@ export interface MmJobTransporterResponse {
       call_status: string | null;
       call_feedback: string | null;
       call_remarks: string | null;
+      assigned_to: number | null;
       assigned_admin_name: string | null;
+      can_edit_remarks: boolean;
       created_at: string;
     }>;
     call_logs_count: number;
@@ -1527,7 +2193,7 @@ export interface MmApplicant {
     /** Resolved by MmCallerController::mmJobApplicants from jobs.transporter_id. */
     transporter_name?: string | null;
   }>;
-  match_making_status: { status: string; feedback: string; called_at: string } | null;
+  match_making_status: { status: string; feedback: string; called_at: string; joining_date?: string | null } | null;
   /**
    * One driver, one matchmaking agent. Present whenever ANY agent holds this
    * driver — including the signed-in one, so their own screen can say "yours"
@@ -1540,6 +2206,8 @@ export interface MmApplicant {
    */
   can_call?: boolean;
   call_timeline?: Array<MmApplicantTimelineEntry>;
+  /** Family / friends saved on Interview / Placement Done. */
+  extra_contacts?: MmDriverExtraContact[];
 }
 
 /** A driver held by the agent who took them to interview / placement. */
@@ -1551,6 +2219,11 @@ export interface MmDriverLock {
   locked_at: string;
   /** The signed-in agent is the one holding this driver. */
   is_mine: boolean;
+  /**
+   * The signed-in agent didn't take the lock but now owns the job it belongs to
+   * (the job was reassigned to them) — so they may work this driver on that job.
+   */
+  is_job_owner?: boolean;
   /** Ready to show — same wording the blocked dial returns. */
   message: string;
 }
@@ -1580,6 +2253,8 @@ export interface MmApplicantTimelineEntry {
   transporter_name?: string | null;
   /** The signed-in agent logged this call, so they may correct its remark. */
   can_edit_remarks?: boolean;
+  /** Set when this call went to the driver's relative, not the driver. */
+  relative?: MmRelativeOnCall | null;
 }
 
 export interface MmDriverProfileResponse {
@@ -1624,8 +2299,29 @@ export interface MmDriverProfileResponse {
       callback_at: string | null; called_by: string | null; called_at: string;
       recording_url: string | null; bill_duration: string | number | null;
       recording_source?: string | null;
+      /** Set on a call placed to one of the driver's relatives. */
+      relative?: MmRelativeOnCall | null;
     }>;
+    /** Family / friends who can reach the driver (MM Interview / Placement Done). */
+    extra_contacts?: MmDriverExtraContact[];
   } | null;
+}
+
+/** A driver's additional contact. `number` is for the dialler only. */
+export interface MmDriverExtraContact {
+  relation: string;
+  name: string;
+  number: string;
+  number_masked: string;
+  added_by: string | null;
+  added_at: string;
+}
+
+/** Who was called on a call to a driver's relative. */
+export interface MmRelativeOnCall {
+  relation: string;
+  name: string;
+  number_masked: string | null;
 }
 
 /** One entry in a lead's call history — shared by the driver and transporter modals. */
@@ -1637,6 +2333,7 @@ export interface MmCallTimelineEntry {
   callback_at: string | null; called_by: string | null; called_at: string;
   recording_url: string | null; recording_source: string | null;
   bill_duration: string | number | null;
+  relative?: MmRelativeOnCall | null;
 }
 
 export interface MmTransporterProfileResponse {
@@ -1709,12 +2406,22 @@ export interface MmGreenlineApplicantsResponse {
   pagination: { next_cursor: number | null; has_more: boolean; per_page: number };
 }
 
+/** Job-wide call-outcome counts for the applicant-board filter bar. All scoped
+ *  to THIS job. */
+export type MmApplicantBucket =
+  | 'all' | 'pending' | 'called' | 'connected' | 'not_connected'
+  | 'no_response' | 'interview_done' | 'matchmaking_done' | 'driverbase';
+
+export type MmApplicantCounts = Partial<Record<MmApplicantBucket, number>>;
+
 export interface MmApplicantsFullResponse {
   status: boolean;
   job_info: { job_id: string; job_title: string };
   data: MmApplicant[];
   total_applicants: number;
   match_making: any[];
+  /** Job-wide count per pipeline bucket for the header filter bar. */
+  counts?: MmApplicantCounts;
   pagination: { next_cursor: number | null; has_more: boolean; per_page: number };
 }
 
@@ -2379,6 +3086,39 @@ export interface DriverBankDetailResponse {
   };
 }
 
+/** One "driver joins in <24h" reminder for the MM desk (mm/joining-reminders). */
+export interface JoiningReminder {
+  call_id: number;
+  driver_id: number | null;
+  driver_tmid: string | null;
+  driver_name: string;
+  driver_mobile: string | null;
+  job_id: string | null;
+  job_title: string;
+  transporter_name: string;
+  joining_date: string;   // ISO
+  joining_label: string;  // pre-formatted for display
+  hours_left: number;
+  outcome: 'Matchmaking Done' | 'Interview Done';
+}
+
+/** A notepad row for the left sidebar list. */
+export interface NoteRow {
+  id: number;
+  title: string | null;
+  preview: string;
+  updated_at: string | null;
+  updated_label: string | null;
+}
+
+/** A single note opened in the editor. */
+export interface NoteFull {
+  id: number;
+  title: string | null;
+  content: string | null;
+  updated_at: string | null;
+}
+
 export const webCrmApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // DW Endpoints
@@ -2505,17 +3245,33 @@ export const webCrmApi = baseApi.injectEndpoints({
         params: params || undefined,
       }),
     }),
-    getDwCallbacks: builder.query<DwCallbacksResponse, void>({
-      query: () => '/web-crm/dw/callbacks',
+    getDwCallbacks: builder.query<DwCallbacksResponse, CallbacksParams | void>({
+      query: (params) => ({ url: '/web-crm/dw/callbacks', params: params || undefined }),
     }),
-    scheduleDwCallback: builder.mutation<any, { user_id: number; reason: string }>({
+    scheduleDwCallback: builder.mutation<any, { user_id: number; reason: string; scheduled_for?: string }>({
       query: (body) => ({
         url: '/web-crm/dw/callbacks/schedule',
         method: 'POST',
         body,
       }),
     }),
-    getDwCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number; page?: number; search?: string; feedback?: string } | void>({
+    // Edit an existing callback (reschedule and/or update remarks).
+    updateDwCallback: builder.mutation<any, { id: number; reason?: string; scheduled_for?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/web-crm/dw/callbacks/${id}`,
+        method: 'PATCH',
+        body,
+      }),
+    }),
+    // Remove a callback from the calendar (soft resolve — cancelled or done).
+    deleteDwCallback: builder.mutation<any, { id: number; outcome?: 'done' | 'cancelled' }>({
+      query: ({ id, outcome = 'cancelled' }) => ({
+        url: `/web-crm/dw/callbacks/${id}`,
+        method: 'DELETE',
+        params: { outcome },
+      }),
+    }),
+    getDwCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number | 'all'; page?: number; search?: string; feedback?: string; date_from?: string; date_to?: string } | void>({
       query: (params) => ({
         url: '/web-crm/dw/call-history',
         params: params || undefined,
@@ -2656,14 +3412,28 @@ export const webCrmApi = baseApi.injectEndpoints({
         params: params || undefined,
       }),
     }),
-    getWctCallbacks: builder.query<DwCallbacksResponse, void>({
-      query: () => '/web-crm/wct/callbacks',
+    getWctCallbacks: builder.query<DwCallbacksResponse, CallbacksParams | void>({
+      query: (params) => ({ url: '/web-crm/wct/callbacks', params: params || undefined }),
     }),
-    scheduleWctCallback: builder.mutation<any, { user_id: number; reason: string }>({
+    scheduleWctCallback: builder.mutation<any, { user_id: number; reason: string; scheduled_for?: string }>({
       query: (body) => ({
         url: '/web-crm/wct/callbacks/schedule',
         method: 'POST',
         body,
+      }),
+    }),
+    updateWctCallback: builder.mutation<any, { id: number; reason?: string; scheduled_for?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/web-crm/wct/callbacks/${id}`,
+        method: 'PATCH',
+        body,
+      }),
+    }),
+    deleteWctCallback: builder.mutation<any, { id: number; outcome?: 'done' | 'cancelled' }>({
+      query: ({ id, outcome = 'cancelled' }) => ({
+        url: `/web-crm/wct/callbacks/${id}`,
+        method: 'DELETE',
+        params: { outcome },
       }),
     }),
     getWctCallHistory: builder.query<DwCallHistoryResponse, { per_page?: number | 'all'; page?: number; search?: string; feedback?: string; date_from?: string; date_to?: string; direction?: string; call_status?: string } | void>({
@@ -2681,7 +3451,7 @@ export const webCrmApi = baseApi.injectEndpoints({
     // outcome text an agent dispositioned, driver_bank the placements only it
     // recorded. All three are folded on job × driver by the backend.
     getPlacementReport: builder.query<PlacementReportResponse, {
-      tab?: 'interview_done' | 'placed';
+      tab?: PlacementReportTab;
       job_manager?: number | string;
       date_from?: string; date_to?: string;
       search?: string; page?: number; per_page?: number;
@@ -2755,6 +3525,13 @@ export const webCrmApi = baseApi.injectEndpoints({
       query: (params) => ({
         url: '/web-crm/wct/d7-upsell-queue',
         params: params || undefined,
+      }),
+    }),
+
+    getWctExpiringSubscriptions: builder.query<WctExpiringResponse, { window?: WctExpiringWindow; tab?: WctExpiringTab; scope?: WctExpiringScope; month?: string; per_page?: number; page?: number; search?: string }>({
+      query: (params) => ({
+        url: '/web-crm/wct/expiring-subscriptions',
+        params,
       }),
     }),
 
@@ -2846,7 +3623,7 @@ export const webCrmApi = baseApi.injectEndpoints({
     }),
 
     getMmApplicantsFull: builder.query<MmApplicantsFullResponse, {
-      jobId: string; per_page?: number; cursor?: number | null; search?: string; status?: string;
+      jobId: string; per_page?: number; cursor?: number | null; search?: string; status?: string; today?: boolean;
     }>({
       query: ({ jobId, ...params }) => ({
         url: `/web-crm/match-making/job/${jobId}/applicants`,
@@ -2862,7 +3639,7 @@ export const webCrmApi = baseApi.injectEndpoints({
     // only stamps the matchmaking context (job + match outcome) onto that
     // same call row after the disposition is submitted.
     tagMmCall: builder.mutation<{ success: boolean; message: string }, {
-      call_id: number; job_id: string; match_status?: string;
+      call_id: number; job_id: string; match_status?: string; process?: string;
     }>({
       query: (body) => ({ url: '/web-crm/match-making/ivr-call-tag-job', method: 'POST', body }),
       invalidatesTags: ['MmApplicants', 'MmTransporter', 'MmJobs'],
@@ -2884,7 +3661,7 @@ export const webCrmApi = baseApi.injectEndpoints({
       providesTags: ['MmJobs'],
     }),
     getMmCallHistory: builder.query<MmCallHistoryResponse, {
-      page?: number; per_page?: number; period?: string;
+      page?: number; per_page?: number | 'all'; period?: string;
       call_status?: string; job_id?: string; search?: string;
       feedback?: string;
       date_from?: string; date_to?: string;
@@ -2906,9 +3683,11 @@ export const webCrmApi = baseApi.injectEndpoints({
       invalidatesTags: ['MmJobs', 'MmTransporter'],
     }),
 
-    // Open / Hold / Closed + the reason. Closing here really closes the job:
-    // the backend writes jobs.closed_job='yes' alongside jobs.job_status, so
-    // the boards and exports that read the flag agree with this screen.
+    // Open / Hold / Closed / Fulfilled + the reason. Closing OR fulfilling here
+    // really closes the job: the backend writes jobs.closed_job='yes' alongside
+    // jobs.job_status, so the boards and exports that read the flag agree with
+    // this screen. A fulfil additionally sends the placed drivers' TMIDs, which
+    // land in jobs.driver_placed.
     updateMmJobStatus: builder.mutation<
       {
         success: boolean;
@@ -2918,15 +3697,40 @@ export const webCrmApi = baseApi.injectEndpoints({
           job_status: JobStatus;
           previous_status: JobStatus | null;
           closed_job: string;
+          driver_placed?: string[];
           job_status_remarks: string | null;
           job_status_by_name: string | null;
           job_status_at: string;
         };
       },
-      { job_id: string; status: JobStatus; remarks?: string }
+      { job_id: string; status: JobStatus; remarks?: string; placed_drivers?: string[] }
     >({
       query: (body) => ({ url: '/web-crm/match-making/job-status', method: 'POST', body }),
       invalidatesTags: ['MmJobs'],
+    }),
+
+    // The applicants an agent picks from when marking a job Fulfilled, with the
+    // seats it needs and who is already placed on it.
+    getMmJobPlacementCandidates: builder.query<
+      {
+        success: boolean;
+        data: {
+          job_id: string;
+          drivers_needed: number;
+          placed: string[];
+          applicants: Array<{
+            driver_id: number;
+            name: string;
+            tmid: string | null;
+            mobile: string | null;
+            applied_at: string | null;
+          }>;
+        };
+      },
+      string
+    >({
+      query: (jobId) => `/web-crm/match-making/job/${jobId}/placement-candidates`,
+      providesTags: ['MmApplicants'],
     }),
 
     // Correct the remark on a call already logged. Own calls only — the
@@ -3007,6 +3811,7 @@ export const webCrmApi = baseApi.injectEndpoints({
         callback_sub?: string | null;
         reason?: string | null;
         call_duration?: number;
+        joining_date?: string | null;
       }
     >({
       query: (body) => ({ url: '/web-crm/call/disposition', method: 'POST', body }),
@@ -3038,6 +3843,11 @@ export const webCrmApi = baseApi.injectEndpoints({
       query: (driverId) => `/web-crm/match-making/driver/${driverId}/screening`,
       providesTags: ['MmApplicants'],
     }),
+    // Applicant Matchmaking — applications dealt to this MM agent.
+    getMmApplicants: builder.query<MmApplicantsResponse, MmApplicantsParams>({
+      query: (params) => ({ url: '/web-crm/match-making/applicants', params }),
+      providesTags: ['MmApplicants'],
+    }),
     // Complete driver profile (all users fields + DL/PAN/Aadhaar verification).
     getMmDriverProfile: builder.query<MmDriverProfileResponse, number | string>({
       query: (driverId) => `/web-crm/match-making/driver/${driverId}/profile`,
@@ -3065,6 +3875,15 @@ export const webCrmApi = baseApi.injectEndpoints({
         method: 'POST',
         body,
       }),
+    }),
+
+    // Drivers this MM agent placed/interviewed who are due to JOIN within the
+    // next 24 hours — backs the joining-date reminder popup. Empty for non-MM.
+    getMmJoiningReminders: builder.query<{
+      status: boolean;
+      data: JoiningReminder[];
+    }, void>({
+      query: () => '/web-crm/mm/joining-reminders',
     }),
 
     // Complete transporter record + full call timeline — the eye-icon modal on
@@ -3371,9 +4190,43 @@ export const webCrmApi = baseApi.injectEndpoints({
       invalidatesTags: ['WebRoles'],
     }),
 
-    getIdvQueue: builder.query<IdvQueueResponse, { page?: number; per_page?: number; search?: string; plan?: string; tab?: string; mine?: boolean }>({
+    getIdvQueue: builder.query<IdvQueueResponse, { page?: number; per_page?: number; search?: string; plan?: string; role?: string; tab?: string; mine?: boolean; call_state?: string; date_field?: string; date_from?: string; date_to?: string }>({
       query: (params) => ({ url: '/web-crm/id-verification/queue', params }),
       providesTags: ['IdVerification'],
+    }),
+    // Team-Leader command wall-board (open /crm/teleui React page). Public feed;
+    // baseApi prepends config.ts API_BASE_URL, so this tracks local/dev/prod.
+    getTeleuiData: builder.query<any, { range?: 'all' | 'today' } | void>({
+      query: (params) => ({ url: '/web-crm/teleui/data', params: params || undefined }),
+    }),
+    // Manual (off-system) call logging — look up the caller, then upload.
+    lookupManualCall: builder.query<any, string>({
+      query: (mobile) => ({ url: '/web-crm/manual-call/lookup', params: { mobile } }),
+    }),
+    storeManualCall: builder.mutation<any, FormData>({
+      query: (body) => ({ url: '/web-crm/manual-call', method: 'POST', body }),
+    }),
+
+    // ---- Per-agent Notepad (private free-text notes, autosaved) ----
+    listNotes: builder.query<{ status: boolean; notes: NoteRow[] }, void>({
+      query: () => ({ url: '/web-crm/notes' }),
+      providesTags: ['Notes'],
+    }),
+    getNote: builder.query<{ status: boolean; note: NoteFull }, number>({
+      query: (id) => ({ url: `/web-crm/notes/${id}` }),
+    }),
+    createNote: builder.mutation<{ status: boolean; note: NoteFull }, { title?: string; content?: string }>({
+      query: (body) => ({ url: '/web-crm/notes', method: 'POST', body }),
+      invalidatesTags: ['Notes'],
+    }),
+    // The autosave target — kept out of tag invalidation so a 15s save doesn't
+    // refetch the list and yank focus; the list is refreshed on switch/create.
+    updateNote: builder.mutation<{ status: boolean; saved_at: string }, { id: number; title?: string; content?: string }>({
+      query: ({ id, ...body }) => ({ url: `/web-crm/notes/${id}`, method: 'PUT', body }),
+    }),
+    deleteNote: builder.mutation<{ status: boolean }, number>({
+      query: (id) => ({ url: `/web-crm/notes/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['Notes'],
     }),
     getIdvDossier: builder.query<IdvDossierResponse, number>({
       query: (userId) => `/web-crm/id-verification/user/${userId}`,
@@ -3382,9 +4235,45 @@ export const webCrmApi = baseApi.injectEndpoints({
     getIdvDispositionOptions: builder.query<IdvDispositionOptions, void>({
       query: () => '/web-crm/id-verification/disposition-options',
     }),
-    getIdvAgentStats: builder.query<IdvAgentStatsResponse, { search?: string } | void>({
+    getIdvVerificationDetail: builder.query<IdvVerificationDetailResponse, { userId: number; key: string }>({
+      query: ({ userId, key }) => `/web-crm/id-verification/user/${userId}/verification/${key}`,
+      providesTags: ['IdVerification'],
+    }),
+    saveIdvVerification: builder.mutation<{ status: boolean; message?: string; data?: { id: number; check: string } }, { userId: number; key: string; body: Record<string, string> }>({
+      query: ({ userId, key, body }) => ({ url: `/web-crm/id-verification/user/${userId}/verification/${key}`, method: 'POST', body }),
+      invalidatesTags: ['IdVerification'],
+    }),
+    getIdvAgentStats: builder.query<IdvAgentStatsResponse, { search?: string; range?: string; from?: string; to?: string; process?: string } | void>({
       query: (params) => ({ url: '/web-crm/id-verification/agent-stats', params: params || {} }),
       providesTags: ['IdVerification'],
+    }),
+    getIdvDailyCheckStats: builder.query<IdvDailyCheckStatsResponse, { range?: string; from?: string; to?: string; scope?: string; agent_id?: number | string } | void>({
+      query: (params) => ({ url: '/web-crm/id-verification/daily-check-stats', params: params || {} }),
+      providesTags: ['IdVerification'],
+    }),
+    getIdvSelfStats: builder.query<IdvSelfStatsResponse, { range?: IdvSelfRange; from?: string; to?: string; agent_id?: number | string; process?: string } | void>({
+      query: (params) => ({ url: '/web-crm/id-verification/self-stats', params: params || {} }),
+      providesTags: ['IdVerification'],
+    }),
+    getIdvSelfSubscribers: builder.query<IdvSelfSubscribersResponse, { page?: number; per_page?: number; search?: string; role?: string; status?: string; scope?: string; plan?: string; agent_id?: number | string; process?: string } | void>({
+      query: (params) => ({ url: '/web-crm/id-verification/self-subscribers', params: params || {} }),
+      providesTags: ['IdVerification'],
+    }),
+    getIdvSelfCalls: builder.query<IdvSelfCallsResponse, { page?: number; per_page?: number; search?: string; role?: string; status?: string; outcome?: string; plan?: string; range?: IdvSelfRange; from?: string; to?: string; agent_id?: number | string; process?: string } | void>({
+      query: (params) => ({ url: '/web-crm/id-verification/self-calls', params: params || {} }),
+      providesTags: ['IdVerification'],
+    }),
+    getRevenueChallenge: builder.query<RevenueChallengeResponse, { period?: string; month?: string } | void>({
+      query: (params) => ({ url: '/web-crm/revenue-challenge/overview', params: params || {} }),
+    }),
+    getMyRevenueChallenge: builder.query<MyRevenueChallengeResponse, { period?: string; month?: string } | void>({
+      query: (params) => ({ url: '/web-crm/revenue-challenge/me', params: params || {} }),
+    }),
+    getConnectivitySla: builder.query<ConnectivitySlaResponse, SlaQuery | void>({
+      query: (params) => ({ url: '/web-crm/connectivity-sla/overview', params: params || {} }),
+    }),
+    getMyConnectivitySla: builder.query<MyConnectivitySlaResponse, SlaQuery | void>({
+      query: (params) => ({ url: '/web-crm/connectivity-sla/me', params: params || {} }),
     }),
     submitIdvFeedback: builder.mutation<{ status: boolean; message?: string; data?: { call_id: number } }, {
       user_id: number; call_status: string; call_feedback: string; call_remarks?: string;
@@ -3498,7 +4387,10 @@ export const {
   useGetDwPerformanceQuery,
   useGetDwCallbacksQuery,
   useScheduleDwCallbackMutation,
+  useUpdateDwCallbackMutation,
+  useDeleteDwCallbackMutation,
   useGetDwCallHistoryQuery,
+  useLazyGetDwCallHistoryQuery,
   useGetDwBreakStatusQuery,
   useGetDwIncomingCallsQuery,
   useGetWctIncomingCallsQuery,
@@ -3531,7 +4423,10 @@ export const {
   useGetWctPerformanceQuery,
   useGetWctCallbacksQuery,
   useScheduleWctCallbackMutation,
+  useUpdateWctCallbackMutation,
+  useDeleteWctCallbackMutation,
   useGetWctCallHistoryQuery,
+  useLazyGetWctCallHistoryQuery,
   useGetWctBreakStatusQuery,
   useGetPlacementReportQuery,
   useGetPlacementJobManagersQuery,
@@ -3545,7 +4440,9 @@ export const {
   useGetWctJobsQuery,
   useGetWctJobApplicantsQuery,
   useGetWctD7UpsellQuery,
+  useGetWctExpiringSubscriptionsQuery,
   useGetMmDashboardQuery,
+  useGetMmApplicantsQuery,
   useGetMmSubscriptionsQuery,
   useGetMmJobsQuery,
   useGetMmDriversQuery,
@@ -3562,8 +4459,10 @@ export const {
   useGetMmAgentPerformanceQuery,
   useGetMmAgentStatsQuery,
   useGetMmCallHistoryQuery,
+  useLazyGetMmCallHistoryQuery,
   useSubmitMmJobBriefMutation,
   useUpdateMmJobStatusMutation,
+  useGetMmJobPlacementCandidatesQuery,
   useGetMmJobStatusHistoryQuery,
   useUpdateMmCallRemarksMutation,
   useGetMmDriverLockQuery,
@@ -3580,6 +4479,7 @@ export const {
   useGetMmTransporterProfileQuery,
   useGetDriverBankNotificationsQuery,
   useReadDriverBankNotificationsMutation,
+  useGetMmJoiningRemindersQuery,
   useGetMmGreenlineApplicantsQuery,
   useGetDriverBankQuery,
   useGetDriverBankDetailQuery,
@@ -3624,9 +4524,27 @@ export const {
   useGetWebRolesQuery,
   useUpdateWebRoleMutation,
   useGetIdvQueueQuery,
+  useGetTeleuiDataQuery,
+  useLazyLookupManualCallQuery,
+  useStoreManualCallMutation,
+  useListNotesQuery,
+  useLazyGetNoteQuery,
+  useCreateNoteMutation,
+  useUpdateNoteMutation,
+  useDeleteNoteMutation,
   useGetIdvDossierQuery,
   useGetIdvDispositionOptionsQuery,
+  useGetIdvVerificationDetailQuery,
+  useSaveIdvVerificationMutation,
   useGetIdvAgentStatsQuery,
+  useGetIdvDailyCheckStatsQuery,
+  useGetIdvSelfStatsQuery,
+  useGetIdvSelfSubscribersQuery,
+  useGetIdvSelfCallsQuery,
+  useGetRevenueChallengeQuery,
+  useGetMyRevenueChallengeQuery,
+  useGetConnectivitySlaQuery,
+  useGetMyConnectivitySlaQuery,
   useSubmitIdvFeedbackMutation,
   useGetRevivalOffersQuery,
   useGenerateCouponMutation,

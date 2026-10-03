@@ -9,7 +9,9 @@ import { useAuth } from '../app/providers/AuthProvider';
 import { Role } from '../shared/constants/roles';
 import { SanCtiProvider, CallControlBar, PostCallDispositionModal, TollFreeNotifier, useSanCti } from '../shared/components/cti';
 import DriverBankNotifier from '../shared/components/DriverBankNotifier';
+import MmJoiningReminders from '../shared/components/MmJoiningReminders';
 import ConversionConfirmationToast from '../shared/components/incentive/ConversionConfirmationToast';
+import ChallengePopup from '../shared/components/ChallengePopup';
 import FullscreenGuard from '../shared/components/FullscreenGuard';
 import PageTransition from '../shared/components/PageTransition';
 import useCrmTheme from '../shared/theme/useCrmTheme';
@@ -189,12 +191,18 @@ export const DashboardLayout: React.FC = () => {
           {/* "A new driver was banked" — renders only for matchmaking callers,
               wherever they happen to be working. */}
           <DriverBankNotifier />
+          {/* "This driver joins in <24h" — matchmaking callers only; the
+              endpoint returns nothing for other desks. */}
+          <MmJoiningReminders />
           <TollFreeNotifier />
         </>
       )}
 
       {/* Incentive Engine — Global Conversion Toast (all roles) */}
       <ConversionConfirmationToast />
+
+      {/* Revenue Challenge — once-a-day target greeting for calling agents. */}
+      <ChallengePopup />
 
       {/* Strict proctored-exam-style fullscreen enforcement — Driver Welcome
           callers only. The whole workspace is blocked unless the browser is

@@ -99,7 +99,7 @@ export const CrossRoleLeadDetail: React.FC<CrossRoleLeadDetailProps> = ({
         <div className="border border-gray-200 rounded-xl p-3">
           <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">{roleLabel} Profile</h3>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <Field label="Mobile" value={p.mobile} />
+            <MobileField mobile={p.mobile} />
             <Field label="Location" value={location} />
             <Field label="Registered" value={p.registered_at ? new Date(p.registered_at.replace(' ', 'T')).toLocaleDateString() : '—'} />
             <Field label="Language" value={p.language || '—'} />
@@ -230,5 +230,51 @@ const Field: React.FC<{ label: string; value?: string | null }> = ({ label, valu
     <span className="font-semibold text-gray-800 break-words">{value || '—'}</span>
   </div>
 );
+
+// Show only the first 2 and last 3 digits; the middle becomes dots. Mirrors the
+// masking the queue list uses so the same number reads the same on both screens.
+const maskMobile = (mobile?: string | null): string => {
+  if (!mobile) return '—';
+  const digits = String(mobile).replace(/\D/g, '');
+  const last10 = digits.slice(-10);
+  if (last10.length < 5) return '••••••';
+  return `${last10.slice(0, 2)}•••••${last10.slice(-3)}`;
+};
+
+// Masked on screen, but the copy button lifts the FULL number to the clipboard —
+// agents dial off-app, so the digits have to be recoverable without exposing
+// them in plain sight.
+const MobileField: React.FC<{ mobile?: string | null }> = ({ mobile }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!mobile) return;
+    const full = String(mobile).replace(/\s+/g, '');
+    try {
+      await navigator.clipboard?.writeText(full);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked (insecure context / denied) — nothing to do */
+    }
+  };
+  return (
+    <div>
+      <span className="block text-[10px] text-gray-400 uppercase font-semibold">Mobile</span>
+      <span className="flex items-center gap-1.5">
+        <span className="font-semibold text-gray-800 font-mono tracking-wide">{maskMobile(mobile)}</span>
+        {mobile && (
+          <button
+            type="button"
+            onClick={copy}
+            title={copied ? 'Copied!' : 'Copy full number'}
+            className={`transition-colors ${copied ? 'text-emerald-600' : 'text-gray-400 hover:text-gray-700'}`}
+          >
+            <span className="material-symbols-outlined text-[14px]">{copied ? 'check' : 'content_copy'}</span>
+          </button>
+        )}
+      </span>
+    </div>
+  );
+};
 
 export default CrossRoleLeadDetail;

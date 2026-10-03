@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../app/providers/AuthProvider';
 import { loginSchema, type LoginInput } from '../../../shared/validations/loginSchema';
 import useCrmTheme from '../../../shared/theme/useCrmTheme';
@@ -13,8 +13,19 @@ export const LoginPage: React.FC = () => {
   const { isTricolor: IS_TRICOLOR_THEME, greetingHi, greetingEn } = useCrmTheme();
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Friendly banner when the agent lands here after being signed out by the
+  // single-session guard (seat taken over on another device, or expired).
+  const reason = searchParams.get('reason');
+  const reasonNotice =
+    reason === 'superseded'
+      ? 'You were signed out because this account was opened on another device.'
+      : reason === 'expired'
+        ? 'Your session ended. Please sign in again.'
+        : null;
 
   const {
     register,
@@ -38,7 +49,9 @@ export const LoginPage: React.FC = () => {
         setServerError('Invalid login credentials.');
       }
     } catch (err) {
-      setServerError('An error occurred. Please try again.');
+      // The single-session block throws with its own specific message
+      // ("already signed in on another device…"); show that verbatim.
+      setServerError(err instanceof Error && err.message ? err.message : 'An error occurred. Please try again.');
     }
   };
 
@@ -122,6 +135,11 @@ export const LoginPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-md">
+              {reasonNotice && !serverError && (
+                <div className="bg-amber-50 text-amber-900 text-xs p-sm rounded-sm font-semibold border border-amber-300">
+                  {reasonNotice}
+                </div>
+              )}
               {serverError && (
                 <div className="bg-error-container text-on-error-container text-xs p-sm rounded-sm font-semibold border border-error animate-pulse">
                   {serverError}

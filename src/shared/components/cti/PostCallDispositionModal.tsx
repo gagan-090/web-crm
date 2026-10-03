@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSanCti } from './SanCtiContext';
+import type { ExtraContact } from './SanCtiContext';
 import { readPendingMmContext } from './mmCallContext';
 import { isIdvCall } from './idvCallContext';
 import CouponCodePanel from '../business/CouponCodePanel';
@@ -13,18 +14,6 @@ interface PostCallDispositionModalProps {
   driverTmid?: string;
   onDispositionComplete?: (result: any) => void;
 }
-
-const mmStages = [
-  { value: '1', label: 'Stage 1: Profile Assessment' },
-  { value: '2', label: 'Stage 2: Document Verification' },
-  { value: '3', label: 'Stage 3: Interview Scheduled' },
-  { value: '4', label: 'Stage 4: Trial Drive' },
-  { value: '5', label: 'Stage 5: Background Check' },
-  { value: '6', label: 'Stage 6: Job Offer Extended' },
-  { value: '7', label: 'Stage 7: Offer Accepted' },
-  { value: '8', label: 'Stage 8: Final Placement Confirmed' },
-];
-
 
 const rejectionReasons = [
   { value: 'already_have_loads', label: 'Already Have Loads' },
@@ -106,7 +95,7 @@ export const MM_DRIVER_CONNECTED_OPTIONS = [
   { value: 'not_interested_vehicle',    label: 'Not Interested - Vehicle Mismatch',      label_hi: 'गाड़ी टाइप मैच नहीं' },
   { value: 'not_genuine_driver',        label: 'Not a Genuine Driver',                   label_hi: 'जेन्युइन ड्राइवर नहीं' },
   { value: 'interview_done',            label: 'Interview Done',                         label_hi: 'इंटरव्यू हो गया' },
-  { value: 'placement_done',            label: 'MatchMaking Done (Placement)',           label_hi: 'मैचमेकिंग / प्लेसमेंट हो गई' },
+  { value: 'placement_done',            label: 'Placement Done',                         label_hi: 'प्लेसमेंट हो गई' },
   { value: 'will_confirm_later',        label: 'Will Confirm Later',                     label_hi: 'बाद में कन्फर्म करेंगे' },
   { value: 'rejected',                  label: 'Rejected by Driver/Transporter',         label_hi: 'रिजेक्ट हो गया' },
   { value: 'others',                    label: 'Others',                                 label_hi: 'अन्य' },
@@ -132,6 +121,28 @@ export const MM_TRANSPORTER_CONNECTED_OPTIONS = [
   { value: 'will_confirm_later',        label: 'Will Confirm Later',                     label_hi: 'बाद में कन्फर्म करेंगे' },
   { value: 'others',                    label: 'Others',                                 label_hi: 'अन्य' },
 ];
+
+// MM outcomes that require the driver's joining date+time before the call can
+// be dispositioned: "Matchmaking Done" (placement_done) and "Interview Done"
+// (interview_done + greenline_interview_done). Kept in sync with the backend
+// requiresJoiningDate rule in WebCrmMiniCrmController::submitDisposition.
+export const JOINING_DATE_SUBS = ['placement_done', 'interview_done', 'greenline_interview_done'];
+
+// Relations offered for a driver's additional contacts.
+export const EXTRA_CONTACT_RELATIONS = ['Father', 'Mother', 'Brother', 'Sister', 'Wife', 'Son', 'Relative', 'Friend', 'Neighbour', 'Other'];
+
+// Outcomes for a call placed to one of the driver's relatives (not the driver).
+export const RELATIVE_CONNECTED_OPTIONS = [
+  { value: 'relative_will_inform_driver', label: 'Will Inform the Driver',          label_hi: 'ड्राइवर को बता देंगे' },
+  { value: 'relative_driver_joined',      label: 'Confirmed Driver Has Joined',     label_hi: 'ड्राइवर जॉइन कर चुका है' },
+  { value: 'relative_driver_not_joining', label: 'Driver Not Joining',              label_hi: 'ड्राइवर जॉइन नहीं करेगा' },
+  { value: 'relative_new_number',         label: 'Gave Driver\'s New Number',       label_hi: 'ड्राइवर का नया नंबर दिया' },
+  { value: 'relative_wrong_person',       label: 'Wrong Person / Doesn\'t Know Driver', label_hi: 'गलत व्यक्ति' },
+  { value: 'others',                      label: 'Others',                          label_hi: 'अन्य' },
+];
+
+const emptyContact = (): ExtraContact => ({ relation: 'Father', name: '', number: '' });
+const validMobile = (n: string) => /^[6-9]\d{9}$/.test(n.replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, ''));
 
 export const isSubscriptionAgreeOption = (val: string) => {
   return [
@@ -180,6 +191,12 @@ export default function PostCallDispositionModal({
   const [paymentId, setPaymentId] = useState<string>('');
   const [languageNoted, setLanguageNoted] = useState<string>('');
   const [feedbackStage, setFeedbackStage] = useState<string>('');
+  // MM only: the date+time the driver joins the job. Mandatory when the
+  // outcome is Matchmaking Done / Interview Done (see JOINING_DATE_SUBS).
+  const [joiningDate, setJoiningDate] = useState<string>('');
+  // MM only: the driver's family / friends, asked for on the same outcomes as
+  // the joining date so we never lose touch with a placed driver.
+  const [extraContacts, setExtraContacts] = useState<ExtraContact[]>([emptyContact()]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   // Why the last save was rejected. submitDisposition throws instead of
   // resetting the call when Laravel refuses the disposition, so the form stays
@@ -217,6 +234,8 @@ export default function PostCallDispositionModal({
       setPaymentId('');
       setLanguageNoted('');
       setFeedbackStage('');
+      setJoiningDate('');
+      setExtraContacts([emptyContact()]);
       setSubmitError('');
     }
   }, [showDispositionForm]);
@@ -273,16 +292,20 @@ export default function PostCallDispositionModal({
   // driver (non-greenline) option set, which is exactly what a bank call needs.
   const isDriverBankCall = currentLeadType === 'driver_bank';
 
-  const isMatchmaking = !isCampaignCall && (isDriverBankCall || (isMatchmakingRole && isJobMatchingCall));
+  // A call to one of a driver's relatives — its own short outcome list; none
+  // of the welcome or matchmaking options describe it.
+  const isRelativeCall = currentLeadType === 'driver_relative';
+
+  const isMatchmaking = !isCampaignCall && !isRelativeCall && (isDriverBankCall || (isMatchmakingRole && isJobMatchingCall));
 
   // On an onboarding call the script follows the LEAD's own role — a
   // transporter gets the transporter welcome flow, everything else the driver
   // one — which is how the dedicated DW/WCT desks already behave.
-  const isTransporterWelcome = !isMatchmaking && (
+  const isTransporterWelcome = !isMatchmaking && !isRelativeCall && (
     user?.role?.includes('TW') || user?.role?.includes('Transporter') ||
-    (isMatchmakingRole && currentLeadType === 'transporter')
+    (isMatchmakingRole && (currentLeadType === 'transporter' || currentLeadType === 'subscription_renew'))
   );
-  const isDriverWelcome = !isMatchmaking && (
+  const isDriverWelcome = !isMatchmaking && !isRelativeCall && (
     user?.role?.includes('DW') || user?.role?.includes('Welcome') || isMatchmakingRole
   );
 
@@ -300,6 +323,14 @@ export default function PostCallDispositionModal({
   const mmConnectedOptions = mmIsTransporterCall
     ? MM_TRANSPORTER_CONNECTED_OPTIONS
     : [...mmDriverOptions, ...(mmIsGreenline ? MM_GREENLINE_CONNECTED_OPTIONS : [])];
+
+  // MM Matchmaking/Interview Done both require the driver's joining date+time.
+  const needsJoiningDate = isMatchmaking && JOINING_DATE_SUBS.includes(level2Sub);
+  // …and the same outcomes open the additional-contacts form.
+  const asksExtraContacts = needsJoiningDate;
+  // A contact row the agent started must be complete (name + valid number).
+  const filledContacts = extraContacts.filter(c => c.name.trim() || c.number.trim());
+  const contactsValid = filledContacts.every(c => c.name.trim() && validMobile(c.number));
 
   const getCalculatedCallbackTime = (interval: string): string => {
     const now = new Date();
@@ -343,10 +374,10 @@ export default function PostCallDispositionModal({
         if (level2Sub === 'language_barrier') {
           if (!languageNoted) return false;
         }
-        if (level2Sub === 'placement_done') {
-          if (!feedbackStage) return false;
-        }
       }
+      // MM Matchmaking/Interview Done: joining date+time is mandatory.
+      if (needsJoiningDate && !joiningDate) return false;
+      if (asksExtraContacts && !contactsValid) return false;
     } else if (level1 === 'callback_later') {
       if (!isDriverWelcome) {
         if (level2Sub === 'custom' && !callbackAt) return false;
@@ -394,6 +425,8 @@ export default function PostCallDispositionModal({
         payment_id: paymentId || null,
         language_noted: languageNoted || null,
         feedback_stage: feedbackStage || null,
+        joining_date: needsJoiningDate ? (joiningDate || null) : null,
+        extra_contacts: asksExtraContacts && filledContacts.length ? filledContacts : null,
         reason: reason || null,
       });
 
@@ -663,7 +696,31 @@ export default function PostCallDispositionModal({
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {/* Fallback for general Connected welcome-call process */}
-                {(!isTransporterWelcome && !isMatchmaking) && (
+                {isRelativeCall && (
+                  <>
+                    <div style={{ gridColumn: '1 / -1', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', margin: '2px 0 6px' }}>
+                      Call to the driver's relative
+                    </div>
+                    {RELATIVE_CONNECTED_OPTIONS.map(item => (
+                      <label key={item.value} style={getRadioStyle(level2Sub === item.value, '#10B981')}>
+                        <input
+                          type="radio"
+                          name="level2Sub"
+                          value={item.value}
+                          checked={level2Sub === item.value}
+                          onChange={() => setLevel2Sub(item.value)}
+                          style={{ accentColor: '#10B981', marginRight: 8 }}
+                        />
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#1F2937' }}>{item.label}</div>
+                          <div style={{ fontSize: 10, color: '#9CA3AF' }}>{item.label_hi}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </>
+                )}
+
+                {(!isTransporterWelcome && !isMatchmaking && !isRelativeCall) && (
                   <>
                     {[
                       { value: 'agree_subscription', label: 'Agree for Subscription Today', label_hi: 'आज पेमेंट करेंगे' },
@@ -774,13 +831,13 @@ export default function PostCallDispositionModal({
                 agent picks the plan from the dropdown and the app backend
                 pushes the code to their phone before the call is even filed.
                 Collapsed by default so it never crowds the disposition. */}
-            {currentLeadId && Number(currentLeadId) > 0 && (
+            {currentLeadId && Number(currentLeadId) > 0 && !isRelativeCall && (
               <CouponCodePanel
                 collapsible
                 userId={Number(currentLeadId)}
                 uniqueId={activeTmid}
                 leadName={activeName}
-                role={currentLeadType === 'transporter' ? 'transporter' : 'driver'}
+                role={currentLeadType === 'transporter' || currentLeadType === 'subscription_renew' ? 'transporter' : 'driver'}
               />
             )}
             
@@ -878,20 +935,85 @@ export default function PostCallDispositionModal({
               </div>
             )}
 
-            {/* Matchmaking Placement Done Flow */}
-            {level2Sub === 'placement_done' && (
+            {/* Driver Joining Date — mandatory for MM Matchmaking Done /
+                Interview Done. Stamped onto call_history_ivr.joining_date and
+                drives the "driver joins in <24h" reminder popup. */}
+            {needsJoiningDate && (
               <div>
-                <label style={subLabelStyle}>Verify Placement Stage *</label>
-                <select
-                  value={feedbackStage}
-                  onChange={e => setFeedbackStage(e.target.value)}
+                <label style={subLabelStyle}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 15, verticalAlign: '-2px', marginRight: 4, color: '#C05E10' }}>event_available</span>
+                  Driver Joining Date &amp; Time *
+                </label>
+                <input
+                  type="datetime-local"
+                  value={joiningDate}
+                  onChange={e => setJoiningDate(e.target.value)}
                   style={inputStyle}
+                />
+                <div style={{ fontSize: 10.5, color: '#92400E', marginTop: 4 }}>
+                  When is this driver due to join the job? You'll get a reminder 24 hours before.
+                </div>
+              </div>
+            )}
+
+            {/* Additional contacts — family / friends who can reach the driver
+                once he's committed to a job. Stored on call_history_ivr in
+                extra_contact_relations / _names / _numbers. */}
+            {asksExtraContacts && (
+              <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 12, background: '#F9FAFB' }}>
+                <label style={subLabelStyle}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 15, verticalAlign: '-2px', marginRight: 4, color: '#8E44AD' }}>contact_phone</span>
+                  Additional Contact Numbers
+                </label>
+                <div style={{ fontSize: 10.5, color: '#6B7280', marginBottom: 8 }}>
+                  A relative or friend we can call if the driver can't be reached. Add as many as you have.
+                </div>
+                {extraContacts.map((c, i) => {
+                  const bad = (c.name.trim() || c.number.trim()) && (!c.name.trim() || !validMobile(c.number));
+                  const update = (patch: Partial<ExtraContact>) =>
+                    setExtraContacts(list => list.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+                  return (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 130px 28px', gap: 6, marginBottom: 6 }}>
+                      <select value={c.relation} onChange={e => update({ relation: e.target.value })} style={{ ...inputStyle, padding: '6px 8px' }}>
+                        {EXTRA_CONTACT_RELATIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <input
+                        placeholder="Name"
+                        value={c.name}
+                        onChange={e => update({ name: e.target.value })}
+                        style={{ ...inputStyle, padding: '6px 8px' }}
+                      />
+                      <input
+                        placeholder="Mobile number"
+                        inputMode="numeric"
+                        maxLength={13}
+                        value={c.number}
+                        onChange={e => update({ number: e.target.value.replace(/[^\d+]/g, '') })}
+                        style={{ ...inputStyle, padding: '6px 8px', borderColor: bad ? '#EF4444' : undefined }}
+                      />
+                      <button
+                        type="button"
+                        title="Remove"
+                        onClick={() => setExtraContacts(list => (list.length > 1 ? list.filter((_, j) => j !== i) : [emptyContact()]))}
+                        style={{ border: 'none', background: 'transparent', color: '#9CA3AF', cursor: 'pointer' }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setExtraContacts(list => [...list, emptyContact()])}
+                  style={{ fontSize: 11, fontWeight: 700, color: '#8E44AD', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
                 >
-                  <option value="">Choose placement stage...</option>
-                  {mmStages.map(s => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
+                  + Add another contact
+                </button>
+                {!contactsValid && (
+                  <div style={{ fontSize: 10.5, color: '#DC2626', marginTop: 4 }}>
+                    Each contact needs a name and a valid 10-digit mobile number (or clear the row).
+                  </div>
+                )}
               </div>
             )}
           </div>
